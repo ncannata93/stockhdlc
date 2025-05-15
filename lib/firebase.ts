@@ -42,8 +42,15 @@ export const initializeFirebase = async () => {
 
   try {
     // Importar Firebase dinámicamente (solo en el cliente)
-    const firebaseApp = await import("firebase/app")
-    const firebaseFirestore = await import("firebase/firestore")
+    const firebaseApp = await import("firebase/app").catch((error) => {
+      console.error("Error al importar firebase/app:", error)
+      throw new Error("No se pudo cargar el módulo firebase/app")
+    })
+
+    const firebaseFirestore = await import("firebase/firestore").catch((error) => {
+      console.error("Error al importar firebase/firestore:", error)
+      throw new Error("No se pudo cargar el módulo firebase/firestore")
+    })
 
     // Configuración de Firebase
     const firebaseConfig = {
@@ -85,7 +92,12 @@ export const initializeFirebase = async () => {
 
 // Función para verificar si Firebase está disponible
 export const isFirebaseAvailable = () => {
-  return typeof window !== "undefined" && isFirebaseInitialized && (window as any).__FIREBASE_DB__ !== undefined
+  try {
+    return typeof window !== "undefined" && isFirebaseInitialized && (window as any).__FIREBASE_DB__ !== undefined
+  } catch (error) {
+    console.error("Error al verificar disponibilidad de Firebase:", error)
+    return false
+  }
 }
 
 // Función para obtener la instancia de Firestore

@@ -26,20 +26,36 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const initializeFirebaseApp = async () => {
-    const result = await initializeFirebase()
+    try {
+      const result = await initializeFirebase()
 
-    // Actualizar el estado basado en el resultado
-    setIsFirebaseInitialized(result.success)
-    setIsFirebaseError(!result.success)
-    setErrorMessage(result.error)
+      // Actualizar el estado basado en el resultado
+      setIsFirebaseInitialized(result.success)
+      setIsFirebaseError(!result.success)
+      setErrorMessage(result.error)
 
-    return result
+      return result
+    } catch (error) {
+      console.error("Error al inicializar Firebase:", error)
+      setIsFirebaseInitialized(false)
+      setIsFirebaseError(true)
+      setErrorMessage("Error inesperado al inicializar Firebase")
+
+      return { success: false, error: "Error inesperado al inicializar Firebase" }
+    }
   }
 
   useEffect(() => {
     // Intentar inicializar Firebase al montar el componente
     const init = async () => {
-      await initializeFirebaseApp()
+      try {
+        await initializeFirebaseApp()
+      } catch (error) {
+        console.error("Error al inicializar Firebase:", error)
+        setIsFirebaseInitialized(false)
+        setIsFirebaseError(true)
+        setErrorMessage("Error al inicializar Firebase")
+      }
     }
 
     init()
@@ -52,7 +68,20 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       setErrorMessage(status.error)
     }, 2000)
 
-    return () => clearInterval(interval)
+    // Forzar una actualización del estado después de un tiempo
+    const timeout = setTimeout(() => {
+      const status = getFirebaseStatus()
+      if (!status.isInitialized) {
+        setIsFirebaseInitialized(false)
+        setIsFirebaseError(true)
+        setErrorMessage(status.error || "Tiempo de espera agotado")
+      }
+    }, 5000)
+
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
   }, [])
 
   return (

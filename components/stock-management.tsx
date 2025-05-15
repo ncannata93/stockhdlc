@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Check,
   ChevronsUpDown,
@@ -204,6 +204,9 @@ const loadFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
 export default function StockManagement() {
   const { isFirebaseInitialized, isFirebaseError, errorMessage, initializeFirebaseApp } = useFirebase()
 
+  // Referencia para el timeout que fuerza la salida del estado de carga
+  const forceTimeoutRef = useRef<number | null>(null)
+
   // Estado para productos
   const [products, setProducts] = useState<Product[]>(() => loadFromLocalStorage("products", defaultProducts))
 
@@ -350,16 +353,43 @@ export default function StockManagement() {
   // Función para reintentar la conexión con Firebase
   const retryFirebaseConnection = async () => {
     setIsInitializing(true)
-    const result = await initializeFirebaseApp()
-    setIsInitializing(false)
 
-    if (result.success) {
-      await loadDataFromFirebase()
-    } else {
-      setSyncError(`No se pudo conectar a Firebase: ${result.error}`)
+    try {
+      const result = await initializeFirebaseApp()
+
+      if (result.success) {
+        await loadDataFromFirebase()
+      } else {
+        setSyncError(`No se pudo conectar a Firebase: ${result.error}`)
+        setIsLocalMode(true)
+      }
+    } catch (error) {
+      console.error("Error al reintentar conexión:", error)
+      setSyncError("Error al intentar conectar con Firebase. Usando modo local.")
       setIsLocalMode(true)
+    } finally {
+      setIsInitializing(false)
     }
   }
+
+  // Efecto para forzar la salida del estado de carga después de un tiempo
+  useEffect(() => {
+    if (isLoading) {
+      forceTimeoutRef.current = window.setTimeout(() => {
+        console.log("Forzando salida del estado de carga")
+        setIsLoading(false)
+        setIsLocalMode(true)
+        setSyncError("Tiempo de carga excedido. Usando modo local.")
+      }, 5000)
+    }
+
+    return () => {
+      if (forceTimeoutRef.current) {
+        window.clearTimeout(forceTimeoutRef.current)
+        forceTimeoutRef.current = null
+      }
+    }
+  }, [isLoading])
 
   // Cargar datos iniciales cuando Firebase esté inicializado
   useEffect(() => {
@@ -373,6 +403,13 @@ export default function StockManagement() {
       setSyncError(errorMessage || "Firebase no está disponible. Usando modo local.")
       setIsLocalMode(true)
     }
+
+    // Asegurar que siempre salga del estado de carga después de un tiempo
+    const timeout = setTimeout(() => {
+      setIsLoading(false)
+    }, 3000)
+
+    return () => clearTimeout(timeout)
   }, [isFirebaseInitialized, isFirebaseError, errorMessage, loadDataFromFirebase])
 
   // Suscribirse a cambios en tiempo real
