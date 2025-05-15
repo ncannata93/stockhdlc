@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Check,
   ChevronsUpDown,
@@ -15,6 +15,10 @@ import {
   LogOut,
   Plus,
   DollarSign,
+  Loader2,
+  Database,
+  CloudOff,
+  RefreshCw,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -37,6 +41,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+
+import { useFirebase } from "@/components/firebase-provider"
+import {
+  saveProducts,
+  getProducts,
+  saveInventory,
+  getInventory,
+  saveRecord,
+  getRecords,
+  subscribeToRecords,
+  subscribeToProducts,
+  subscribeToInventory,
+  isFirebaseAvailable,
+  createTimestamp,
+  type FirebaseProduct,
+  type FirebaseRecord,
+} from "@/lib/firebase"
 
 // Datos de ejemplo
 const hotels = [
@@ -91,16 +112,100 @@ const formatCurrency = (amount: number): string => {
   }).format(amount)
 }
 
+// Convertir tipos de Firebase a tipos locales
+const convertFirebaseProductToProduct = (fbProduct: FirebaseProduct): Product => {
+  return {
+    id: fbProduct.id,
+    name: fbProduct.name,
+    unit: fbProduct.unit,
+    price: fbProduct.price,
+  }
+}
+
+const convertFirebaseRecordToRecord = (fbRecord: FirebaseRecord): StockRecord => {
+  const hotel = fbRecord.hotelId ? hotels.find((h) => h.id === fbRecord.hotelId) || null : null
+
+  return {
+    id: fbRecord.id,
+    hotel: hotel,
+    product: {
+      id: fbRecord.productId,
+      name: fbRecord.productName,
+      unit: fbRecord.productUnit,
+      price: fbRecord.price,
+    },
+    quantity: fbRecord.quantity,
+    price: fbRecord.price,
+    date: fbRecord.date instanceof Date ? fbRecord.date : new Date(fbRecord.date.seconds * 1000),
+    type: fbRecord.type,
+  }
+}
+
+// Convertir tipos locales a tipos de Firebase
+const convertProductToFirebaseProduct = (product: Product): FirebaseProduct => {
+  return {
+    id: product.id,
+    name: product.name,
+    unit: product.unit,
+    price: product.price,
+  }
+}
+
+const convertRecordToFirebaseRecord = (record: StockRecord): FirebaseRecord => {
+  return {
+    id: record.id,
+    hotelId: record.hotel ? record.hotel.id : null,
+    hotelName: record.hotel ? record.hotel.name : null,
+    productId: record.product.id,
+    productName: record.product.name,
+    productUnit: record.product.unit,
+    quantity: record.quantity,
+    price: record.price,
+    date: createTimestamp(record.date),
+    type: record.type,
+  }
+}
+
+// Productos por defecto
+const defaultProducts: Product[] = [
+  { id: 1, name: "Leche", unit: "litros", price: 1200 },
+  { id: 2, name: "Cafe", unit: "kg", price: 5000 },
+  { id: 3, name: "azucar", unit: "kg", price: 1800 },
+  { id: 4, name: "jabon", unit: "caja", price: 3500 },
+  { id: 5, name: "papel higienico", unit: "bolson", price: 4200 },
+  { id: 6, name: "shampoo", unit: "caja", price: 2800 },
+]
+
+// Función para guardar datos en localStorage
+const saveToLocalStorage = (key: string, data: any) => {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(key, JSON.stringify(data))
+    } catch (error) {
+      console.error(`Error al guardar en localStorage (${key}):`, error)
+    }
+  }
+}
+
+// Función para cargar datos desde localStorage
+const loadFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
+  if (typeof window !== "undefined") {
+    try {
+      const storedData = localStorage.getItem(key)
+      return storedData ? JSON.parse(storedData) : defaultValue
+    } catch (error) {
+      console.error(`Error al cargar desde localStorage (${key}):`, error)
+      return defaultValue
+    }
+  }
+  return defaultValue
+}
+
 export default function StockManagement() {
+  const { isFirebaseInitialized, isFirebaseError, errorMessage, initializeFirebaseApp } = useFirebase()
+
   // Estado para productos
-  const [products, setProducts] = useState<Product[]>([
-    { id: 1, name: "Leche", unit: "litros", price: 1200 },
-    { id: 2, name: "Cafe", unit: "kg", price: 5000 },
-    { id: 3, name: "azucar", unit: "kg", price: 1800 },
-    { id: 4, name: "jabon", unit: "caja", price: 3500 },
-    { id: 5, name: "papel higienico", unit: "bolson", price: 4200 },
-    { id: 6, name: "shampoo", unit: "caja", price: 2800 },
-  ])
+  const [products, setProducts] = useState<Product[]>(() => loadFromLocalStorage("products", defaultProducts))
 
   // Estados para el formulario de retiro
   const [selectedHotel, setSelectedHotel] = useState<(typeof hotels)[0] | null>(null)
@@ -116,7 +221,15 @@ export default function StockManagement() {
   const [currentPrice, setCurrentPrice] = useState<number>(0)
 
   // Estados para registros y edición
-  const [records, setRecords] = useState<StockRecord[]>([])
+  const [records, setRecords] = useState<StockRecord[]>(() => {
+    // Convertir las fechas de string a Date al cargar desde localStorage
+    const storedRecords = loadFromLocalStorage<any[]>("records", [])
+    return storedRecords.map((record) => ({
+      ...record,
+      date: new Date(record.date),
+    }))
+  })
+
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmationMessage, setConfirmationMessage] = useState("")
   const [editingRecord, setEditingRecord] = useState<number | null>(null)
@@ -128,7 +241,7 @@ export default function StockManagement() {
   const [editProductOpen, setEditProductOpen] = useState(false)
 
   // Estado para el inventario
-  const [inventory, setInventory] = useState<ProductStock[]>([])
+  const [inventory, setInventory] = useState<ProductStock[]>(() => loadFromLocalStorage("inventory", []))
   const [showStockError, setShowStockError] = useState(false)
 
   // Estados para la autenticación
@@ -145,14 +258,192 @@ export default function StockManagement() {
   const [showNewProductForm, setShowNewProductForm] = useState(false)
   const [newProductError, setNewProductError] = useState("")
 
-  // Inicializar el inventario
+  // Estados para Firebase
+  const [isLoading, setIsLoading] = useState(true)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [isLocalMode, setIsLocalMode] = useState(true) // Comenzar en modo local por defecto
+  const [isInitializing, setIsInitializing] = useState(false)
+
+  // Guardar datos en localStorage cuando cambien
   useEffect(() => {
-    const initialInventory = products.map((product) => ({
-      productId: product.id,
-      quantity: 0,
-    }))
-    setInventory(initialInventory)
+    saveToLocalStorage("products", products)
   }, [products])
+
+  useEffect(() => {
+    saveToLocalStorage("inventory", inventory)
+  }, [inventory])
+
+  useEffect(() => {
+    // Guardar los registros, pero convertir las fechas a strings
+    const recordsToSave = records.map((record) => ({
+      ...record,
+      date: record.date.toISOString(),
+    }))
+    saveToLocalStorage("records", recordsToSave)
+  }, [records])
+
+  // Inicializar el inventario con los productos por defecto
+  useEffect(() => {
+    if (products.length > 0 && inventory.length === 0) {
+      const initialInventory = products.map((product) => ({
+        productId: product.id,
+        quantity: 0,
+      }))
+      setInventory(initialInventory)
+    }
+  }, [products, inventory])
+
+  // Función para cargar datos desde Firebase
+  const loadDataFromFirebase = useCallback(async () => {
+    if (!isFirebaseAvailable()) {
+      setSyncError("Firebase no está disponible. Usando modo local.")
+      setIsLocalMode(true)
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      // Cargar productos
+      const fbProducts = await getProducts()
+      if (fbProducts.length > 0) {
+        setProducts(fbProducts.map(convertFirebaseProductToProduct))
+      } else {
+        // Si no hay productos en Firebase, usar los productos por defecto
+        setProducts(defaultProducts)
+        // Guardar productos por defecto en Firebase
+        await saveProducts(defaultProducts.map(convertProductToFirebaseProduct))
+      }
+
+      // Cargar inventario
+      const fbInventory = await getInventory()
+      if (fbInventory.length > 0) {
+        setInventory(fbInventory)
+      } else {
+        // Si no hay inventario, inicializar con los productos por defecto
+        const initialInventory = defaultProducts.map((product) => ({
+          productId: product.id,
+          quantity: 0,
+        }))
+        setInventory(initialInventory)
+        await saveInventory(initialInventory)
+      }
+
+      // Cargar registros
+      const fbRecords = await getRecords()
+      if (fbRecords.length > 0) {
+        setRecords(fbRecords.map(convertFirebaseRecordToRecord))
+      }
+
+      setSyncError(null)
+      setIsLocalMode(false)
+    } catch (error) {
+      console.error("Error al cargar datos iniciales:", error)
+      setSyncError("Error al cargar datos. Usando modo local.")
+      setIsLocalMode(true)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // Función para reintentar la conexión con Firebase
+  const retryFirebaseConnection = async () => {
+    setIsInitializing(true)
+    const result = await initializeFirebaseApp()
+    setIsInitializing(false)
+
+    if (result.success) {
+      await loadDataFromFirebase()
+    } else {
+      setSyncError(`No se pudo conectar a Firebase: ${result.error}`)
+      setIsLocalMode(true)
+    }
+  }
+
+  // Cargar datos iniciales cuando Firebase esté inicializado
+  useEffect(() => {
+    // Siempre comenzar con datos locales para una carga rápida
+    setIsLoading(false)
+
+    // Luego intentar cargar desde Firebase si está disponible
+    if (isFirebaseInitialized) {
+      loadDataFromFirebase()
+    } else if (isFirebaseError) {
+      setSyncError(errorMessage || "Firebase no está disponible. Usando modo local.")
+      setIsLocalMode(true)
+    }
+  }, [isFirebaseInitialized, isFirebaseError, errorMessage, loadDataFromFirebase])
+
+  // Suscribirse a cambios en tiempo real
+  useEffect(() => {
+    if (!isFirebaseInitialized || isLocalMode) {
+      return () => {}
+    }
+
+    // Verificar que Firebase esté disponible antes de suscribirse
+    if (!isFirebaseAvailable()) {
+      console.error("Firebase no está disponible para suscripciones")
+      return () => {}
+    }
+
+    let unsubscribeRecords = () => {}
+    let unsubscribeProducts = () => {}
+    let unsubscribeInventory = () => {}
+
+    try {
+      unsubscribeRecords = subscribeToRecords((fbRecords) => {
+        setRecords(fbRecords.map(convertFirebaseRecordToRecord))
+      })
+
+      unsubscribeProducts = subscribeToProducts((fbProducts) => {
+        setProducts(fbProducts.map(convertFirebaseProductToProduct))
+      })
+
+      unsubscribeInventory = subscribeToInventory((fbInventory) => {
+        setInventory(fbInventory)
+      })
+    } catch (error) {
+      console.error("Error al suscribirse a cambios en tiempo real:", error)
+      setSyncError("Error al suscribirse a cambios en tiempo real. Usando modo local.")
+      setIsLocalMode(true)
+    }
+
+    return () => {
+      unsubscribeRecords()
+      unsubscribeProducts()
+      unsubscribeInventory()
+    }
+  }, [isFirebaseInitialized, isLocalMode])
+
+  // Inicializar el inventario si no existe para nuevos productos
+  useEffect(() => {
+    const initializeInventory = async () => {
+      if (products.length > 0 && !isLoading) {
+        const newInventory = [...inventory]
+        let hasChanges = false
+
+        products.forEach((product) => {
+          if (!inventory.some((item) => item.productId === product.id)) {
+            newInventory.push({
+              productId: product.id,
+              quantity: 0,
+            })
+            hasChanges = true
+          }
+        })
+
+        if (hasChanges) {
+          setInventory(newInventory)
+          if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+            await saveInventory(newInventory)
+          }
+        }
+      }
+    }
+
+    initializeInventory()
+  }, [products, inventory, isLoading, isFirebaseInitialized, isLocalMode])
 
   // Actualizar el precio actual cuando se selecciona un producto
   useEffect(() => {
@@ -168,23 +459,45 @@ export default function StockManagement() {
   }
 
   // Función para actualizar el inventario
-  const updateInventory = (productId: number, quantity: number, isAddition: boolean) => {
-    setInventory((prev) =>
-      prev.map((item) =>
-        item.productId === productId
-          ? { ...item, quantity: isAddition ? item.quantity + quantity : item.quantity - quantity }
-          : item,
-      ),
+  const updateInventory = async (productId: number, quantity: number, isAddition: boolean) => {
+    const newInventory = inventory.map((item) =>
+      item.productId === productId
+        ? { ...item, quantity: isAddition ? item.quantity + quantity : item.quantity - quantity }
+        : item,
     )
+
+    setInventory(newInventory)
+
+    if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+      try {
+        await saveInventory(newInventory)
+      } catch (error) {
+        console.error("Error al actualizar inventario:", error)
+        setSyncError("Error al actualizar inventario. Verifica tu conexión a internet.")
+      }
+    }
   }
 
   // Función para actualizar el precio de un producto
-  const updateProductPrice = (productId: number, newPrice: number) => {
-    setProducts((prev) => prev.map((product) => (product.id === productId ? { ...product, price: newPrice } : product)))
+  const updateProductPrice = async (productId: number, newPrice: number) => {
+    const newProducts = products.map((product) =>
+      product.id === productId ? { ...product, price: newPrice } : product,
+    )
+
+    setProducts(newProducts)
+
+    if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+      try {
+        await saveProducts(newProducts.map(convertProductToFirebaseProduct))
+      } catch (error) {
+        console.error("Error al actualizar precio del producto:", error)
+        setSyncError("Error al actualizar precio. Verifica tu conexión a internet.")
+      }
+    }
   }
 
   // Manejar el registro de retiro de stock
-  const handleWithdrawal = () => {
+  const handleWithdrawal = async () => {
     if (selectedHotel && selectedProduct && quantity > 0) {
       // Verificar si hay suficiente stock
       const currentStock = getProductStock(selectedProduct.id)
@@ -207,73 +520,101 @@ export default function StockManagement() {
         type: "salida",
       }
 
-      // Actualizar el inventario (restar)
-      updateInventory(selectedProduct.id, quantity, false)
+      try {
+        // Actualizar el inventario (restar)
+        await updateInventory(selectedProduct.id, quantity, false)
 
-      // Agregar el registro
-      setRecords([newRecord, ...records])
+        // Guardar el registro en Firebase si está disponible
+        if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+          await saveRecord(convertRecordToFirebaseRecord(newRecord))
+        }
 
-      // Mostrar confirmación
-      setConfirmationMessage(
-        `${selectedHotel.name} ha retirado ${quantity} ${selectedProduct.unit} de ${
-          selectedProduct.name
-        } (${formatCurrency(quantity * selectedProduct.price)})`,
-      )
-      setShowConfirmation(true)
+        // Agregar el registro localmente
+        setRecords([newRecord, ...records])
 
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        setShowConfirmation(false)
-      }, 3000)
+        // Mostrar confirmación
+        setConfirmationMessage(
+          `${selectedHotel.name} ha retirado ${quantity} ${selectedProduct.unit} de ${
+            selectedProduct.name
+          } (${formatCurrency(quantity * selectedProduct.price)})`,
+        )
+        setShowConfirmation(true)
+
+        // Reset form after 3 seconds
+        setTimeout(() => {
+          setShowConfirmation(false)
+        }, 3000)
+
+        // Limpiar el formulario
+        setSelectedProduct(null)
+        setQuantity(1)
+
+        setSyncError(null)
+      } catch (error) {
+        console.error("Error al registrar retiro:", error)
+        setSyncError("Error al registrar retiro. Verifica tu conexión a internet.")
+      }
     }
   }
 
   // Manejar el registro de entrada de stock
-  const handleStockAddition = () => {
+  const handleStockAddition = async () => {
     if (selectedStockProduct && stockQuantity > 0) {
-      // Actualizar el precio del producto si ha cambiado
-      if (currentPrice !== selectedStockProduct.price) {
-        updateProductPrice(selectedStockProduct.id, currentPrice)
+      try {
+        // Actualizar el precio del producto si ha cambiado
+        if (currentPrice !== selectedStockProduct.price) {
+          await updateProductPrice(selectedStockProduct.id, currentPrice)
+        }
+
+        const newRecord: StockRecord = {
+          id: Date.now(),
+          hotel: null, // No hay hotel asociado a una entrada de stock
+          product: { ...selectedStockProduct, price: currentPrice },
+          quantity: stockQuantity,
+          price: currentPrice, // Guardar el precio actual
+          date: new Date(),
+          type: "entrada",
+        }
+
+        // Actualizar el inventario (sumar)
+        await updateInventory(selectedStockProduct.id, stockQuantity, true)
+
+        // Guardar el registro en Firebase si está disponible
+        if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+          await saveRecord(convertRecordToFirebaseRecord(newRecord))
+        }
+
+        // Agregar el registro localmente
+        setRecords([newRecord, ...records])
+
+        // Mostrar confirmación
+        setConfirmationMessage(
+          `Se han agregado ${stockQuantity} ${selectedStockProduct.unit} de ${
+            selectedStockProduct.name
+          } al inventario (${formatCurrency(currentPrice)} c/u)`,
+        )
+        setShowConfirmation(true)
+
+        // Reset form after 3 seconds
+        setTimeout(() => {
+          setShowConfirmation(false)
+        }, 3000)
+
+        // Limpiar el formulario
+        setSelectedStockProduct(null)
+        setStockQuantity(1)
+        setCurrentPrice(0)
+
+        setSyncError(null)
+      } catch (error) {
+        console.error("Error al agregar stock:", error)
+        setSyncError("Error al agregar stock. Verifica tu conexión a internet.")
       }
-
-      const newRecord: StockRecord = {
-        id: Date.now(),
-        hotel: null, // No hay hotel asociado a una entrada de stock
-        product: { ...selectedStockProduct, price: currentPrice },
-        quantity: stockQuantity,
-        price: currentPrice, // Guardar el precio actual
-        date: new Date(),
-        type: "entrada",
-      }
-
-      // Actualizar el inventario (sumar)
-      updateInventory(selectedStockProduct.id, stockQuantity, true)
-
-      // Agregar el registro
-      setRecords([newRecord, ...records])
-
-      // Mostrar confirmación
-      setConfirmationMessage(
-        `Se han agregado ${stockQuantity} ${selectedStockProduct.unit} de ${
-          selectedStockProduct.name
-        } al inventario (${formatCurrency(currentPrice)} c/u)`,
-      )
-      setShowConfirmation(true)
-
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        setShowConfirmation(false)
-      }, 3000)
-
-      // Limpiar el formulario
-      setSelectedStockProduct(null)
-      setStockQuantity(1)
-      setCurrentPrice(0)
     }
   }
 
   // Manejar la creación de un nuevo producto
-  const handleAddNewProduct = () => {
+  const handleAddNewProduct = async () => {
     // Validar que los campos no estén vacíos
     if (!newProductName.trim() || !newProductUnit.trim() || newProductPrice <= 0) {
       setNewProductError("Todos los campos son obligatorios y el precio debe ser mayor a cero")
@@ -286,38 +627,59 @@ export default function StockManagement() {
       return
     }
 
-    // Crear el nuevo producto
-    const newProductId = Math.max(...products.map((p) => p.id), 0) + 1
-    const newProduct: Product = {
-      id: newProductId,
-      name: newProductName,
-      unit: newProductUnit,
-      price: newProductPrice,
+    try {
+      // Crear el nuevo producto
+      const newProductId = Math.max(...products.map((p) => p.id), 0) + 1
+      const newProduct: Product = {
+        id: newProductId,
+        name: newProductName,
+        unit: newProductUnit,
+        price: newProductPrice,
+      }
+
+      // Actualizar la lista de productos en Firebase si está disponible
+      if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+        const newProducts = [...products, newProduct]
+        await saveProducts(newProducts.map(convertProductToFirebaseProduct))
+      }
+
+      // Actualizar la lista de productos localmente
+      setProducts([...products, newProduct])
+
+      // Añadir el producto al inventario con stock inicial 0
+      const newInventoryItem: ProductStock = { productId: newProductId, quantity: 0 }
+      const newInventory = [...inventory, newInventoryItem]
+
+      if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+        await saveInventory(newInventory)
+      }
+
+      // Actualizar el inventario localmente
+      setInventory(newInventory)
+
+      // Mostrar confirmación
+      setConfirmationMessage(
+        `Se ha creado el nuevo producto: ${newProductName} (${formatCurrency(newProductPrice)} por ${newProductUnit})`,
+      )
+      setShowConfirmation(true)
+
+      // Reset form after 3 seconds
+      setTimeout(() => {
+        setShowConfirmation(false)
+      }, 3000)
+
+      // Limpiar el formulario
+      setNewProductName("")
+      setNewProductUnit("")
+      setNewProductPrice(0)
+      setNewProductError("")
+      setShowNewProductForm(false)
+
+      setSyncError(null)
+    } catch (error) {
+      console.error("Error al crear nuevo producto:", error)
+      setNewProductError("Error al crear el producto. Verifica tu conexión a internet.")
     }
-
-    // Actualizar la lista de productos
-    setProducts([...products, newProduct])
-
-    // Añadir el producto al inventario con stock inicial 0
-    setInventory([...inventory, { productId: newProductId, quantity: 0 }])
-
-    // Mostrar confirmación
-    setConfirmationMessage(
-      `Se ha creado el nuevo producto: ${newProductName} (${formatCurrency(newProductPrice)} por ${newProductUnit})`,
-    )
-    setShowConfirmation(true)
-
-    // Reset form after 3 seconds
-    setTimeout(() => {
-      setShowConfirmation(false)
-    }, 3000)
-
-    // Limpiar el formulario
-    setNewProductName("")
-    setNewProductUnit("")
-    setNewProductPrice(0)
-    setNewProductError("")
-    setShowNewProductForm(false)
   }
 
   const startEditing = (record: StockRecord) => {
@@ -332,7 +694,7 @@ export default function StockManagement() {
     setEditingRecord(null)
   }
 
-  const saveEdit = (recordId: number) => {
+  const saveEdit = async (recordId: number) => {
     const recordToEdit = records.find((r) => r.id === recordId)
 
     if (!recordToEdit || !editProduct || editQuantity <= 0 || editPrice <= 0) return
@@ -340,61 +702,70 @@ export default function StockManagement() {
     // Si es un registro de salida, necesitamos verificar el hotel
     if (recordToEdit.type === "salida" && !editHotel) return
 
-    // Calcular la diferencia de cantidad para actualizar el inventario
-    const quantityDifference = editQuantity - recordToEdit.quantity
+    try {
+      // Calcular la diferencia de cantidad para actualizar el inventario
+      const quantityDifference = editQuantity - recordToEdit.quantity
 
-    // Para registros de salida, verificar si hay suficiente stock
-    if (recordToEdit.type === "salida" && quantityDifference > 0) {
-      const currentStock = getProductStock(editProduct.id)
-      if (quantityDifference > currentStock) {
-        setShowStockError(true)
-        setTimeout(() => {
-          setShowStockError(false)
-        }, 3000)
-        return
+      // Para registros de salida, verificar si hay suficiente stock
+      if (recordToEdit.type === "salida" && quantityDifference > 0) {
+        const currentStock = getProductStock(editProduct.id)
+        if (quantityDifference > currentStock) {
+          setShowStockError(true)
+          setTimeout(() => {
+            setShowStockError(false)
+          }, 3000)
+          return
+        }
       }
-    }
 
-    // Actualizar el inventario
-    if (recordToEdit.product.id === editProduct.id) {
-      // Si es el mismo producto, solo ajustamos la cantidad
-      if (recordToEdit.type === "entrada") {
-        updateInventory(editProduct.id, Math.abs(quantityDifference), quantityDifference > 0)
+      // Actualizar el inventario
+      if (recordToEdit.product.id === editProduct.id) {
+        // Si es el mismo producto, solo ajustamos la cantidad
+        if (recordToEdit.type === "entrada") {
+          await updateInventory(editProduct.id, Math.abs(quantityDifference), quantityDifference > 0)
+        } else {
+          await updateInventory(editProduct.id, Math.abs(quantityDifference), quantityDifference < 0)
+        }
       } else {
-        updateInventory(editProduct.id, Math.abs(quantityDifference), quantityDifference < 0)
+        // Si cambió el producto, revertimos la operación original y aplicamos la nueva
+        if (recordToEdit.type === "entrada") {
+          await updateInventory(recordToEdit.product.id, recordToEdit.quantity, false)
+          await updateInventory(editProduct.id, editQuantity, true)
+        } else {
+          await updateInventory(recordToEdit.product.id, recordToEdit.quantity, true)
+          await updateInventory(editProduct.id, editQuantity, false)
+        }
       }
-    } else {
-      // Si cambió el producto, revertimos la operación original y aplicamos la nueva
-      if (recordToEdit.type === "entrada") {
-        updateInventory(recordToEdit.product.id, recordToEdit.quantity, false)
-        updateInventory(editProduct.id, editQuantity, true)
-      } else {
-        updateInventory(recordToEdit.product.id, recordToEdit.quantity, true)
-        updateInventory(editProduct.id, editQuantity, false)
+
+      // Si es una entrada y cambió el precio, actualizar el precio del producto
+      if (recordToEdit.type === "entrada" && editPrice !== recordToEdit.price) {
+        await updateProductPrice(editProduct.id, editPrice)
       }
+
+      // Actualizar el registro
+      const updatedRecord: StockRecord = {
+        ...recordToEdit,
+        hotel: recordToEdit.type === "salida" ? editHotel : null,
+        product: { ...editProduct, price: editPrice },
+        quantity: editQuantity,
+        price: editPrice,
+      }
+
+      // Guardar el registro actualizado en Firebase si está disponible
+      if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
+        await saveRecord(convertRecordToFirebaseRecord(updatedRecord))
+      }
+
+      // Actualizar el registro localmente
+      const newRecords = records.map((record) => (record.id === recordId ? updatedRecord : record))
+      setRecords(newRecords)
+
+      setEditingRecord(null)
+      setSyncError(null)
+    } catch (error) {
+      console.error("Error al editar registro:", error)
+      setSyncError("Error al editar registro. Verifica tu conexión a internet.")
     }
-
-    // Si es una entrada y cambió el precio, actualizar el precio del producto
-    if (recordToEdit.type === "entrada" && editPrice !== recordToEdit.price) {
-      updateProductPrice(editProduct.id, editPrice)
-    }
-
-    // Actualizar el registro
-    setRecords(
-      records.map((record) =>
-        record.id === recordId
-          ? {
-              ...record,
-              hotel: recordToEdit.type === "salida" ? editHotel : null,
-              product: { ...editProduct, price: editPrice },
-              quantity: editQuantity,
-              price: editPrice,
-            }
-          : record,
-      ),
-    )
-
-    setEditingRecord(null)
   }
 
   // Calcular totales por hotel y producto
@@ -501,7 +872,7 @@ export default function StockManagement() {
   // Cerrar sesión
   const handleLogout = () => {
     setIsAuthenticated(false)
-    if (activeTab === "add-stock") {
+    if (activeTab === "add-stock" || activeTab === "summary") {
       setActiveTab("register")
     }
   }
@@ -509,17 +880,57 @@ export default function StockManagement() {
   const totals = calculateTotals()
   const { hotelTotals, productTotals, grandTotal } = calculateHotelTotals()
 
+  // Mostrar pantalla de carga mientras se inicializan los datos
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-12 w-12 animate-spin text-gray-400 mb-4" />
+        <h2 className="text-xl font-medium text-gray-700">Cargando datos...</h2>
+        <p className="text-gray-500 mt-2">Por favor espere mientras se cargan los datos del sistema.</p>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="flex flex-col items-start mb-6">
         <h1 className="text-3xl font-bold text-gray-800">HOTELES DE LA COSTA</h1>
         <h2 className="text-xl text-gray-600">Sistema de Gestión de Stock</h2>
-        {isAuthenticated && (
-          <Button variant="outline" size="sm" onClick={handleLogout} className="mt-2 self-end">
-            <LogOut className="h-4 w-4 mr-2" />
-            Cerrar sesión de administrador
-          </Button>
-        )}
+        <div className="flex justify-between w-full mt-2">
+          <div className="flex items-center">
+            {isLocalMode ? (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 flex items-center">
+                  <CloudOff className="h-3 w-3 mr-1" />
+                  Modo local (datos guardados en este dispositivo)
+                </Badge>
+                {!isFirebaseError && (
+                  <Button variant="ghost" size="sm" onClick={retryFirebaseConnection} disabled={isInitializing}>
+                    {isInitializing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  </Button>
+                )}
+              </div>
+            ) : syncError ? (
+              <Alert className="bg-red-50 border-red-200 py-1 px-3">
+                <div className="flex items-center">
+                  <CloudOff className="h-4 w-4 text-red-500 mr-2" />
+                  <AlertDescription className="text-red-800 text-sm">{syncError}</AlertDescription>
+                </div>
+              </Alert>
+            ) : (
+              <Badge variant="outline" className="bg-green-50 text-green-700 flex items-center">
+                <Database className="h-3 w-3 mr-1" />
+                Datos sincronizados en la nube
+              </Badge>
+            )}
+          </div>
+          {isAuthenticated && (
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Cerrar sesión de administrador
+            </Button>
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
@@ -754,214 +1165,226 @@ export default function StockManagement() {
         </TabsContent>
 
         <TabsContent value="add-stock">
-          <div className="grid gap-8 md:grid-cols-2">
-            <div className="space-y-8">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Agregar Stock</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="stockProduct">Producto</Label>
-                    <Popover open={stockProductOpen} onOpenChange={setStockProductOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={stockProductOpen}
-                          className="w-full justify-between"
-                        >
-                          {selectedStockProduct ? selectedStockProduct.name : "Seleccionar producto..."}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-full p-0">
-                        <Command>
-                          <CommandInput placeholder="Buscar producto..." />
-                          <CommandList>
-                            <CommandEmpty>No se encontraron productos.</CommandEmpty>
-                            <CommandGroup>
-                              <ScrollArea className="h-72">
-                                {products.map((product) => (
-                                  <CommandItem
-                                    key={product.id}
-                                    value={product.name}
-                                    onSelect={() => {
-                                      setSelectedStockProduct(product)
-                                      setCurrentPrice(product.price)
-                                      setStockProductOpen(false)
-                                    }}
-                                  >
-                                    <Package className="mr-2 h-4 w-4" />
-                                    {product.name}
-                                    <Check
-                                      className={cn(
-                                        "ml-auto h-4 w-4",
-                                        selectedStockProduct?.id === product.id ? "opacity-100" : "opacity-0",
-                                      )}
-                                    />
-                                  </CommandItem>
-                                ))}
-                              </ScrollArea>
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  {selectedStockProduct && (
-                    <div className="p-2 bg-gray-50 rounded-md">
-                      <p className="text-sm">
-                        Stock actual:{" "}
-                        <span className="font-medium">
-                          {getProductStock(selectedStockProduct.id)} {selectedStockProduct.unit}
-                        </span>
-                      </p>
-                      <p className="text-sm mt-1">
-                        Precio actual: <span className="font-medium">{formatCurrency(selectedStockProduct.price)}</span>
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="stockQuantity">Cantidad a agregar</Label>
-                    <Input
-                      id="stockQuantity"
-                      type="number"
-                      min="1"
-                      value={stockQuantity}
-                      onChange={(e) => setStockQuantity(Number.parseInt(e.target.value) || 0)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="currentPrice">Precio por {selectedStockProduct?.unit || "unidad"}</Label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="currentPrice"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="pl-8"
-                        value={currentPrice}
-                        onChange={(e) => setCurrentPrice(Number.parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Si el precio ha cambiado, actualícelo aquí. Se aplicará a todo el stock nuevo.
-                    </p>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button
-                    onClick={handleStockAddition}
-                    className="w-full"
-                    disabled={!selectedStockProduct || stockQuantity <= 0 || currentPrice <= 0}
-                  >
-                    Agregar al Inventario
-                  </Button>
-                </CardFooter>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Agregar Nuevo Producto</CardTitle>
-                  <Button variant="outline" size="sm" onClick={() => setShowNewProductForm(!showNewProductForm)}>
-                    {showNewProductForm ? <X className="h-4 w-4 mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-                    {showNewProductForm ? "Cancelar" : "Nuevo Producto"}
-                  </Button>
-                </CardHeader>
-                {showNewProductForm && (
+          {!isAuthenticated ? (
+            <div className="flex flex-col items-center justify-center min-h-[300px]">
+              <Lock className="h-10 w-10 text-gray-400 mb-4" />
+              <h2 className="text-xl font-medium text-gray-700">Acceso restringido</h2>
+              <p className="text-gray-500 mt-2">Debes iniciar sesión como administrador para acceder a esta función.</p>
+              <Button className="mt-4" onClick={() => setShowAuthDialog(true)}>
+                Iniciar sesión
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-8 md:grid-cols-2">
+              <div className="space-y-8">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Agregar Stock</CardTitle>
+                  </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="newProductName">Nombre del Producto</Label>
+                      <Label htmlFor="stockProduct">Producto</Label>
+                      <Popover open={stockProductOpen} onOpenChange={setStockProductOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={stockProductOpen}
+                            className="w-full justify-between"
+                          >
+                            {selectedStockProduct ? selectedStockProduct.name : "Seleccionar producto..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0">
+                          <Command>
+                            <CommandInput placeholder="Buscar producto..." />
+                            <CommandList>
+                              <CommandEmpty>No se encontraron productos.</CommandEmpty>
+                              <CommandGroup>
+                                <ScrollArea className="h-72">
+                                  {products.map((product) => (
+                                    <CommandItem
+                                      key={product.id}
+                                      value={product.name}
+                                      onSelect={() => {
+                                        setSelectedStockProduct(product)
+                                        setCurrentPrice(product.price)
+                                        setStockProductOpen(false)
+                                      }}
+                                    >
+                                      <Package className="mr-2 h-4 w-4" />
+                                      {product.name}
+                                      <Check
+                                        className={cn(
+                                          "ml-auto h-4 w-4",
+                                          selectedStockProduct?.id === product.id ? "opacity-100" : "opacity-0",
+                                        )}
+                                      />
+                                    </CommandItem>
+                                  ))}
+                                </ScrollArea>
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    {selectedStockProduct && (
+                      <div className="p-2 bg-gray-50 rounded-md">
+                        <p className="text-sm">
+                          Stock actual:{" "}
+                          <span className="font-medium">
+                            {getProductStock(selectedStockProduct.id)} {selectedStockProduct.unit}
+                          </span>
+                        </p>
+                        <p className="text-sm mt-1">
+                          Precio actual:{" "}
+                          <span className="font-medium">{formatCurrency(selectedStockProduct.price)}</span>
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="stockQuantity">Cantidad a agregar</Label>
                       <Input
-                        id="newProductName"
-                        value={newProductName}
-                        onChange={(e) => setNewProductName(e.target.value)}
-                        placeholder="Ej: Detergente"
+                        id="stockQuantity"
+                        type="number"
+                        min="1"
+                        value={stockQuantity}
+                        onChange={(e) => setStockQuantity(Number.parseInt(e.target.value) || 0)}
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="newProductUnit">Unidad de Medida</Label>
-                      <Input
-                        id="newProductUnit"
-                        value={newProductUnit}
-                        onChange={(e) => setNewProductUnit(e.target.value)}
-                        placeholder="Ej: litros, kg, cajas"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="newProductPrice">Precio por unidad</Label>
+                      <Label htmlFor="currentPrice">Precio por {selectedStockProduct?.unit || "unidad"}</Label>
                       <div className="relative">
                         <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                          id="newProductPrice"
+                          id="currentPrice"
                           type="number"
                           min="0"
                           step="0.01"
                           className="pl-8"
-                          value={newProductPrice}
-                          onChange={(e) => setNewProductPrice(Number.parseFloat(e.target.value) || 0)}
-                          placeholder="Ej: 1500"
+                          value={currentPrice}
+                          onChange={(e) => setCurrentPrice(Number.parseFloat(e.target.value) || 0)}
                         />
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Si el precio ha cambiado, actualícelo aquí. Se aplicará a todo el stock nuevo.
+                      </p>
                     </div>
-
-                    {newProductError && <p className="text-sm text-red-500">{newProductError}</p>}
-
-                    <Button onClick={handleAddNewProduct} className="w-full">
-                      <Plus className="h-4 w-4 mr-1" />
-                      Crear Producto
-                    </Button>
                   </CardContent>
+                  <CardFooter>
+                    <Button
+                      onClick={handleStockAddition}
+                      className="w-full"
+                      disabled={!selectedStockProduct || stockQuantity <= 0 || currentPrice <= 0}
+                    >
+                      Agregar al Inventario
+                    </Button>
+                  </CardFooter>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Agregar Nuevo Producto</CardTitle>
+                    <Button variant="outline" size="sm" onClick={() => setShowNewProductForm(!showNewProductForm)}>
+                      {showNewProductForm ? <X className="h-4 w-4 mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                      {showNewProductForm ? "Cancelar" : "Nuevo Producto"}
+                    </Button>
+                  </CardHeader>
+                  {showNewProductForm && (
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="newProductName">Nombre del Producto</Label>
+                        <Input
+                          id="newProductName"
+                          value={newProductName}
+                          onChange={(e) => setNewProductName(e.target.value)}
+                          placeholder="Ej: Detergente"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="newProductUnit">Unidad de Medida</Label>
+                        <Input
+                          id="newProductUnit"
+                          value={newProductUnit}
+                          onChange={(e) => setNewProductUnit(e.target.value)}
+                          placeholder="Ej: litros, kg, cajas"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="newProductPrice">Precio por unidad</Label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="newProductPrice"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="pl-8"
+                            value={newProductPrice}
+                            onChange={(e) => setNewProductPrice(Number.parseFloat(e.target.value) || 0)}
+                            placeholder="Ej: 1500"
+                          />
+                        </div>
+                      </div>
+
+                      {newProductError && <p className="text-sm text-red-500">{newProductError}</p>}
+
+                      <Button onClick={handleAddNewProduct} className="w-full">
+                        <Plus className="h-4 w-4 mr-1" />
+                        Crear Producto
+                      </Button>
+                    </CardContent>
+                  )}
+                </Card>
+              </div>
+
+              <div className="space-y-4">
+                {showConfirmation && (
+                  <Alert className="bg-green-50 border-green-200">
+                    <AlertDescription className="text-green-800">{confirmationMessage}</AlertDescription>
+                  </Alert>
                 )}
-              </Card>
-            </div>
 
-            <div className="space-y-4">
-              {showConfirmation && (
-                <Alert className="bg-green-50 border-green-200">
-                  <AlertDescription className="text-green-800">{confirmationMessage}</AlertDescription>
-                </Alert>
-              )}
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Inventario Actual</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Producto</TableHead>
-                        <TableHead>Unidad</TableHead>
-                        <TableHead>Precio</TableHead>
-                        <TableHead className="text-right">Stock Disponible</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {products.map((product) => {
-                        const stock = getProductStock(product.id)
-                        return (
-                          <TableRow key={product.id}>
-                            <TableCell>{product.name}</TableCell>
-                            <TableCell>{product.unit}</TableCell>
-                            <TableCell>{formatCurrency(product.price)}</TableCell>
-                            <TableCell className="text-right font-medium">{stock}</TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Inventario Actual</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Producto</TableHead>
+                          <TableHead>Unidad</TableHead>
+                          <TableHead>Precio</TableHead>
+                          <TableHead className="text-right">Stock Disponible</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {products.map((product) => {
+                          const stock = getProductStock(product.id)
+                          return (
+                            <TableRow key={product.id}>
+                              <TableCell>{product.name}</TableCell>
+                              <TableCell>{product.unit}</TableCell>
+                              <TableCell>{formatCurrency(product.price)}</TableCell>
+                              <TableCell className="text-right font-medium">{stock}</TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
-          </div>
+          )}
         </TabsContent>
 
         <TabsContent value="history">
