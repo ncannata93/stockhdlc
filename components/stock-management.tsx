@@ -16,9 +16,12 @@ import {
   Plus,
   DollarSign,
   Loader2,
-  Database,
-  CloudOff,
+  Download,
+  Upload,
   RefreshCw,
+  AlertTriangle,
+  HardDrive,
+  Cloud,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -42,22 +45,27 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-import { useFirebase } from "@/components/firebase-provider"
 import {
+  type Product,
+  type InventoryItem as ProductStock,
+  type StockRecord,
+  saveProduct,
   saveProducts,
   getProducts,
   saveInventory,
   getInventory,
   saveRecord,
   getRecords,
-  subscribeToRecords,
-  subscribeToProducts,
-  subscribeToInventory,
-  isFirebaseAvailable,
-  createTimestamp,
-  type FirebaseProduct,
-  type FirebaseRecord,
-} from "@/lib/firebase"
+  exportAllData,
+  importAllData,
+  saveInventoryItem,
+  useConnectionStatus,
+  initializeDB,
+  createBackup,
+  setupRealtimeSubscriptions,
+  cleanupRealtimeSubscriptions,
+  syncWithSupabase,
+} from "@/lib/db-manager"
 
 // Datos de ejemplo
 const hotels = [
@@ -77,32 +85,8 @@ const hotels = [
   { id: 14, name: "Carama" },
 ]
 
-// Tipo para productos
-type Product = {
-  id: number
-  name: string
-  unit: string
-  price: number // Precio por unidad
-}
-
 // Contraseña para acceder a la función de agregar stock
 const ADMIN_PASSWORD = "Qw425540" // En una aplicación real, esto debería estar en el servidor
-
-// Tipos
-type StockRecord = {
-  id: number
-  hotel: (typeof hotels)[0] | null
-  product: Product
-  quantity: number
-  price: number // Precio al momento de la transacción
-  date: Date
-  type: "entrada" | "salida"
-}
-
-type ProductStock = {
-  productId: number
-  quantity: number
-}
 
 // Función para formatear precio
 const formatCurrency = (amount: number): string => {
@@ -110,60 +94,6 @@ const formatCurrency = (amount: number): string => {
     style: "currency",
     currency: "ARS",
   }).format(amount)
-}
-
-// Convertir tipos de Firebase a tipos locales
-const convertFirebaseProductToProduct = (fbProduct: FirebaseProduct): Product => {
-  return {
-    id: fbProduct.id,
-    name: fbProduct.name,
-    unit: fbProduct.unit,
-    price: fbProduct.price,
-  }
-}
-
-const convertFirebaseRecordToRecord = (fbRecord: FirebaseRecord): StockRecord => {
-  const hotel = fbRecord.hotelId ? hotels.find((h) => h.id === fbRecord.hotelId) || null : null
-
-  return {
-    id: fbRecord.id,
-    hotel: hotel,
-    product: {
-      id: fbRecord.productId,
-      name: fbRecord.productName,
-      unit: fbRecord.productUnit,
-      price: fbRecord.price,
-    },
-    quantity: fbRecord.quantity,
-    price: fbRecord.price,
-    date: fbRecord.date instanceof Date ? fbRecord.date : new Date(fbRecord.date.seconds * 1000),
-    type: fbRecord.type,
-  }
-}
-
-// Convertir tipos locales a tipos de Firebase
-const convertProductToFirebaseProduct = (product: Product): FirebaseProduct => {
-  return {
-    id: product.id,
-    name: product.name,
-    unit: product.unit,
-    price: product.price,
-  }
-}
-
-const convertRecordToFirebaseRecord = (record: StockRecord): FirebaseRecord => {
-  return {
-    id: record.id,
-    hotelId: record.hotel ? record.hotel.id : null,
-    hotelName: record.hotel ? record.hotel.name : null,
-    productId: record.product.id,
-    productName: record.product.name,
-    productUnit: record.product.unit,
-    quantity: record.quantity,
-    price: record.price,
-    date: createTimestamp(record.date),
-    type: record.type,
-  }
 }
 
 // Productos por defecto
@@ -176,39 +106,18 @@ const defaultProducts: Product[] = [
   { id: 6, name: "shampoo", unit: "caja", price: 2800 },
 ]
 
-// Función para guardar datos en localStorage
-const saveToLocalStorage = (key: string, data: any) => {
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(key, JSON.stringify(data))
-    } catch (error) {
-      console.error(`Error al guardar en localStorage (${key}):`, error)
-    }
-  }
-}
-
-// Función para cargar datos desde localStorage
-const loadFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window !== "undefined") {
-    try {
-      const storedData = localStorage.getItem(key)
-      return storedData ? JSON.parse(storedData) : defaultValue
-    } catch (error) {
-      console.error(`Error al cargar desde localStorage (${key}):`, error)
-      return defaultValue
-    }
-  }
-  return defaultValue
-}
-
 export default function StockManagement() {
-  const { isFirebaseInitialized, isFirebaseError, errorMessage, initializeFirebaseApp } = useFirebase()
-
   // Referencia para el timeout que fuerza la salida del estado de carga
   const forceTimeoutRef = useRef<number | null>(null)
 
+  // Estado de conexión
+  const connectionStatus = useConnectionStatus()
+  const [showBackupDialog, setShowBackupDialog] = useState(false)
+  const [backupError, setBackupError] = useState<string | null>(null)
+  const [backupStatus, setSyncStatus] = useState<"idle" | "creating" | "success" | "error">("idle")
+
   // Estado para productos
-  const [products, setProducts] = useState<Product[]>(() => loadFromLocalStorage("products", defaultProducts))
+  const [products, setProducts] = useState<Product[]>([])
 
   // Estados para el formulario de retiro
   const [selectedHotel, setSelectedHotel] = useState<(typeof hotels)[0] | null>(null)
@@ -224,14 +133,7 @@ export default function StockManagement() {
   const [currentPrice, setCurrentPrice] = useState<number>(0)
 
   // Estados para registros y edición
-  const [records, setRecords] = useState<StockRecord[]>(() => {
-    // Convertir las fechas de string a Date al cargar desde localStorage
-    const storedRecords = loadFromLocalStorage<any[]>("records", [])
-    return storedRecords.map((record) => ({
-      ...record,
-      date: new Date(record.date),
-    }))
-  })
+  const [records, setRecords] = useState<StockRecord[]>([])
 
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmationMessage, setConfirmationMessage] = useState("")
@@ -244,7 +146,7 @@ export default function StockManagement() {
   const [editProductOpen, setEditProductOpen] = useState(false)
 
   // Estado para el inventario
-  const [inventory, setInventory] = useState<ProductStock[]>(() => loadFromLocalStorage("inventory", []))
+  const [inventory, setInventory] = useState<ProductStock[]>([])
   const [showStockError, setShowStockError] = useState(false)
 
   // Estados para la autenticación
@@ -261,127 +163,173 @@ export default function StockManagement() {
   const [showNewProductForm, setShowNewProductForm] = useState(false)
   const [newProductError, setNewProductError] = useState("")
 
-  // Estados para Firebase
+  // Estados para la aplicación
   const [isLoading, setIsLoading] = useState(true)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [isLocalMode, setIsLocalMode] = useState(true) // Comenzar en modo local por defecto
-  const [isInitializing, setIsInitializing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showImportExportDialog, setShowImportExportDialog] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
-  // Guardar datos en localStorage cuando cambien
-  useEffect(() => {
-    saveToLocalStorage("products", products)
-  }, [products])
-
-  useEffect(() => {
-    saveToLocalStorage("inventory", inventory)
-  }, [inventory])
-
-  useEffect(() => {
-    // Guardar los registros, pero convertir las fechas a strings
-    const recordsToSave = records.map((record) => ({
-      ...record,
-      date: record.date.toISOString(),
-    }))
-    saveToLocalStorage("records", recordsToSave)
-  }, [records])
-
-  // Inicializar el inventario con los productos por defecto
-  useEffect(() => {
-    if (products.length > 0 && inventory.length === 0) {
-      const initialInventory = products.map((product) => ({
-        productId: product.id,
-        quantity: 0,
-      }))
-      setInventory(initialInventory)
-    }
-  }, [products, inventory])
-
-  // Función para cargar datos desde Firebase
-  const loadDataFromFirebase = useCallback(async () => {
-    if (!isFirebaseAvailable()) {
-      setSyncError("Firebase no está disponible. Usando modo local.")
-      setIsLocalMode(true)
-      setIsLoading(false)
+  // Función para sincronizar con Supabase
+  const handleSyncWithSupabase = async () => {
+    if (!connectionStatus.isOnlineMode) {
+      setBackupError("No se puede sincronizar en modo local. Activa el modo online primero.")
       return
     }
 
-    setIsLoading(true)
+    setSyncStatus("creating")
+    setBackupError(null)
 
     try {
-      // Cargar productos
-      const fbProducts = await getProducts()
-      if (fbProducts.length > 0) {
-        setProducts(fbProducts.map(convertFirebaseProductToProduct))
+      const result = await syncWithSupabase()
+      if (result.success) {
+        setSyncStatus("success")
+        setTimeout(() => {
+          setSyncStatus("idle")
+        }, 3000)
       } else {
-        // Si no hay productos en Firebase, usar los productos por defecto
-        setProducts(defaultProducts)
-        // Guardar productos por defecto en Firebase
-        await saveProducts(defaultProducts.map(convertProductToFirebaseProduct))
+        setSyncStatus("error")
+        setBackupError(result.error || "Error al sincronizar con Supabase")
+      }
+    } catch (error) {
+      setSyncStatus("error")
+      setBackupError(`Error: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  // Función para crear una copia de seguridad
+  const handleCreateBackup = async () => {
+    setBackupError(null)
+    setSyncStatus("creating")
+
+    try {
+      const result = await createBackup()
+      if (result.success && result.data) {
+        setSyncStatus("success")
+
+        // Descargar la copia de seguridad automáticamente
+        const jsonData = JSON.stringify(result.data, null, 2)
+        const blob = new Blob([jsonData], { type: "application/json" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `hoteles-stock-backup-${new Date().toISOString().split("T")[0]}.json`
+        document.body.appendChild(a)
+        a.click()
+
+        // Limpiar
+        setTimeout(() => {
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+          setSyncStatus("idle")
+        }, 3000)
+      } else {
+        setSyncStatus("error")
+        setBackupError(result.error || "Error al crear la copia de seguridad")
+      }
+    } catch (error) {
+      setSyncStatus("error")
+      setBackupError(`Error: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  // Función para cargar datos iniciales
+  const loadInitialData = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      console.log("Cargando datos iniciales...")
+
+      // Inicializar la base de datos
+      const dbResult = await initializeDB()
+      if (!dbResult.success) {
+        console.error("Error al inicializar la base de datos:", dbResult.error)
+        setError(`Error al inicializar la base de datos: ${dbResult.error}`)
       }
 
+      // Cargar productos
+      let loadedProducts = await getProducts()
+      console.log("Productos cargados:", loadedProducts.length)
+
+      // Si no hay productos, usar los productos por defecto
+      if (loadedProducts.length === 0) {
+        console.log("No hay productos, usando productos por defecto")
+        loadedProducts = defaultProducts
+        await saveProducts(defaultProducts)
+      }
+
+      setProducts(loadedProducts)
+
       // Cargar inventario
-      const fbInventory = await getInventory()
-      if (fbInventory.length > 0) {
-        setInventory(fbInventory)
-      } else {
-        // Si no hay inventario, inicializar con los productos por defecto
-        const initialInventory = defaultProducts.map((product) => ({
+      let loadedInventory = await getInventory()
+      console.log("Inventario cargado:", loadedInventory.length)
+
+      // Si no hay inventario, inicializar con los productos cargados
+      if (loadedInventory.length === 0) {
+        console.log("No hay inventario, inicializando con productos cargados")
+        loadedInventory = loadedProducts.map((product) => ({
           productId: product.id,
           quantity: 0,
         }))
-        setInventory(initialInventory)
-        await saveInventory(initialInventory)
+        await saveInventory(loadedInventory)
       }
+
+      setInventory(loadedInventory)
 
       // Cargar registros
-      const fbRecords = await getRecords()
-      if (fbRecords.length > 0) {
-        setRecords(fbRecords.map(convertFirebaseRecordToRecord))
-      }
+      const loadedRecords = await getRecords()
+      console.log("Registros cargados:", loadedRecords.length)
 
-      setSyncError(null)
-      setIsLocalMode(false)
+      // Convertir las fechas de string a Date si es necesario
+      const recordsWithDates = loadedRecords.map((record) => ({
+        ...record,
+        date: record.date instanceof Date ? record.date : new Date(record.date),
+      }))
+
+      setRecords(recordsWithDates)
+
+      console.log("Datos iniciales cargados correctamente")
     } catch (error) {
       console.error("Error al cargar datos iniciales:", error)
-      setSyncError("Error al cargar datos. Usando modo local.")
-      setIsLocalMode(true)
+      setError("Error al cargar datos. Por favor, recarga la página.")
     } finally {
       setIsLoading(false)
     }
   }, [])
 
-  // Función para reintentar la conexión con Firebase
-  const retryFirebaseConnection = async () => {
-    setIsInitializing(true)
-
-    try {
-      const result = await initializeFirebaseApp()
-
-      if (result.success) {
-        await loadDataFromFirebase()
-      } else {
-        setSyncError(`No se pudo conectar a Firebase: ${result.error}`)
-        setIsLocalMode(true)
-      }
-    } catch (error) {
-      console.error("Error al reintentar conexión:", error)
-      setSyncError("Error al intentar conectar con Firebase. Usando modo local.")
-      setIsLocalMode(true)
-    } finally {
-      setIsInitializing(false)
-    }
-  }
-
-  // Efecto para forzar la salida del estado de carga después de un tiempo
+  // Configurar suscripciones en tiempo real cuando se cambia a modo online
   useEffect(() => {
-    if (isLoading) {
-      forceTimeoutRef.current = window.setTimeout(() => {
+    if (connectionStatus.isOnlineMode) {
+      setupRealtimeSubscriptions(
+        // Callback para actualizar el inventario cuando cambia en Supabase
+        (updatedInventory) => {
+          setInventory(updatedInventory)
+        },
+        // Callback para actualizar los registros cuando cambian en Supabase
+        (updatedRecords) => {
+          setRecords(updatedRecords)
+        },
+      )
+    }
+
+    return () => {
+      cleanupRealtimeSubscriptions()
+    }
+  }, [connectionStatus.isOnlineMode])
+
+  // Cargar datos iniciales al montar el componente
+  useEffect(() => {
+    loadInitialData()
+
+    // Asegurar que siempre salga del estado de carga después de un tiempo
+    forceTimeoutRef.current = window.setTimeout(() => {
+      if (isLoading) {
         console.log("Forzando salida del estado de carga")
         setIsLoading(false)
-        setIsLocalMode(true)
-        setSyncError("Tiempo de carga excedido. Usando modo local.")
-      }, 5000)
-    }
+        setError("Tiempo de carga excedido. Por favor, recarga la página.")
+      }
+    }, 5000)
 
     return () => {
       if (forceTimeoutRef.current) {
@@ -389,69 +337,7 @@ export default function StockManagement() {
         forceTimeoutRef.current = null
       }
     }
-  }, [isLoading])
-
-  // Cargar datos iniciales cuando Firebase esté inicializado
-  useEffect(() => {
-    // Siempre comenzar con datos locales para una carga rápida
-    setIsLoading(false)
-
-    // Luego intentar cargar desde Firebase si está disponible
-    if (isFirebaseInitialized) {
-      loadDataFromFirebase()
-    } else if (isFirebaseError) {
-      setSyncError(errorMessage || "Firebase no está disponible. Usando modo local.")
-      setIsLocalMode(true)
-    }
-
-    // Asegurar que siempre salga del estado de carga después de un tiempo
-    const timeout = setTimeout(() => {
-      setIsLoading(false)
-    }, 3000)
-
-    return () => clearTimeout(timeout)
-  }, [isFirebaseInitialized, isFirebaseError, errorMessage, loadDataFromFirebase])
-
-  // Suscribirse a cambios en tiempo real
-  useEffect(() => {
-    if (!isFirebaseInitialized || isLocalMode) {
-      return () => {}
-    }
-
-    // Verificar que Firebase esté disponible antes de suscribirse
-    if (!isFirebaseAvailable()) {
-      console.error("Firebase no está disponible para suscripciones")
-      return () => {}
-    }
-
-    let unsubscribeRecords = () => {}
-    let unsubscribeProducts = () => {}
-    let unsubscribeInventory = () => {}
-
-    try {
-      unsubscribeRecords = subscribeToRecords((fbRecords) => {
-        setRecords(fbRecords.map(convertFirebaseRecordToRecord))
-      })
-
-      unsubscribeProducts = subscribeToProducts((fbProducts) => {
-        setProducts(fbProducts.map(convertFirebaseProductToProduct))
-      })
-
-      unsubscribeInventory = subscribeToInventory((fbInventory) => {
-        setInventory(fbInventory)
-      })
-    } catch (error) {
-      console.error("Error al suscribirse a cambios en tiempo real:", error)
-      setSyncError("Error al suscribirse a cambios en tiempo real. Usando modo local.")
-      setIsLocalMode(true)
-    }
-
-    return () => {
-      unsubscribeRecords()
-      unsubscribeProducts()
-      unsubscribeInventory()
-    }
-  }, [isFirebaseInitialized, isLocalMode])
+  }, [loadInitialData])
 
   // Inicializar el inventario si no existe para nuevos productos
   useEffect(() => {
@@ -472,15 +358,13 @@ export default function StockManagement() {
 
         if (hasChanges) {
           setInventory(newInventory)
-          if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-            await saveInventory(newInventory)
-          }
+          await saveInventory(newInventory)
         }
       }
     }
 
     initializeInventory()
-  }, [products, inventory, isLoading, isFirebaseInitialized, isLocalMode])
+  }, [products, inventory, isLoading])
 
   // Actualizar el precio actual cuando se selecciona un producto
   useEffect(() => {
@@ -504,15 +388,7 @@ export default function StockManagement() {
     )
 
     setInventory(newInventory)
-
-    if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-      try {
-        await saveInventory(newInventory)
-      } catch (error) {
-        console.error("Error al actualizar inventario:", error)
-        setSyncError("Error al actualizar inventario. Verifica tu conexión a internet.")
-      }
-    }
+    await saveInventory(newInventory)
   }
 
   // Función para actualizar el precio de un producto
@@ -522,15 +398,7 @@ export default function StockManagement() {
     )
 
     setProducts(newProducts)
-
-    if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-      try {
-        await saveProducts(newProducts.map(convertProductToFirebaseProduct))
-      } catch (error) {
-        console.error("Error al actualizar precio del producto:", error)
-        setSyncError("Error al actualizar precio. Verifica tu conexión a internet.")
-      }
-    }
+    await saveProducts(newProducts)
   }
 
   // Manejar el registro de retiro de stock
@@ -547,26 +415,28 @@ export default function StockManagement() {
         return
       }
 
-      const newRecord: StockRecord = {
-        id: Date.now(),
-        hotel: selectedHotel,
-        product: selectedProduct,
-        quantity,
-        price: selectedProduct.price, // Guardar el precio actual
-        date: new Date(),
-        type: "salida",
-      }
-
       try {
         // Actualizar el inventario (restar)
         await updateInventory(selectedProduct.id, quantity, false)
 
-        // Guardar el registro en Firebase si está disponible
-        if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-          await saveRecord(convertRecordToFirebaseRecord(newRecord))
+        // Crear el nuevo registro
+        const newRecord: StockRecord = {
+          id: Date.now(),
+          hotelId: selectedHotel.id,
+          hotelName: selectedHotel.name,
+          productId: selectedProduct.id,
+          productName: selectedProduct.name,
+          productUnit: selectedProduct.unit,
+          quantity,
+          price: selectedProduct.price,
+          date: new Date(),
+          type: "salida",
         }
 
-        // Agregar el registro localmente
+        // Guardar el registro
+        await saveRecord(newRecord)
+
+        // Actualizar el estado local
         setRecords([newRecord, ...records])
 
         // Mostrar confirmación
@@ -585,11 +455,9 @@ export default function StockManagement() {
         // Limpiar el formulario
         setSelectedProduct(null)
         setQuantity(1)
-
-        setSyncError(null)
       } catch (error) {
         console.error("Error al registrar retiro:", error)
-        setSyncError("Error al registrar retiro. Verifica tu conexión a internet.")
+        setError("Error al registrar retiro. Por favor, intenta nuevamente.")
       }
     }
   }
@@ -603,12 +471,16 @@ export default function StockManagement() {
           await updateProductPrice(selectedStockProduct.id, currentPrice)
         }
 
+        // Crear el nuevo registro
         const newRecord: StockRecord = {
           id: Date.now(),
-          hotel: null, // No hay hotel asociado a una entrada de stock
-          product: { ...selectedStockProduct, price: currentPrice },
+          hotelId: null,
+          hotelName: null,
+          productId: selectedStockProduct.id,
+          productName: selectedStockProduct.name,
+          productUnit: selectedStockProduct.unit,
           quantity: stockQuantity,
-          price: currentPrice, // Guardar el precio actual
+          price: currentPrice,
           date: new Date(),
           type: "entrada",
         }
@@ -616,12 +488,10 @@ export default function StockManagement() {
         // Actualizar el inventario (sumar)
         await updateInventory(selectedStockProduct.id, stockQuantity, true)
 
-        // Guardar el registro en Firebase si está disponible
-        if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-          await saveRecord(convertRecordToFirebaseRecord(newRecord))
-        }
+        // Guardar el registro
+        await saveRecord(newRecord)
 
-        // Agregar el registro localmente
+        // Actualizar el estado local
         setRecords([newRecord, ...records])
 
         // Mostrar confirmación
@@ -641,11 +511,9 @@ export default function StockManagement() {
         setSelectedStockProduct(null)
         setStockQuantity(1)
         setCurrentPrice(0)
-
-        setSyncError(null)
       } catch (error) {
         console.error("Error al agregar stock:", error)
-        setSyncError("Error al agregar stock. Verifica tu conexión a internet.")
+        setError("Error al agregar stock. Por favor, intenta nuevamente.")
       }
     }
   }
@@ -674,25 +542,18 @@ export default function StockManagement() {
         price: newProductPrice,
       }
 
-      // Actualizar la lista de productos en Firebase si está disponible
-      if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-        const newProducts = [...products, newProduct]
-        await saveProducts(newProducts.map(convertProductToFirebaseProduct))
-      }
+      // Guardar el nuevo producto
+      await saveProduct(newProduct)
 
       // Actualizar la lista de productos localmente
       setProducts([...products, newProduct])
 
       // Añadir el producto al inventario con stock inicial 0
       const newInventoryItem: ProductStock = { productId: newProductId, quantity: 0 }
-      const newInventory = [...inventory, newInventoryItem]
-
-      if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-        await saveInventory(newInventory)
-      }
+      await saveInventoryItem(newInventoryItem)
 
       // Actualizar el inventario localmente
-      setInventory(newInventory)
+      setInventory([...inventory, newInventoryItem])
 
       // Mostrar confirmación
       setConfirmationMessage(
@@ -711,18 +572,24 @@ export default function StockManagement() {
       setNewProductPrice(0)
       setNewProductError("")
       setShowNewProductForm(false)
-
-      setSyncError(null)
     } catch (error) {
       console.error("Error al crear nuevo producto:", error)
-      setNewProductError("Error al crear el producto. Verifica tu conexión a internet.")
+      setNewProductError("Error al crear el producto. Por favor, intenta nuevamente.")
     }
   }
 
   const startEditing = (record: StockRecord) => {
+    const hotel = record.hotelId ? hotels.find((h) => h.id === record.hotelId) || null : null
+    const product: Product = {
+      id: record.productId,
+      name: record.productName,
+      unit: record.productUnit,
+      price: record.price,
+    }
+
     setEditingRecord(record.id)
-    setEditHotel(record.hotel)
-    setEditProduct(record.product)
+    setEditHotel(hotel)
+    setEditProduct(product)
     setEditQuantity(record.quantity)
     setEditPrice(record.price)
   }
@@ -756,7 +623,7 @@ export default function StockManagement() {
       }
 
       // Actualizar el inventario
-      if (recordToEdit.product.id === editProduct.id) {
+      if (recordToEdit.productId === editProduct.id) {
         // Si es el mismo producto, solo ajustamos la cantidad
         if (recordToEdit.type === "entrada") {
           await updateInventory(editProduct.id, Math.abs(quantityDifference), quantityDifference > 0)
@@ -766,10 +633,10 @@ export default function StockManagement() {
       } else {
         // Si cambió el producto, revertimos la operación original y aplicamos la nueva
         if (recordToEdit.type === "entrada") {
-          await updateInventory(recordToEdit.product.id, recordToEdit.quantity, false)
+          await updateInventory(recordToEdit.productId, recordToEdit.quantity, false)
           await updateInventory(editProduct.id, editQuantity, true)
         } else {
-          await updateInventory(recordToEdit.product.id, recordToEdit.quantity, true)
+          await updateInventory(recordToEdit.productId, recordToEdit.quantity, true)
           await updateInventory(editProduct.id, editQuantity, false)
         }
       }
@@ -782,26 +649,97 @@ export default function StockManagement() {
       // Actualizar el registro
       const updatedRecord: StockRecord = {
         ...recordToEdit,
-        hotel: recordToEdit.type === "salida" ? editHotel : null,
-        product: { ...editProduct, price: editPrice },
+        hotelId: recordToEdit.type === "salida" ? editHotel?.id || null : null,
+        hotelName: recordToEdit.type === "salida" ? editHotel?.name || null : null,
+        productId: editProduct.id,
+        productName: editProduct.name,
+        productUnit: editProduct.unit,
         quantity: editQuantity,
         price: editPrice,
       }
 
-      // Guardar el registro actualizado en Firebase si está disponible
-      if (!isLocalMode && isFirebaseInitialized && isFirebaseAvailable()) {
-        await saveRecord(convertRecordToFirebaseRecord(updatedRecord))
-      }
+      // Guardar el registro actualizado
+      await saveRecord(updatedRecord)
 
       // Actualizar el registro localmente
       const newRecords = records.map((record) => (record.id === recordId ? updatedRecord : record))
       setRecords(newRecords)
 
       setEditingRecord(null)
-      setSyncError(null)
     } catch (error) {
       console.error("Error al editar registro:", error)
-      setSyncError("Error al editar registro. Verifica tu conexión a internet.")
+      setError("Error al editar registro. Por favor, intenta nuevamente.")
+    }
+  }
+
+  // Función para exportar datos
+  const handleExportData = async () => {
+    try {
+      const data = await exportAllData()
+
+      // Convertir a JSON
+      const jsonData = JSON.stringify(data, null, 2)
+
+      // Crear un blob y un enlace de descarga
+      const blob = new Blob([jsonData], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `hoteles-stock-backup-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
+
+      setShowImportExportDialog(false)
+    } catch (error) {
+      console.error("Error al exportar datos:", error)
+      setError("Error al exportar datos. Por favor, intenta nuevamente.")
+    }
+  }
+
+  // Función para importar datos
+  const handleImportData = async () => {
+    if (!importFile) {
+      setImportError("Por favor, selecciona un archivo para importar.")
+      return
+    }
+
+    try {
+      const fileContent = await importFile.text()
+      const data = JSON.parse(fileContent)
+
+      // Validar el formato del archivo
+      if (!data.products || !data.inventory || !data.records) {
+        setImportError("El archivo no tiene el formato correcto.")
+        return
+      }
+
+      // Importar los datos
+      const result = await importAllData(data)
+
+      if (result) {
+        // Recargar los datos
+        await loadInitialData()
+        setShowImportExportDialog(false)
+
+        // Mostrar confirmación
+        setConfirmationMessage("Datos importados correctamente.")
+        setShowConfirmation(true)
+        setTimeout(() => {
+          setShowConfirmation(false)
+        }, 3000)
+      } else {
+        setImportError("Error al importar los datos. Por favor, intenta nuevamente.")
+      }
+    } catch (error) {
+      console.error("Error al importar datos:", error)
+      setImportError("Error al procesar el archivo. Asegúrate de que sea un archivo JSON válido.")
     }
   }
 
@@ -822,11 +760,11 @@ export default function StockManagement() {
 
     // Sumar las cantidades y costos (solo para registros de salida)
     records
-      .filter((record) => record.type === "salida" && record.hotel)
+      .filter((record) => record.type === "salida" && record.hotelId)
       .forEach((record) => {
-        if (record.hotel) {
-          const hotelId = record.hotel.id
-          const productId = record.product.id
+        if (record.hotelId) {
+          const hotelId = record.hotelId
+          const productId = record.productId
           const cost = record.quantity * record.price
 
           if (!totals[hotelId][productId]) {
@@ -834,7 +772,7 @@ export default function StockManagement() {
               quantity: 0,
               totalCost: 0,
               price: record.price,
-              unit: record.product.unit,
+              unit: record.productUnit,
             }
           }
 
@@ -864,18 +802,18 @@ export default function StockManagement() {
 
     // Sumar los costos por hotel y producto
     records
-      .filter((record) => record.type === "salida" && record.hotel)
+      .filter((record) => record.type === "salida" && record.hotelId)
       .forEach((record) => {
-        if (record.hotel) {
+        if (record.hotelId) {
           const cost = record.quantity * record.price
-          hotelTotals[record.hotel.id] += cost
+          hotelTotals[record.hotelId] += cost
           grandTotal += cost
 
-          if (!productTotals[record.product.id]) {
-            productTotals[record.product.id] = { quantity: 0, totalCost: 0 }
+          if (!productTotals[record.productId]) {
+            productTotals[record.productId] = { quantity: 0, totalCost: 0 }
           }
-          productTotals[record.product.id].quantity += record.quantity
-          productTotals[record.product.id].totalCost += cost
+          productTotals[record.productId].quantity += record.quantity
+          productTotals[record.productId].totalCost += cost
         }
       })
 
@@ -934,32 +872,35 @@ export default function StockManagement() {
         <h1 className="text-3xl font-bold text-gray-800">HOTELES DE LA COSTA</h1>
         <h2 className="text-xl text-gray-600">Sistema de Gestión de Stock</h2>
         <div className="flex justify-between w-full mt-2">
-          <div className="flex items-center">
-            {isLocalMode ? (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 flex items-center">
-                  <CloudOff className="h-3 w-3 mr-1" />
-                  Modo local (datos guardados en este dispositivo)
-                </Badge>
-                {!isFirebaseError && (
-                  <Button variant="ghost" size="sm" onClick={retryFirebaseConnection} disabled={isInitializing}>
-                    {isInitializing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  </Button>
-                )}
-              </div>
-            ) : syncError ? (
-              <Alert className="bg-red-50 border-red-200 py-1 px-3">
-                <div className="flex items-center">
-                  <CloudOff className="h-4 w-4 text-red-500 mr-2" />
-                  <AlertDescription className="text-red-800 text-sm">{syncError}</AlertDescription>
-                </div>
-              </Alert>
-            ) : (
-              <Badge variant="outline" className="bg-green-50 text-green-700 flex items-center">
-                <Database className="h-3 w-3 mr-1" />
-                Datos sincronizados en la nube
-              </Badge>
-            )}
+          <div className="flex items-center space-x-2">
+            <Badge
+              variant="outline"
+              className={cn(
+                "flex items-center",
+                connectionStatus.isOnlineMode ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700",
+              )}
+              onClick={() => setShowBackupDialog(true)}
+            >
+              {connectionStatus.isOnlineMode ? (
+                <>
+                  <Cloud className="h-3 w-3 mr-1" />
+                  Datos sincronizados en la nube
+                </>
+              ) : (
+                <>
+                  <HardDrive className="h-3 w-3 mr-1" />
+                  Datos guardados localmente
+                </>
+              )}
+            </Badge>
+            <Button variant="ghost" size="sm" onClick={() => setShowImportExportDialog(true)}>
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Importar/Exportar
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowBackupDialog(true)}>
+              <Download className="h-4 w-4 mr-1" />
+              Crear copia de seguridad
+            </Button>
           </div>
           {isAuthenticated && (
             <Button variant="outline" size="sm" onClick={handleLogout}>
@@ -969,6 +910,27 @@ export default function StockManagement() {
           )}
         </div>
       </div>
+
+      {error && (
+        <Alert className="mb-4 bg-red-50 border-red-200">
+          <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
+          <AlertDescription className="text-red-800">{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {backupStatus === "success" && (
+        <Alert className="mb-4 bg-green-50 border-green-200">
+          <Check className="h-4 w-4 text-green-500 mr-2" />
+          <AlertDescription className="text-green-800">Copia de seguridad creada correctamente.</AlertDescription>
+        </Alert>
+      )}
+
+      {backupStatus === "error" && (
+        <Alert className="mb-4 bg-red-50 border-red-200">
+          <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
+          <AlertDescription className="text-red-800">Error al crear la copia de seguridad.</AlertDescription>
+        </Alert>
+      )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
@@ -1172,7 +1134,7 @@ export default function StockManagement() {
                           <div key={record.id} className="p-3 border rounded-md">
                             <div className="flex items-center justify-between">
                               <div className="font-medium">
-                                {record.type === "salida" ? record.hotel?.name : "Entrada de Stock"}
+                                {record.type === "salida" ? record.hotelName : "Entrada de Stock"}
                               </div>
                               <Badge variant={record.type === "entrada" ? "outline" : "secondary"}>
                                 {record.type === "entrada" ? (
@@ -1185,7 +1147,7 @@ export default function StockManagement() {
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {record.type === "entrada" ? "Se agregaron" : "Se retiraron"} {record.quantity}{" "}
-                              {record.product.unit} de {record.product.name}
+                              {record.productUnit} de {record.productName}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">
                               {record.date.toLocaleString()} - {formatCurrency(record.quantity * record.price)}
@@ -1577,7 +1539,7 @@ export default function StockManagement() {
                               <div>
                                 <div className="flex items-center gap-2">
                                   <div className="font-medium">
-                                    {record.type === "salida" ? record.hotel?.name : "Entrada de Stock"}
+                                    {record.type === "salida" ? record.hotelName : "Entrada de Stock"}
                                   </div>
                                   <Badge variant={record.type === "entrada" ? "outline" : "secondary"}>
                                     {record.type === "entrada" ? (
@@ -1590,7 +1552,7 @@ export default function StockManagement() {
                                 </div>
                                 <div className="text-sm text-muted-foreground">
                                   {record.type === "entrada" ? "Se agregaron" : "Se retiraron"} {record.quantity}{" "}
-                                  {record.product.unit} de {record.product.name} a {formatCurrency(record.price)} c/u
+                                  {record.productUnit} de {record.productName} a {formatCurrency(record.price)} c/u
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-1">
                                   {record.date.toLocaleString()} - Total:{" "}
@@ -1795,6 +1757,163 @@ export default function StockManagement() {
               Cancelar
             </Button>
             <Button onClick={handleAuthentication}>Acceder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de copia de seguridad */}
+      <Dialog open={showBackupDialog} onOpenChange={setShowBackupDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configuración de conexión</DialogTitle>
+            <DialogDescription>Seleccione el modo de almacenamiento y sincronice sus datos.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium">Modo de conexión</h3>
+              <div className="flex flex-col gap-4">
+                <div
+                  className={cn(
+                    "p-4 border rounded-md cursor-pointer flex items-center gap-3",
+                    connectionStatus.isOnlineMode ? "border-green-500 bg-green-50" : "border-gray-200",
+                  )}
+                  onClick={() => connectionStatus.toggleOnlineMode(true)}
+                >
+                  <Cloud
+                    className={cn("h-6 w-6", connectionStatus.isOnlineMode ? "text-green-500" : "text-gray-400")}
+                  />
+                  <div>
+                    <h4 className="font-medium">Modo Online</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Los datos se guardan en la nube y están disponibles en todos los dispositivos.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "p-4 border rounded-md cursor-pointer flex items-center gap-3",
+                    !connectionStatus.isOnlineMode ? "border-blue-500 bg-blue-50" : "border-gray-200",
+                  )}
+                  onClick={() => connectionStatus.toggleOnlineMode(false)}
+                >
+                  <HardDrive
+                    className={cn("h-6 w-6", !connectionStatus.isOnlineMode ? "text-blue-500" : "text-gray-400")}
+                  />
+                  <div>
+                    <h4 className="font-medium">Modo Local</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Los datos se guardan localmente en este dispositivo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {backupError && (
+                <Alert className="mt-4 bg-red-50 border-red-200">
+                  <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
+                  <AlertDescription className="text-red-800">{backupError}</AlertDescription>
+                </Alert>
+              )}
+
+              {connectionStatus.isOnlineMode && (
+                <div className="mt-4">
+                  <Button onClick={handleSyncWithSupabase} disabled={backupStatus === "creating"} className="w-full">
+                    {backupStatus === "creating" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Sincronizando...
+                      </>
+                    ) : (
+                      <>
+                        <Cloud className="h-4 w-4 mr-2" />
+                        Sincronizar datos con la nube
+                      </>
+                    )}
+                  </Button>
+
+                  {connectionStatus.lastSyncTime && (
+                    <p className="text-xs text-center mt-2 text-muted-foreground">
+                      Última sincronización: {connectionStatus.lastSyncTime.toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium">Crear copia de seguridad local</h3>
+              <p className="text-sm text-muted-foreground">
+                Cree una copia de seguridad de todos los datos del sistema. Se descargará un archivo que puede guardar
+                para restaurar posteriormente.
+              </p>
+              <Button onClick={handleCreateBackup} className="w-full" disabled={backupStatus === "creating"}>
+                {backupStatus === "creating" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creando copia de seguridad...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    Crear copia de seguridad local
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBackupDialog(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de importación/exportación */}
+      <Dialog open={showImportExportDialog} onOpenChange={setShowImportExportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Importar/Exportar Datos</DialogTitle>
+            <DialogDescription>Guarde sus datos o cargue datos previamente guardados.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium">Exportar Datos</h3>
+              <p className="text-sm text-muted-foreground">
+                Guarde todos los datos del sistema en un archivo para respaldo o transferencia.
+              </p>
+              <Button onClick={handleExportData} className="w-full">
+                <Download className="h-4 w-4 mr-2" />
+                Exportar Datos
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium">Importar Datos</h3>
+              <p className="text-sm text-muted-foreground">
+                Cargue datos previamente exportados. Esto reemplazará todos los datos actuales.
+              </p>
+              <div className="grid gap-2">
+                <Label htmlFor="importFile">Archivo de datos</Label>
+                <Input
+                  id="importFile"
+                  type="file"
+                  accept=".json"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                />
+                {importError && <p className="text-sm text-red-500">{importError}</p>}
+              </div>
+              <Button onClick={handleImportData} className="w-full mt-2" disabled={!importFile}>
+                <Upload className="h-4 w-4 mr-2" />
+                Importar Datos
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowImportExportDialog(false)}>
+              Cerrar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

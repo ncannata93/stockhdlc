@@ -27,6 +27,7 @@ export type FirebaseRecord = {
 // Estado de Firebase
 let isFirebaseInitialized = false
 let firebaseError: string | null = null
+let isInitializing = false
 
 // Función para inicializar Firebase (solo en el cliente)
 export const initializeFirebase = async () => {
@@ -40,7 +41,28 @@ export const initializeFirebase = async () => {
     return { success: true, error: null }
   }
 
+  // Si ya está en proceso de inicialización, esperar
+  if (isInitializing) {
+    // Esperar hasta 5 segundos para que termine la inicialización
+    let attempts = 0
+    while (isInitializing && attempts < 50) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      attempts++
+    }
+
+    // Verificar si se inicializó correctamente
+    if (isFirebaseInitialized) {
+      return { success: true, error: null }
+    } else {
+      return { success: false, error: firebaseError || "Tiempo de espera agotado" }
+    }
+  }
+
+  isInitializing = true
+
   try {
+    console.log("Iniciando importación de módulos Firebase...")
+
     // Importar Firebase dinámicamente (solo en el cliente)
     const firebaseApp = await import("firebase/app").catch((error) => {
       console.error("Error al importar firebase/app:", error)
@@ -52,7 +74,9 @@ export const initializeFirebase = async () => {
       throw new Error("No se pudo cargar el módulo firebase/firestore")
     })
 
-    // Configuración de Firebase
+    console.log("Módulos Firebase importados correctamente")
+
+    // Configuración de Firebase - Actualizada con valores reales pero ocultos
     const firebaseConfig = {
       apiKey: "AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
       authDomain: "hoteles-de-la-costa.firebaseapp.com",
@@ -62,17 +86,53 @@ export const initializeFirebase = async () => {
       appId: "1:xxxxxxxxxxxx:web:xxxxxxxxxxxxxxxx",
     }
 
+    console.log("Inicializando Firebase con configuración:", { ...firebaseConfig, apiKey: "***OCULTO***" })
+
     // Inicializar Firebase
     let app
     if (firebaseApp.getApps().length === 0) {
+      console.log("Creando nueva instancia de Firebase")
       app = firebaseApp.initializeApp(firebaseConfig)
     } else {
+      console.log("Usando instancia existente de Firebase")
       app = firebaseApp.getApp()
     }
 
-    // Inicializar Firestore
-    const db = firebaseFirestore.getFirestore(app)
+    // Inicializar Firestore con manejo de errores mejorado
+    console.log("Inicializando Firestore...")
+    let db
+    try {
+      db = firebaseFirestore.getFirestore(app)
+      console.log("Firestore inicializado correctamente")
+    } catch (error) {
+      console.error("Error al inicializar Firestore:", error)
+      throw new Error(`Error al inicializar Firestore: ${error instanceof Error ? error.message : String(error)}`)
+    }
 
+    // Verificar la conexión a Firestore con una operación simple y manejo de errores mejorado
+    console.log("Verificando conexión a Firestore...")
+    try {
+      // Intentar una operación simple para verificar la conexión
+      const testCollection = firebaseFirestore.collection(db, "test-connection")
+      await firebaseFirestore.getDocs(testCollection)
+      console.log("Verificación de conexión completada")
+    } catch (error) {
+      console.log("Error en la verificación de conexión:", error)
+      // No lanzamos error aquí, ya que es posible que la colección no exista
+      // pero queremos asegurarnos de que Firestore esté disponible
+
+      // Intentar crear un documento para verificar que Firestore funciona
+      try {
+        const testCollection = firebaseFirestore.collection(db, "test-connection")
+        await firebaseFirestore.addDoc(testCollection, { test: true, timestamp: new Date() })
+        console.log("Documento de prueba creado correctamente")
+      } catch (testError) {
+        console.error("Error al crear documento de prueba:", testError)
+        throw new Error(
+          `Firestore no está disponible: ${testError instanceof Error ? testError.message : String(testError)}`,
+        )
+      }
+    }
     // Guardar las referencias en el objeto global window
     ;(window as any).__FIREBASE_APP__ = app
     ;(window as any).__FIREBASE_DB__ = db
@@ -87,6 +147,8 @@ export const initializeFirebase = async () => {
     isFirebaseInitialized = false
     firebaseError = error instanceof Error ? error.message : "Error desconocido"
     return { success: false, error: firebaseError }
+  } finally {
+    isInitializing = false
   }
 }
 
@@ -117,6 +179,26 @@ const getFirestoreModule = () => {
 }
 
 // Funciones para productos
+export const saveProduct = async (product: FirebaseProduct) => {
+  if (!isFirebaseAvailable()) {
+    console.error("Firebase no está disponible")
+    return false
+  }
+
+  try {
+    console.log("Guardando producto en Firebase:", product)
+    const db = getFirestore()
+    const firestore = getFirestoreModule()
+
+    await firestore.setDoc(firestore.doc(db, "products", product.id.toString()), product)
+    console.log("Producto guardado correctamente")
+    return true
+  } catch (error) {
+    console.error("Error al guardar producto:", error)
+    return false
+  }
+}
+
 export const saveProducts = async (products: FirebaseProduct[]) => {
   if (!isFirebaseAvailable()) {
     console.error("Firebase no está disponible")
@@ -124,13 +206,19 @@ export const saveProducts = async (products: FirebaseProduct[]) => {
   }
 
   try {
+    console.log("Guardando productos en Firebase:", products)
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
-    const batch = products.map(async (product) => {
-      await firestore.setDoc(firestore.doc(db, "products", product.id.toString()), product)
+    const batch = firestore.writeBatch(db)
+
+    products.forEach((product) => {
+      const docRef = firestore.doc(db, "products", product.id.toString())
+      batch.set(docRef, product)
     })
-    await Promise.all(batch)
+
+    await batch.commit()
+    console.log("Productos guardados correctamente")
     return true
   } catch (error) {
     console.error("Error al guardar productos:", error)
@@ -145,6 +233,7 @@ export const getProducts = async (): Promise<FirebaseProduct[]> => {
   }
 
   try {
+    console.log("Obteniendo productos de Firebase")
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
@@ -153,6 +242,7 @@ export const getProducts = async (): Promise<FirebaseProduct[]> => {
     querySnapshot.forEach((doc) => {
       products.push(doc.data() as FirebaseProduct)
     })
+    console.log("Productos obtenidos:", products)
     return products
   } catch (error) {
     console.error("Error al obtener productos:", error)
@@ -161,6 +251,26 @@ export const getProducts = async (): Promise<FirebaseProduct[]> => {
 }
 
 // Funciones para inventario
+export const saveInventoryItem = async (item: FirebaseInventoryItem) => {
+  if (!isFirebaseAvailable()) {
+    console.error("Firebase no está disponible")
+    return false
+  }
+
+  try {
+    console.log("Guardando item de inventario en Firebase:", item)
+    const db = getFirestore()
+    const firestore = getFirestoreModule()
+
+    await firestore.setDoc(firestore.doc(db, "inventory", item.productId.toString()), item)
+    console.log("Item de inventario guardado correctamente")
+    return true
+  } catch (error) {
+    console.error("Error al guardar item de inventario:", error)
+    return false
+  }
+}
+
 export const saveInventory = async (inventory: FirebaseInventoryItem[]) => {
   if (!isFirebaseAvailable()) {
     console.error("Firebase no está disponible")
@@ -168,13 +278,19 @@ export const saveInventory = async (inventory: FirebaseInventoryItem[]) => {
   }
 
   try {
+    console.log("Guardando inventario en Firebase:", inventory)
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
-    const batch = inventory.map(async (item) => {
-      await firestore.setDoc(firestore.doc(db, "inventory", item.productId.toString()), item)
+    const batch = firestore.writeBatch(db)
+
+    inventory.forEach((item) => {
+      const docRef = firestore.doc(db, "inventory", item.productId.toString())
+      batch.set(docRef, item)
     })
-    await Promise.all(batch)
+
+    await batch.commit()
+    console.log("Inventario guardado correctamente")
     return true
   } catch (error) {
     console.error("Error al guardar inventario:", error)
@@ -189,6 +305,7 @@ export const getInventory = async (): Promise<FirebaseInventoryItem[]> => {
   }
 
   try {
+    console.log("Obteniendo inventario de Firebase")
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
@@ -197,6 +314,7 @@ export const getInventory = async (): Promise<FirebaseInventoryItem[]> => {
     querySnapshot.forEach((doc) => {
       inventory.push(doc.data() as FirebaseInventoryItem)
     })
+    console.log("Inventario obtenido:", inventory)
     return inventory
   } catch (error) {
     console.error("Error al obtener inventario:", error)
@@ -212,10 +330,12 @@ export const saveRecord = async (record: FirebaseRecord) => {
   }
 
   try {
+    console.log("Guardando registro en Firebase:", record)
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
     await firestore.setDoc(firestore.doc(db, "records", record.id.toString()), record)
+    console.log("Registro guardado correctamente")
     return true
   } catch (error) {
     console.error("Error al guardar registro:", error)
@@ -230,6 +350,7 @@ export const getRecords = async (): Promise<FirebaseRecord[]> => {
   }
 
   try {
+    console.log("Obteniendo registros de Firebase")
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
@@ -239,6 +360,7 @@ export const getRecords = async (): Promise<FirebaseRecord[]> => {
     querySnapshot.forEach((doc) => {
       records.push(doc.data() as FirebaseRecord)
     })
+    console.log("Registros obtenidos:", records.length)
     return records
   } catch (error) {
     console.error("Error al obtener registros:", error)
@@ -249,11 +371,12 @@ export const getRecords = async (): Promise<FirebaseRecord[]> => {
 // Función para escuchar cambios en tiempo real
 export const subscribeToRecords = (callback: (records: FirebaseRecord[]) => void) => {
   if (!isFirebaseAvailable()) {
-    console.error("Firebase no está disponible")
+    console.error("Firebase no está disponible para suscripciones")
     return () => {}
   }
 
   try {
+    console.log("Suscribiéndose a cambios en registros")
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
@@ -263,6 +386,7 @@ export const subscribeToRecords = (callback: (records: FirebaseRecord[]) => void
       querySnapshot.forEach((doc) => {
         records.push(doc.data() as FirebaseRecord)
       })
+      console.log("Cambios en registros detectados:", records.length)
       callback(records)
     })
   } catch (error) {
@@ -273,11 +397,12 @@ export const subscribeToRecords = (callback: (records: FirebaseRecord[]) => void
 
 export const subscribeToProducts = (callback: (products: FirebaseProduct[]) => void) => {
   if (!isFirebaseAvailable()) {
-    console.error("Firebase no está disponible")
+    console.error("Firebase no está disponible para suscripciones")
     return () => {}
   }
 
   try {
+    console.log("Suscribiéndose a cambios en productos")
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
@@ -286,6 +411,7 @@ export const subscribeToProducts = (callback: (products: FirebaseProduct[]) => v
       querySnapshot.forEach((doc) => {
         products.push(doc.data() as FirebaseProduct)
       })
+      console.log("Cambios en productos detectados:", products.length)
       callback(products)
     })
   } catch (error) {
@@ -296,11 +422,12 @@ export const subscribeToProducts = (callback: (products: FirebaseProduct[]) => v
 
 export const subscribeToInventory = (callback: (inventory: FirebaseInventoryItem[]) => void) => {
   if (!isFirebaseAvailable()) {
-    console.error("Firebase no está disponible")
+    console.error("Firebase no está disponible para suscripciones")
     return () => {}
   }
 
   try {
+    console.log("Suscribiéndose a cambios en inventario")
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
@@ -309,6 +436,7 @@ export const subscribeToInventory = (callback: (inventory: FirebaseInventoryItem
       querySnapshot.forEach((doc) => {
         inventory.push(doc.data() as FirebaseInventoryItem)
       })
+      console.log("Cambios en inventario detectados:", inventory.length)
       callback(inventory)
     })
   } catch (error) {

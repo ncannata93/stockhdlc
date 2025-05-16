@@ -24,8 +24,32 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false)
   const [isFirebaseError, setIsFirebaseError] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isInitializing, setIsInitializing] = useState(false)
 
   const initializeFirebaseApp = async () => {
+    if (isInitializing) {
+      console.log("Ya hay una inicialización en progreso, esperando...")
+      // Esperar a que termine la inicialización actual
+      await new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!isInitializing) {
+            clearInterval(checkInterval)
+            resolve(true)
+          }
+        }, 100)
+      })
+
+      // Verificar el estado después de la espera
+      const status = getFirebaseStatus()
+      return {
+        success: status.isInitialized,
+        error: status.error,
+      }
+    }
+
+    setIsInitializing(true)
+    console.log("Iniciando inicialización de Firebase...")
+
     try {
       const result = await initializeFirebase()
 
@@ -34,20 +58,25 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       setIsFirebaseError(!result.success)
       setErrorMessage(result.error)
 
+      console.log("Resultado de inicialización:", result)
       return result
     } catch (error) {
       console.error("Error al inicializar Firebase:", error)
       setIsFirebaseInitialized(false)
       setIsFirebaseError(true)
-      setErrorMessage("Error inesperado al inicializar Firebase")
+      const errorMsg = error instanceof Error ? error.message : "Error inesperado al inicializar Firebase"
+      setErrorMessage(errorMsg)
 
-      return { success: false, error: "Error inesperado al inicializar Firebase" }
+      return { success: false, error: errorMsg }
+    } finally {
+      setIsInitializing(false)
     }
   }
 
   useEffect(() => {
     // Intentar inicializar Firebase al montar el componente
     const init = async () => {
+      console.log("Inicializando Firebase automáticamente al montar el componente")
       try {
         await initializeFirebaseApp()
       } catch (error) {
@@ -63,20 +92,24 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     // Verificar el estado de Firebase periódicamente
     const interval = setInterval(() => {
       const status = getFirebaseStatus()
-      setIsFirebaseInitialized(status.isInitialized)
-      setIsFirebaseError(!status.isInitialized && status.error !== null)
-      setErrorMessage(status.error)
+      if (status.isInitialized !== isFirebaseInitialized || status.error !== errorMessage) {
+        console.log("Actualizando estado de Firebase:", status)
+        setIsFirebaseInitialized(status.isInitialized)
+        setIsFirebaseError(!status.isInitialized && status.error !== null)
+        setErrorMessage(status.error)
+      }
     }, 2000)
 
     // Forzar una actualización del estado después de un tiempo
     const timeout = setTimeout(() => {
       const status = getFirebaseStatus()
       if (!status.isInitialized) {
+        console.log("Tiempo de espera agotado para inicialización de Firebase")
         setIsFirebaseInitialized(false)
         setIsFirebaseError(true)
         setErrorMessage(status.error || "Tiempo de espera agotado")
       }
-    }, 5000)
+    }, 10000)
 
     return () => {
       clearInterval(interval)
