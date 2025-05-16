@@ -1,8 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Configuración para asegurar que las rutas relativas funcionen correctamente
-  // cuando se despliega en una subruta
-  basePath: process.env.NODE_ENV === 'production' ? '/stock' : '',
+  // Eliminar la configuración de basePath para que la raíz sea accesible
+  // basePath: process.env.NODE_ENV === 'production' ? '/stock' : '',
   
   // Otras configuraciones que puedas necesitar
   reactStrictMode: true,

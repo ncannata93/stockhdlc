@@ -1,5 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
+import { AuthProvider } from "@/lib/auth-context"
 
 export const metadata: Metadata = {
   title: "Gestión de Stock - Hoteles de la Costa",
@@ -11,5 +12,9 @@ export default function StockLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <div className="stock-system">{children}</div>
+  return (
+    <div className="stock-system">
+      <AuthProvider>{children}</AuthProvider>
+    </div>
+  )
 }
