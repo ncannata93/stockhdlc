@@ -183,6 +183,7 @@ export type SupabaseInventoryItem = {
   created_at?: string
 }
 
+// Update the SupabaseRecord type to include username
 export type SupabaseRecord = {
   id: number
   hotel_id: number | null
@@ -194,6 +195,7 @@ export type SupabaseRecord = {
   price: number
   date: string
   type: "entrada" | "salida"
+  username: string | null // Add username field
   created_at?: string
 }
 
@@ -312,12 +314,14 @@ export const getInventory = async (): Promise<SupabaseInventoryItem[]> => {
 }
 
 // Funciones para registros
+// Modify the saveRecord function to handle the case where username field might not exist yet
 export const saveRecord = async (record: SupabaseRecord) => {
   try {
     const supabase = getSupabaseClient()
     if (!supabase) return false
 
-    const { error } = await supabase.from("records").upsert({
+    // Create a base record object without username
+    const baseRecord = {
       id: record.id,
       hotel_id: record.hotel_id,
       hotel_name: record.hotel_name,
@@ -328,10 +332,35 @@ export const saveRecord = async (record: SupabaseRecord) => {
       price: record.price,
       date: record.date,
       type: record.type,
-    })
+    }
 
-    if (error) throw error
-    return true
+    // First try to save with username
+    try {
+      const { error } = await supabase.from("records").upsert({
+        ...baseRecord,
+        username: record.username,
+      })
+
+      if (!error) return true
+
+      // If there's an error related to the username column
+      if (error.message && error.message.includes("username")) {
+        console.log("Username column not found, trying without username field")
+        // Try again without the username field
+        const { error: fallbackError } = await supabase.from("records").upsert(baseRecord)
+
+        if (fallbackError) throw fallbackError
+        return true
+      } else {
+        throw error
+      }
+    } catch (innerError) {
+      console.error("Error in first upsert attempt:", innerError)
+      // As a last resort, try without username
+      const { error: lastError } = await supabase.from("records").upsert(baseRecord)
+      if (lastError) throw lastError
+      return true
+    }
   } catch (error) {
     console.error("Error al guardar registro en Supabase:", error)
     return false

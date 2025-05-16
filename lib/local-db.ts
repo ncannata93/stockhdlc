@@ -12,6 +12,7 @@ export type InventoryItem = {
   quantity: number
 }
 
+// Update the StockRecord type to include username
 export type StockRecord = {
   id: number
   hotelId: number | null
@@ -23,6 +24,7 @@ export type StockRecord = {
   price: number
   date: Date
   type: "entrada" | "salida"
+  username: string | null // Add username field
 }
 
 // Nombre de la base de datos

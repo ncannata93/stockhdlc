@@ -31,6 +31,12 @@ import type { Product, InventoryItem, StockRecord } from "@/lib/local-db"
 // Añadir esta importación al inicio del archivo
 import { useAuth } from "@/lib/auth-context"
 
+// Añadir esta importación después de las importaciones existentes
+import { useNotifications, NotificationsPanel, checkLowStockLevels } from "@/components/notification-system"
+
+// Importar el componente LowStockAlert al inicio del archivo:
+import LowStockAlert from "@/components/low-stock-alert"
+
 // Lista predefinida de hoteles
 const PREDEFINED_HOTELS = [
   "Jaguel",
@@ -89,6 +95,44 @@ export default function StockManagement() {
   // Dentro del componente StockManagement, añadir:
   const { signOut, session } = useAuth()
   const username = session?.username || "Usuario"
+
+  // Añadir el hook de notificaciones
+  const { notifications, addNotification, markAsRead, removeNotification, clearAllNotifications } = useNotifications()
+
+  // Función para verificar stock bajo y generar notificaciones
+  const checkAndNotifyLowStock = () => {
+    const lowStockProducts = checkLowStockLevels(products, inventory)
+
+    if (lowStockProducts.length > 0) {
+      // Crear una notificación para cada producto con stock bajo
+      lowStockProducts.forEach((product) => {
+        const inventoryItem = inventory.find((item) => item.productId === product.id)
+        if (inventoryItem) {
+          addNotification({
+            type: "warning",
+            title: "Alerta de Stock Bajo",
+            message: `${product.name}: ${inventoryItem.quantity} ${product.unit} (mínimo ${product.min_stock})`,
+          })
+        }
+      })
+
+      // Si hay múltiples productos con stock bajo, añadir una notificación general
+      if (lowStockProducts.length > 1) {
+        addNotification({
+          type: "warning",
+          title: "Múltiples Productos con Stock Bajo",
+          message: `${lowStockProducts.length} productos requieren reabastecimiento`,
+        })
+      }
+    }
+  }
+
+  // Verificar stock bajo cuando cambia el inventario
+  useEffect(() => {
+    if (inventory.length > 0 && products.length > 0) {
+      checkAndNotifyLowStock()
+    }
+  }, [inventory, products])
 
   // Cargar las credenciales guardadas al inicio
   useEffect(() => {
@@ -389,6 +433,7 @@ export default function StockManagement() {
       price: product.price,
       hotelName: recordType === "salida" ? hotelName : null,
       type: recordType,
+      username: username, // Update with current username when edited
     }
 
     try {
@@ -471,6 +516,7 @@ export default function StockManagement() {
       price: product.price,
       date: new Date(),
       type: recordType,
+      username: username, // Add the current username
     }
 
     try {
@@ -491,6 +537,29 @@ export default function StockManagement() {
 
           await saveInventoryItem(updatedItem)
           setInventory(inventory.map((i) => (i.productId === productId ? updatedItem : i)))
+
+          // Verificar si el producto está por debajo del nivel mínimo después de la actualización
+          if (recordType === "salida") {
+            const updatedQuantity = currentItem.quantity - quantity
+            const productInfo = products.find((p) => p.id === productId)
+
+            if (productInfo && updatedQuantity < productInfo.min_stock) {
+              addNotification({
+                type: "warning",
+                title: "Stock Bajo Detectado",
+                message: `${productInfo.name} ha caído por debajo del nivel mínimo (${updatedQuantity} < ${productInfo.min_stock})`,
+              })
+            }
+
+            // Si llegó a cero, es una alerta más urgente
+            if (updatedQuantity <= 0) {
+              addNotification({
+                type: "warning",
+                title: "¡Stock Agotado!",
+                message: `${productInfo?.name || "Un producto"} se ha agotado completamente`,
+              })
+            }
+          }
         }
 
         setIsAddingRecord(false)
@@ -862,6 +931,12 @@ export default function StockManagement() {
             <h2 className="text-xl mb-4">Sistema de Gestión de Stock</h2>
           </div>
           <div className="flex items-center gap-4">
+            <NotificationsPanel
+              notifications={notifications}
+              markAsRead={markAsRead}
+              removeNotification={removeNotification}
+              clearAllNotifications={clearAllNotifications}
+            />
             <div className="flex items-center text-gray-700">
               <User className="h-4 w-4 mr-2" />
               <span className="font-medium">{username}</span>
@@ -925,6 +1000,9 @@ export default function StockManagement() {
             Administración
           </button>
         </div>
+
+        {/* Alerta de stock bajo que aparece en todas las pestañas */}
+        <LowStockAlert products={products} inventory={inventory} />
 
         {/* Contenido según la pestaña activa */}
         {activeTab === "inventory" && (
@@ -1275,6 +1353,7 @@ export default function StockManagement() {
                     <th className="py-2 px-4 border-b text-left">Producto</th>
                     <th className="py-2 px-4 border-b text-left">Cantidad</th>
                     <th className="py-2 px-4 border-b text-left">Hotel</th>
+                    <th className="py-2 px-4 border-b text-left">Usuario</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1297,6 +1376,7 @@ export default function StockManagement() {
                         {record.quantity} {record.productUnit}
                       </td>
                       <td className="py-2 px-4 border-b">{record.hotelName || "-"}</td>
+                      <td className="py-2 px-4 border-b">{record.username || "Sistema"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1368,6 +1448,7 @@ export default function StockManagement() {
                         <th className="py-2 px-4 border-b text-left">Producto</th>
                         <th className="py-2 px-4 border-b text-left">Cantidad</th>
                         <th className="py-2 px-4 border-b text-left">Hotel</th>
+                        <th className="py-2 px-4 border-b text-left">Usuario</th>
                         <th className="py-2 px-4 border-b text-left">Acciones</th>
                       </tr>
                     </thead>
@@ -1391,6 +1472,7 @@ export default function StockManagement() {
                             {record.quantity} {record.productUnit}
                           </td>
                           <td className="py-2 px-4 border-b">{record.hotelName || "-"}</td>
+                          <td className="py-2 px-4 border-b">{record.username || "Sistema"}</td>
                           <td className="py-2 px-4 border-b">
                             <div className="flex space-x-2">
                               <button

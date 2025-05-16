@@ -487,7 +487,7 @@ export const getInventory = async (): Promise<localDB.InventoryItem[]> => {
 
   if (!isOnlineMode) {
     console.error("El sistema solo funciona en modo online")
-    return false
+    return []
   }
 
   try {
@@ -510,6 +510,7 @@ export const getInventory = async (): Promise<localDB.InventoryItem[]> => {
   }
 }
 
+// Update the saveRecord function to include username in the conversion to Supabase format
 export const saveRecord = async (record: localDB.StockRecord): Promise<boolean> => {
   if (!isInitialized) {
     const result = await initializeDB()
@@ -537,6 +538,7 @@ export const saveRecord = async (record: localDB.StockRecord): Promise<boolean> 
       price: record.price,
       date: record.date.toISOString(),
       type: record.type,
+      username: record.username, // Include username
     })
 
     // También guardar en la base de datos local como respaldo
@@ -549,6 +551,7 @@ export const saveRecord = async (record: localDB.StockRecord): Promise<boolean> 
   }
 }
 
+// Update the getRecords function to include username in the conversion from Supabase format
 export const getRecords = async (): Promise<localDB.StockRecord[]> => {
   if (!isInitialized) {
     const result = await initializeDB()
@@ -579,6 +582,7 @@ export const getRecords = async (): Promise<localDB.StockRecord[]> => {
       price: record.price,
       date: new Date(record.date),
       type: record.type,
+      username: record.username, // Include username
     }))
 
     // Actualizar la base de datos local como respaldo
@@ -671,7 +675,7 @@ export const deleteRecord = async (recordId: number): Promise<boolean> => {
   }
 }
 
-// Función para actualizar un registro existente
+// Update the updateRecord function to include username
 export const updateRecord = async (record: localDB.StockRecord): Promise<boolean> => {
   if (!isInitialized) {
     const result = await initializeDB()
@@ -775,6 +779,7 @@ export const updateRecord = async (record: localDB.StockRecord): Promise<boolean
         price: record.price,
         date: record.date.toISOString(),
         type: record.type,
+        username: record.username, // Include username
       })
       .eq("id", record.id)
 
