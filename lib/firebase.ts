@@ -191,7 +191,13 @@ export const saveProduct = async (product: FirebaseProduct) => {
     const db = getFirestore()
     const firestore = getFirestoreModule()
 
-    await firestore.setDoc(firestore.doc(db, "products", product.id.toString()), product)
+    await firestore.setDoc(firestore.doc(db, "products", product.id.toString()), {
+      id: product.id,
+      name: product.name,
+      unit: product.unit,
+      price: product.price,
+      min_stock: product.min_stock,
+    })
     console.log("Producto guardado correctamente")
     return true
   } catch (error) {
@@ -215,7 +221,13 @@ export const saveProducts = async (products: FirebaseProduct[]) => {
 
     products.forEach((product) => {
       const docRef = firestore.doc(db, "products", product.id.toString())
-      batch.set(docRef, product)
+      batch.set(docRef, {
+        id: product.id,
+        name: product.name,
+        unit: product.unit,
+        price: product.price,
+        min_stock: product.min_stock,
+      })
     })
 
     await batch.commit()

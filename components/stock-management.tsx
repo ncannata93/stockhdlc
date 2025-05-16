@@ -275,6 +275,8 @@ export default function StockManagement() {
       min_stock: Number.parseInt(formData.get("min_stock") as string, 10),
     }
 
+    console.log("Saving new product with data:", newProduct)
+
     try {
       const success = await saveProduct(newProduct)
       if (success) {
@@ -312,6 +314,8 @@ export default function StockManagement() {
       price: Number.parseFloat(formData.get("price") as string),
       min_stock: Number.parseInt(formData.get("min_stock") as string, 10),
     }
+
+    console.log("Updating product with data:", updatedProduct)
 
     try {
       const success = await saveProduct(updatedProduct)

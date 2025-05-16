@@ -324,6 +324,7 @@ export const saveProduct = async (product: localDB.Product): Promise<boolean> =>
       name: product.name,
       unit: product.unit,
       price: product.price,
+      min_stock: product.min_stock,
     })
 
     // También guardar en la base de datos local como respaldo
@@ -360,6 +361,7 @@ export const saveProducts = async (products: localDB.Product[]): Promise<boolean
         name: p.name,
         unit: p.unit,
         price: p.price,
+        min_stock: p.min_stock,
       })),
     )
 
@@ -397,6 +399,7 @@ export const getProducts = async (): Promise<localDB.Product[]> => {
       name: p.name,
       unit: p.unit,
       price: p.price,
+      min_stock: p.min_stock || 0, // Ensure min_stock is included and has a default value
     }))
 
     // Actualizar la base de datos local como respaldo
@@ -484,7 +487,7 @@ export const getInventory = async (): Promise<localDB.InventoryItem[]> => {
 
   if (!isOnlineMode) {
     console.error("El sistema solo funciona en modo online")
-    return []
+    return false
   }
 
   try {
