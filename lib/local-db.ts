@@ -4,6 +4,7 @@ export type Product = {
   name: string
   unit: string
   price: number
+  min_stock: number
 }
 
 export type InventoryItem = {

@@ -9,6 +9,7 @@ export interface Database {
           name: string
           unit: string
           price: number
+          min_stock: number
           created_at: string
         }
         Insert: {
@@ -16,6 +17,7 @@ export interface Database {
           name: string
           unit: string
           price: number
+          min_stock?: number
           created_at?: string
         }
         Update: {
@@ -23,6 +25,7 @@ export interface Database {
           name?: string
           unit?: string
           price?: number
+          min_stock?: number
           created_at?: string
         }
         Relationships: []

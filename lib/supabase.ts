@@ -1,21 +1,169 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "./database.types"
 
-// Estas URLs deberían estar en variables de entorno en producción
-const supabaseUrl = "https://tu-proyecto.supabase.co"
-const supabaseKey = "tu-clave-anon-key"
+// Función para obtener las credenciales de Supabase
+const getSupabaseCredentials = () => {
+  // Verificar si estamos en el navegador
+  if (typeof window === "undefined") {
+    // En el servidor, usar directamente las variables de entorno
+    return {
+      url: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+      key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+    }
+  }
 
-// Crear el cliente de Supabase
-export const supabase = createClient<Database>(supabaseUrl, supabaseKey)
+  // En el cliente, obtener del localStorage
+  let url = ""
+  let key = ""
 
-// Verificar si Supabase está disponible
-export const isSupabaseAvailable = async (): Promise<boolean> => {
   try {
-    const { error } = await supabase.from("health_check").select("*").limit(1)
-    return !error
+    url = localStorage.getItem("supabaseUrl") || ""
+    key = localStorage.getItem("supabaseKey") || ""
+
+    // Verificar si las credenciales están en formato JSON (a veces ocurre)
+    if (url && url.startsWith('"') && url.endsWith('"')) {
+      url = JSON.parse(url)
+    }
+    if (key && key.startsWith('"') && key.endsWith('"')) {
+      key = JSON.parse(key)
+    }
+
+    // Verificar si las credenciales están vacías o son inválidas
+    if (!url || url === "undefined" || url === "null") {
+      url = ""
+    }
+    if (!key || key === "undefined" || key === "null") {
+      key = ""
+    }
+
+    console.log("Credenciales obtenidas de localStorage:", {
+      url: url ? url.substring(0, 15) + "..." : "No configurada",
+      key: key ? key.substring(0, 10) + "..." : "No configurada",
+    })
   } catch (error) {
-    console.error("Error al verificar disponibilidad de Supabase:", error)
-    return false
+    console.error("Error al leer credenciales de localStorage:", error)
+  }
+
+  // Si tenemos las variables de entorno de Vercel, usarlas como respaldo
+  if (!url && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    console.log("Usando URL de Supabase desde variables de entorno")
+  }
+  if (!key && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    console.log("Usando clave de Supabase desde variables de entorno")
+  }
+
+  return { url, key }
+}
+
+// Crear una función para obtener el cliente de Supabase
+export const getSupabaseClient = () => {
+  const { url, key } = getSupabaseCredentials()
+
+  // Verificar que las credenciales existan
+  if (!url || !key) {
+    console.warn("Credenciales de Supabase no encontradas")
+    return null
+  }
+
+  try {
+    return createClient<Database>(url, key)
+  } catch (error) {
+    console.error("Error al crear cliente Supabase:", error)
+    return null
+  }
+}
+
+// Función mejorada para verificar la disponibilidad de Supabase
+export const isSupabaseAvailable = async (): Promise<{ available: boolean; error: string | null }> => {
+  try {
+    console.log("Verificando disponibilidad de Supabase...")
+    const supabase = getSupabaseClient()
+
+    // Si no hay cliente, Supabase no está disponible
+    if (!supabase) {
+      console.warn("Cliente Supabase no disponible - credenciales no configuradas")
+      return { available: false, error: "Credenciales de Supabase no configuradas" }
+    }
+
+    // Mostrar la URL que se está usando (sin mostrar la clave completa)
+    const { url } = getSupabaseCredentials()
+    console.log("Verificando conexión usando URL:", url)
+
+    // Intentar una operación simple con timeout extendido
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 segundos
+
+    try {
+      console.log("Intentando verificar tabla de health_check...")
+      // Primero intentamos una operación sencilla en la tabla health_check
+      const { data, error: healthCheckError } = await supabase
+        .from("health_check")
+        .select("*")
+        .limit(1)
+        .abortSignal(controller.signal)
+
+      clearTimeout(timeoutId)
+
+      if (healthCheckError) {
+        console.warn("Error al verificar tabla health_check:", healthCheckError)
+
+        // Si hay un error específico de autenticación, las credenciales son incorrectas
+        if (
+          healthCheckError.code === "PGRST301" ||
+          healthCheckError.message.includes("JWT") ||
+          healthCheckError.message.includes("auth")
+        ) {
+          return {
+            available: false,
+            error: `Error de autenticación: ${healthCheckError.message}. Verifica tus credenciales.`,
+          }
+        }
+
+        // Si la tabla no existe, intentar con productos
+        console.log("Intentando verificar tabla de productos...")
+        try {
+          const { count, error: productsError } = await supabase
+            .from("products")
+            .select("*", { count: "exact", head: true })
+
+          if (productsError) {
+            console.warn("Error al verificar tabla products:", productsError)
+            return {
+              available: false,
+              error: `Error al verificar tablas: ${productsError.message}`,
+            }
+          }
+
+          console.log("Verificación de tabla products exitosa")
+          return { available: true, error: null }
+        } catch (productsError) {
+          console.error("Error al verificar tabla products:", productsError)
+          return {
+            available: false,
+            error: `Error al verificar tablas: ${productsError instanceof Error ? productsError.message : String(productsError)}`,
+          }
+        }
+      }
+
+      console.log("Verificación de Supabase completada con éxito")
+      return { available: true, error: null }
+    } catch (fetchError) {
+      clearTimeout(timeoutId)
+      console.warn("Error de fetch al verificar Supabase:", fetchError)
+
+      return {
+        available: false,
+        error: `Error de conexión: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`,
+      }
+    }
+  } catch (error) {
+    console.error("Error general al verificar disponibilidad de Supabase:", error)
+    return {
+      available: false,
+      error: `Error general: ${error instanceof Error ? error.message : String(error)}`,
+    }
   }
 }
 
@@ -25,6 +173,7 @@ export type SupabaseProduct = {
   name: string
   unit: string
   price: number
+  min_stock: number
   created_at?: string
 }
 
@@ -51,11 +200,15 @@ export type SupabaseRecord = {
 // Funciones para productos
 export const saveProduct = async (product: SupabaseProduct) => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return false
+
     const { error } = await supabase.from("products").upsert({
       id: product.id,
       name: product.name,
       unit: product.unit,
       price: product.price,
+      min_stock: product.min_stock,
     })
 
     if (error) throw error
@@ -68,12 +221,16 @@ export const saveProduct = async (product: SupabaseProduct) => {
 
 export const saveProducts = async (products: SupabaseProduct[]) => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return false
+
     const { error } = await supabase.from("products").upsert(
       products.map((p) => ({
         id: p.id,
         name: p.name,
         unit: p.unit,
         price: p.price,
+        min_stock: p.min_stock,
       })),
     )
 
@@ -87,6 +244,9 @@ export const saveProducts = async (products: SupabaseProduct[]) => {
 
 export const getProducts = async (): Promise<SupabaseProduct[]> => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return []
+
     const { data, error } = await supabase.from("products").select("*").order("id")
 
     if (error) throw error
@@ -100,6 +260,9 @@ export const getProducts = async (): Promise<SupabaseProduct[]> => {
 // Funciones para inventario
 export const saveInventoryItem = async (item: SupabaseInventoryItem) => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return false
+
     const { error } = await supabase.from("inventory").upsert({
       product_id: item.product_id,
       quantity: item.quantity,
@@ -115,6 +278,9 @@ export const saveInventoryItem = async (item: SupabaseInventoryItem) => {
 
 export const saveInventory = async (inventory: SupabaseInventoryItem[]) => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return false
+
     const { error } = await supabase.from("inventory").upsert(
       inventory.map((item) => ({
         product_id: item.product_id,
@@ -132,6 +298,9 @@ export const saveInventory = async (inventory: SupabaseInventoryItem[]) => {
 
 export const getInventory = async (): Promise<SupabaseInventoryItem[]> => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return []
+
     const { data, error } = await supabase.from("inventory").select("*")
 
     if (error) throw error
@@ -145,6 +314,9 @@ export const getInventory = async (): Promise<SupabaseInventoryItem[]> => {
 // Funciones para registros
 export const saveRecord = async (record: SupabaseRecord) => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return false
+
     const { error } = await supabase.from("records").upsert({
       id: record.id,
       hotel_id: record.hotel_id,
@@ -168,6 +340,9 @@ export const saveRecord = async (record: SupabaseRecord) => {
 
 export const getRecords = async (): Promise<SupabaseRecord[]> => {
   try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return []
+
     const { data, error } = await supabase.from("records").select("*").order("date", { ascending: false })
 
     if (error) throw error
@@ -180,6 +355,9 @@ export const getRecords = async (): Promise<SupabaseRecord[]> => {
 
 // Suscripciones en tiempo real
 export const subscribeToInventory = (callback: (inventory: SupabaseInventoryItem[]) => void) => {
+  const supabase = getSupabaseClient()
+  if (!supabase) return { unsubscribe: () => {} }
+
   return supabase
     .channel("inventory-changes")
     .on(
@@ -199,6 +377,9 @@ export const subscribeToInventory = (callback: (inventory: SupabaseInventoryItem
 }
 
 export const subscribeToRecords = (callback: (records: SupabaseRecord[]) => void) => {
+  const supabase = getSupabaseClient()
+  if (!supabase) return { unsubscribe: () => {} }
+
   return supabase
     .channel("records-changes")
     .on(

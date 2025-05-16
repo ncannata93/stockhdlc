@@ -1,1922 +1,1522 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
-import {
-  Check,
-  ChevronsUpDown,
-  Hotel,
-  Package,
-  Pencil,
-  Save,
-  X,
-  PlusCircle,
-  MinusCircle,
-  Lock,
-  LogOut,
-  Plus,
-  DollarSign,
-  Loader2,
-  Download,
-  Upload,
-  RefreshCw,
-  AlertTriangle,
-  HardDrive,
-  Cloud,
-} from "lucide-react"
+import type React from "react"
 
-import { Button } from "@/components/ui/button"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
+import { useState, useEffect } from "react"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-
-import {
-  type Product,
-  type InventoryItem as ProductStock,
-  type StockRecord,
-  saveProduct,
-  saveProducts,
-  getProducts,
-  saveInventory,
-  getInventory,
-  saveRecord,
-  getRecords,
-  exportAllData,
-  importAllData,
-  saveInventoryItem,
-  useConnectionStatus,
   initializeDB,
-  createBackup,
-  setupRealtimeSubscriptions,
-  cleanupRealtimeSubscriptions,
-  syncWithSupabase,
+  getProducts,
+  getInventory,
+  getRecords,
+  saveProduct,
+  saveInventoryItem,
+  saveRecord,
 } from "@/lib/db-manager"
+import { Loader2, AlertTriangle, RefreshCw, Database, Key, Plus, Edit, ArrowUp, ArrowDown, Trash2 } from "lucide-react"
+import type { Product, InventoryItem, StockRecord } from "@/lib/local-db"
 
-// Datos de ejemplo
-const hotels = [
-  { id: 1, name: "Jaguel" },
-  { id: 2, name: "Monaco" },
-  { id: 3, name: "Mallak" },
-  { id: 4, name: "Argentina" },
-  { id: 5, name: "Falkner" },
-  { id: 6, name: "Stromboli" },
-  { id: 7, name: "San Miguel" },
-  { id: 8, name: "Colores" },
-  { id: 9, name: "Puntarenas" },
-  { id: 10, name: "Tupe" },
-  { id: 11, name: "Munich" },
-  { id: 12, name: "Tiburones" },
-  { id: 13, name: "Barlovento" },
-  { id: 14, name: "Carama" },
+// Lista predefinida de hoteles
+const PREDEFINED_HOTELS = [
+  "Jaguel",
+  "Monaco",
+  "Mallak",
+  "Argentina",
+  "Falkner",
+  "Stromboli",
+  "San Miguel",
+  "Colores",
+  "Puntarenas",
+  "Tupe",
+  "Munich",
+  "Tiburones",
+  "Barlovento",
+  "Carama",
 ]
 
-// Contraseña para acceder a la función de agregar stock
-const ADMIN_PASSWORD = "Qw425540" // En una aplicación real, esto debería estar en el servidor
-
-// Función para formatear precio
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-  }).format(amount)
-}
-
-// Productos por defecto
-const defaultProducts: Product[] = [
-  { id: 1, name: "Leche", unit: "litros", price: 1200 },
-  { id: 2, name: "Cafe", unit: "kg", price: 5000 },
-  { id: 3, name: "azucar", unit: "kg", price: 1800 },
-  { id: 4, name: "jabon", unit: "caja", price: 3500 },
-  { id: 5, name: "papel higienico", unit: "bolson", price: 4200 },
-  { id: 6, name: "shampoo", unit: "caja", price: 2800 },
-]
-
+// Componente StockManagement actualizado para mostrar la interfaz completa
 export default function StockManagement() {
-  // Referencia para el timeout que fuerza la salida del estado de carga
-  const forceTimeoutRef = useRef<number | null>(null)
+  // Añadir "admin" a los tipos de pestañas activas
+  const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "admin">(
+    "inventory",
+  )
 
-  // Estado de conexión
-  const connectionStatus = useConnectionStatus()
-  const [showBackupDialog, setShowBackupDialog] = useState(false)
-  const [backupError, setBackupError] = useState<string | null>(null)
-  const [backupStatus, setSyncStatus] = useState<"idle" | "creating" | "success" | "error">("idle")
-
-  // Estado para productos
-  const [products, setProducts] = useState<Product[]>([])
-
-  // Estados para el formulario de retiro
-  const [selectedHotel, setSelectedHotel] = useState<(typeof hotels)[0] | null>(null)
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [quantity, setQuantity] = useState<number>(1)
-  const [hotelOpen, setHotelOpen] = useState(false)
-  const [productOpen, setProductOpen] = useState(false)
-
-  // Estados para el formulario de entrada de stock
-  const [selectedStockProduct, setSelectedStockProduct] = useState<Product | null>(null)
-  const [stockQuantity, setStockQuantity] = useState<number>(1)
-  const [stockProductOpen, setStockProductOpen] = useState(false)
-  const [currentPrice, setCurrentPrice] = useState<number>(0)
-
-  // Estados para registros y edición
-  const [records, setRecords] = useState<StockRecord[]>([])
-
-  const [showConfirmation, setShowConfirmation] = useState(false)
-  const [confirmationMessage, setConfirmationMessage] = useState("")
-  const [editingRecord, setEditingRecord] = useState<number | null>(null)
-  const [editHotel, setEditHotel] = useState<(typeof hotels)[0] | null>(null)
-  const [editProduct, setEditProduct] = useState<Product | null>(null)
-  const [editQuantity, setEditQuantity] = useState<number>(0)
-  const [editPrice, setEditPrice] = useState<number>(0)
-  const [editHotelOpen, setEditHotelOpen] = useState(false)
-  const [editProductOpen, setEditProductOpen] = useState(false)
-
-  // Estado para el inventario
-  const [inventory, setInventory] = useState<ProductStock[]>([])
-  const [showStockError, setShowStockError] = useState(false)
-
-  // Estados para la autenticación
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [showAuthDialog, setShowAuthDialog] = useState(false)
-  const [password, setPassword] = useState("")
-  const [authError, setAuthError] = useState(false)
-  const [activeTab, setActiveTab] = useState("register")
-
-  // Estados para agregar nuevo producto
-  const [newProductName, setNewProductName] = useState("")
-  const [newProductUnit, setNewProductUnit] = useState("")
-  const [newProductPrice, setNewProductPrice] = useState<number>(0)
-  const [showNewProductForm, setShowNewProductForm] = useState(false)
-  const [newProductError, setNewProductError] = useState("")
-
-  // Estados para la aplicación
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showImportExportDialog, setShowImportExportDialog] = useState(false)
-  const [importFile, setImportFile] = useState<File | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  const [showFullError, setShowFullError] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
 
-  // Función para sincronizar con Supabase
-  const handleSyncWithSupabase = async () => {
-    if (!connectionStatus.isOnlineMode) {
-      setBackupError("No se puede sincronizar en modo local. Activa el modo online primero.")
-      return
-    }
+  // Datos de la aplicación
+  const [products, setProducts] = useState<Product[]>([])
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [records, setRecords] = useState<StockRecord[]>([])
 
-    setSyncStatus("creating")
-    setBackupError(null)
+  // Estado para la interfaz
+  const [supabaseUrl, setSupabaseUrl] = useState("")
+  const [supabaseKey, setSupabaseKey] = useState("")
 
+  // Estados para formularios
+  const [isAddingProduct, setIsAddingProduct] = useState(false)
+  const [isEditingProduct, setIsEditingProduct] = useState(false)
+  const [currentProduct, setCurrentProduct] = useState<Product | null>(null)
+  const [isAddingRecord, setIsAddingRecord] = useState(false)
+  const [recordType, setRecordType] = useState<"entrada" | "salida">("entrada")
+
+  // Añadir estos estados para la funcionalidad de administrador
+  const [isAdminMode, setIsAdminMode] = useState(false)
+  const [adminPassword, setAdminPassword] = useState("")
+  const [isEditingRecord, setIsEditingRecord] = useState(false)
+  const [currentRecord, setCurrentRecord] = useState<StockRecord | null>(null)
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
+  const [recordToDelete, setRecordToDelete] = useState<number | null>(null)
+
+  // Cargar las credenciales guardadas al inicio
+  useEffect(() => {
     try {
-      const result = await syncWithSupabase()
-      if (result.success) {
-        setSyncStatus("success")
-        setTimeout(() => {
-          setSyncStatus("idle")
-        }, 3000)
-      } else {
-        setSyncStatus("error")
-        setBackupError(result.error || "Error al sincronizar con Supabase")
-      }
+      const savedUrl = localStorage.getItem("supabaseUrl") || ""
+      const savedKey = localStorage.getItem("supabaseKey") || ""
+      setSupabaseUrl(savedUrl)
+      setSupabaseKey(savedKey)
     } catch (error) {
-      setSyncStatus("error")
-      setBackupError(`Error: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  // Función para crear una copia de seguridad
-  const handleCreateBackup = async () => {
-    setBackupError(null)
-    setSyncStatus("creating")
-
-    try {
-      const result = await createBackup()
-      if (result.success && result.data) {
-        setSyncStatus("success")
-
-        // Descargar la copia de seguridad automáticamente
-        const jsonData = JSON.stringify(result.data, null, 2)
-        const blob = new Blob([jsonData], { type: "application/json" })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `hoteles-stock-backup-${new Date().toISOString().split("T")[0]}.json`
-        document.body.appendChild(a)
-        a.click()
-
-        // Limpiar
-        setTimeout(() => {
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-          setSyncStatus("idle")
-        }, 3000)
-      } else {
-        setSyncStatus("error")
-        setBackupError(result.error || "Error al crear la copia de seguridad")
-      }
-    } catch (error) {
-      setSyncStatus("error")
-      setBackupError(`Error: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  // Función para cargar datos iniciales
-  const loadInitialData = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      console.log("Cargando datos iniciales...")
-
-      // Inicializar la base de datos
-      const dbResult = await initializeDB()
-      if (!dbResult.success) {
-        console.error("Error al inicializar la base de datos:", dbResult.error)
-        setError(`Error al inicializar la base de datos: ${dbResult.error}`)
-      }
-
-      // Cargar productos
-      let loadedProducts = await getProducts()
-      console.log("Productos cargados:", loadedProducts.length)
-
-      // Si no hay productos, usar los productos por defecto
-      if (loadedProducts.length === 0) {
-        console.log("No hay productos, usando productos por defecto")
-        loadedProducts = defaultProducts
-        await saveProducts(defaultProducts)
-      }
-
-      setProducts(loadedProducts)
-
-      // Cargar inventario
-      let loadedInventory = await getInventory()
-      console.log("Inventario cargado:", loadedInventory.length)
-
-      // Si no hay inventario, inicializar con los productos cargados
-      if (loadedInventory.length === 0) {
-        console.log("No hay inventario, inicializando con productos cargados")
-        loadedInventory = loadedProducts.map((product) => ({
-          productId: product.id,
-          quantity: 0,
-        }))
-        await saveInventory(loadedInventory)
-      }
-
-      setInventory(loadedInventory)
-
-      // Cargar registros
-      const loadedRecords = await getRecords()
-      console.log("Registros cargados:", loadedRecords.length)
-
-      // Convertir las fechas de string a Date si es necesario
-      const recordsWithDates = loadedRecords.map((record) => ({
-        ...record,
-        date: record.date instanceof Date ? record.date : new Date(record.date),
-      }))
-
-      setRecords(recordsWithDates)
-
-      console.log("Datos iniciales cargados correctamente")
-    } catch (error) {
-      console.error("Error al cargar datos iniciales:", error)
-      setError("Error al cargar datos. Por favor, recarga la página.")
-    } finally {
-      setIsLoading(false)
+      console.error("Error al cargar credenciales:", error)
     }
   }, [])
 
-  // Configurar suscripciones en tiempo real cuando se cambia a modo online
   useEffect(() => {
-    if (connectionStatus.isOnlineMode) {
-      setupRealtimeSubscriptions(
-        // Callback para actualizar el inventario cuando cambia en Supabase
-        (updatedInventory) => {
-          setInventory(updatedInventory)
-        },
-        // Callback para actualizar los registros cuando cambian en Supabase
-        (updatedRecords) => {
-          setRecords(updatedRecords)
-        },
-      )
-    }
+    const connectToSupabase = async () => {
+      setIsLoading(true)
+      setError(null)
 
-    return () => {
-      cleanupRealtimeSubscriptions()
-    }
-  }, [connectionStatus.isOnlineMode])
+      try {
+        console.log("Intentando conectar a Supabase...")
+        const result = await initializeDB()
 
-  // Cargar datos iniciales al montar el componente
-  useEffect(() => {
-    loadInitialData()
+        if (result.success) {
+          console.log("Conexión exitosa a Supabase")
+          setIsConnected(true)
 
-    // Asegurar que siempre salga del estado de carga después de un tiempo
-    forceTimeoutRef.current = window.setTimeout(() => {
-      if (isLoading) {
-        console.log("Forzando salida del estado de carga")
-        setIsLoading(false)
-        setError("Tiempo de carga excedido. Por favor, recarga la página.")
-      }
-    }, 5000)
+          // Cargar datos iniciales
+          try {
+            const [productsData, inventoryData, recordsData] = await Promise.all([
+              getProducts(),
+              getInventory(),
+              getRecords(),
+            ])
 
-    return () => {
-      if (forceTimeoutRef.current) {
-        window.clearTimeout(forceTimeoutRef.current)
-        forceTimeoutRef.current = null
-      }
-    }
-  }, [loadInitialData])
-
-  // Inicializar el inventario si no existe para nuevos productos
-  useEffect(() => {
-    const initializeInventory = async () => {
-      if (products.length > 0 && !isLoading) {
-        const newInventory = [...inventory]
-        let hasChanges = false
-
-        products.forEach((product) => {
-          if (!inventory.some((item) => item.productId === product.id)) {
-            newInventory.push({
-              productId: product.id,
-              quantity: 0,
-            })
-            hasChanges = true
+            setProducts(productsData)
+            setInventory(inventoryData)
+            setRecords(recordsData)
+            console.log("Datos iniciales cargados con éxito")
+          } catch (dataError) {
+            console.error("Error al cargar datos iniciales:", dataError)
+            setError(
+              `Conexión establecida pero error al cargar datos: ${dataError instanceof Error ? dataError.message : String(dataError)}`,
+            )
           }
-        })
 
-        if (hasChanges) {
-          setInventory(newInventory)
-          await saveInventory(newInventory)
+          setIsLoading(false)
+        } else {
+          console.error("Error al conectar a Supabase:", result.error)
+          setError(result.error || "Error desconocido al conectar con Supabase")
+          setIsLoading(false)
         }
+      } catch (err) {
+        console.error("Excepción al conectar a Supabase:", err)
+        setError(err instanceof Error ? err.message : "Error desconocido")
+        setIsLoading(false)
       }
     }
 
-    initializeInventory()
-  }, [products, inventory, isLoading])
+    connectToSupabase()
+  }, [retryCount])
 
-  // Actualizar el precio actual cuando se selecciona un producto
+  // Función para manejar el cambio en el select de hotel
   useEffect(() => {
-    if (selectedStockProduct) {
-      setCurrentPrice(selectedStockProduct.price)
+    const handleHotelSelectChange = () => {
+      const hotelSelect = document.querySelector('select[name="hotelName"]') as HTMLSelectElement
+      const newHotelInput = document.getElementById("newHotelInput")
+
+      if (hotelSelect && newHotelInput) {
+        if (hotelSelect.value === "nuevo") {
+          newHotelInput.classList.remove("hidden")
+          const input = document.getElementById("newHotelName") as HTMLInputElement
+          if (input) {
+            input.required = true
+            input.focus()
+          }
+        } else {
+          newHotelInput.classList.add("hidden")
+          const input = document.getElementById("newHotelName") as HTMLInputElement
+          if (input) {
+            input.required = false
+          }
+        }
+      }
     }
-  }, [selectedStockProduct])
 
-  // Función para obtener el stock actual de un producto
-  const getProductStock = (productId: number): number => {
-    const productStock = inventory.find((item) => item.productId === productId)
-    return productStock ? productStock.quantity : 0
+    // Añadir el event listener cuando se abre el modal
+    if (isAddingRecord && recordType === "salida") {
+      setTimeout(() => {
+        const hotelSelect = document.querySelector('select[name="hotelName"]')
+        if (hotelSelect) {
+          hotelSelect.addEventListener("change", handleHotelSelectChange)
+        }
+      }, 100)
+    }
+
+    // Limpiar el event listener
+    return () => {
+      const hotelSelect = document.querySelector('select[name="hotelName"]')
+      if (hotelSelect) {
+        hotelSelect.removeEventListener("change", handleHotelSelectChange)
+      }
+    }
+  }, [isAddingRecord, recordType])
+
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
   }
 
-  // Función para actualizar el inventario
-  const updateInventory = async (productId: number, quantity: number, isAddition: boolean) => {
-    const newInventory = inventory.map((item) =>
-      item.productId === productId
-        ? { ...item, quantity: isAddition ? item.quantity + quantity : item.quantity - quantity }
-        : item,
-    )
-
-    setInventory(newInventory)
-    await saveInventory(newInventory)
+  const handleResetConfig = () => {
+    try {
+      localStorage.removeItem("supabaseUrl")
+      localStorage.removeItem("supabaseKey")
+      // Eliminar también la bandera de modo local si existe
+      localStorage.removeItem("useLocalMode")
+      setSupabaseUrl("")
+      setSupabaseKey("")
+      alert("Configuración reiniciada. Se intentará reconectar.")
+      handleRetry()
+    } catch (error) {
+      alert("Error al reiniciar configuración: " + error)
+    }
   }
 
-  // Función para actualizar el precio de un producto
-  const updateProductPrice = async (productId: number, newPrice: number) => {
-    const newProducts = products.map((product) =>
-      product.id === productId ? { ...product, price: newPrice } : product,
-    )
-
-    setProducts(newProducts)
-    await saveProducts(newProducts)
-  }
-
-  // Manejar el registro de retiro de stock
-  const handleWithdrawal = async () => {
-    if (selectedHotel && selectedProduct && quantity > 0) {
-      // Verificar si hay suficiente stock
-      const currentStock = getProductStock(selectedProduct.id)
-
-      if (quantity > currentStock) {
-        setShowStockError(true)
-        setTimeout(() => {
-          setShowStockError(false)
-        }, 3000)
+  const handleSaveConfig = () => {
+    try {
+      if (!supabaseUrl || !supabaseKey) {
+        alert("Por favor ingresa ambos valores")
         return
       }
 
-      try {
-        // Actualizar el inventario (restar)
-        await updateInventory(selectedProduct.id, quantity, false)
-
-        // Crear el nuevo registro
-        const newRecord: StockRecord = {
-          id: Date.now(),
-          hotelId: selectedHotel.id,
-          hotelName: selectedHotel.name,
-          productId: selectedProduct.id,
-          productName: selectedProduct.name,
-          productUnit: selectedProduct.unit,
-          quantity,
-          price: selectedProduct.price,
-          date: new Date(),
-          type: "salida",
-        }
-
-        // Guardar el registro
-        await saveRecord(newRecord)
-
-        // Actualizar el estado local
-        setRecords([newRecord, ...records])
-
-        // Mostrar confirmación
-        setConfirmationMessage(
-          `${selectedHotel.name} ha retirado ${quantity} ${selectedProduct.unit} de ${
-            selectedProduct.name
-          } (${formatCurrency(quantity * selectedProduct.price)})`,
-        )
-        setShowConfirmation(true)
-
-        // Reset form after 3 seconds
-        setTimeout(() => {
-          setShowConfirmation(false)
-        }, 3000)
-
-        // Limpiar el formulario
-        setSelectedProduct(null)
-        setQuantity(1)
-      } catch (error) {
-        console.error("Error al registrar retiro:", error)
-        setError("Error al registrar retiro. Por favor, intenta nuevamente.")
-      }
+      localStorage.setItem("supabaseUrl", supabaseUrl)
+      localStorage.setItem("supabaseKey", supabaseKey)
+      alert("Configuración guardada. Reintentando conexión...")
+      handleRetry()
+    } catch (error) {
+      alert("Error al guardar configuración: " + error)
     }
   }
 
-  // Manejar el registro de entrada de stock
-  const handleStockAddition = async () => {
-    if (selectedStockProduct && stockQuantity > 0) {
-      try {
-        // Actualizar el precio del producto si ha cambiado
-        if (currentPrice !== selectedStockProduct.price) {
-          await updateProductPrice(selectedStockProduct.id, currentPrice)
-        }
-
-        // Crear el nuevo registro
-        const newRecord: StockRecord = {
-          id: Date.now(),
-          hotelId: null,
-          hotelName: null,
-          productId: selectedStockProduct.id,
-          productName: selectedStockProduct.name,
-          productUnit: selectedStockProduct.unit,
-          quantity: stockQuantity,
-          price: currentPrice,
-          date: new Date(),
-          type: "entrada",
-        }
-
-        // Actualizar el inventario (sumar)
-        await updateInventory(selectedStockProduct.id, stockQuantity, true)
-
-        // Guardar el registro
-        await saveRecord(newRecord)
-
-        // Actualizar el estado local
-        setRecords([newRecord, ...records])
-
-        // Mostrar confirmación
-        setConfirmationMessage(
-          `Se han agregado ${stockQuantity} ${selectedStockProduct.unit} de ${
-            selectedStockProduct.name
-          } al inventario (${formatCurrency(currentPrice)} c/u)`,
-        )
-        setShowConfirmation(true)
-
-        // Reset form after 3 seconds
-        setTimeout(() => {
-          setShowConfirmation(false)
-        }, 3000)
-
-        // Limpiar el formulario
-        setSelectedStockProduct(null)
-        setStockQuantity(1)
-        setCurrentPrice(0)
-      } catch (error) {
-        console.error("Error al agregar stock:", error)
-        setError("Error al agregar stock. Por favor, intenta nuevamente.")
-      }
-    }
+  // Función para obtener el nombre del producto por ID
+  const getProductName = (productId: number) => {
+    const product = products.find((p) => p.id === productId)
+    return product ? product.name : "Producto desconocido"
   }
 
-  // Manejar la creación de un nuevo producto
-  const handleAddNewProduct = async () => {
-    // Validar que los campos no estén vacíos
-    if (!newProductName.trim() || !newProductUnit.trim() || newProductPrice <= 0) {
-      setNewProductError("Todos los campos son obligatorios y el precio debe ser mayor a cero")
-      return
-    }
+  // Función para obtener la unidad del producto por ID
+  const getProductUnit = (productId: number) => {
+    const product = products.find((p) => p.id === productId)
+    return product ? product.unit : ""
+  }
 
-    // Validar que no exista un producto con el mismo nombre
-    if (products.some((p) => p.name.toLowerCase() === newProductName.toLowerCase())) {
-      setNewProductError("Ya existe un producto con ese nombre")
-      return
+  // Función para obtener la cantidad en inventario por ID de producto
+  const getInventoryQuantity = (productId: number) => {
+    const item = inventory.find((i) => i.productId === productId)
+    return item ? item.quantity : 0
+  }
+
+  // Función para obtener la lista única de hoteles de los registros existentes y la lista predefinida
+  const getUniqueHotels = () => {
+    // Obtener hoteles de los registros existentes
+    const hotelsFromRecords = records
+      .filter((record) => record.type === "salida" && record.hotelName)
+      .map((record) => record.hotelName)
+      .filter((hotel): hotel is string => hotel !== null)
+
+    // Combinar con la lista predefinida y eliminar duplicados
+    const allHotels = [...new Set([...PREDEFINED_HOTELS, ...hotelsFromRecords])]
+
+    // Ordenar alfabéticamente
+    return allHotels.sort((a, b) => a.localeCompare(b))
+  }
+
+  // Función para añadir un nuevo producto
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const form = e.target as HTMLFormElement
+    const formData = new FormData(form)
+
+    const newProduct: Product = {
+      id: products.length > 0 ? Math.max(...products.map((p) => p.id)) + 1 : 1,
+      name: formData.get("name") as string,
+      unit: formData.get("unit") as string,
+      price: Number.parseFloat(formData.get("price") as string),
+      min_stock: Number.parseInt(formData.get("min_stock") as string, 10),
     }
 
     try {
-      // Crear el nuevo producto
-      const newProductId = Math.max(...products.map((p) => p.id), 0) + 1
-      const newProduct: Product = {
-        id: newProductId,
-        name: newProductName,
-        unit: newProductUnit,
-        price: newProductPrice,
+      const success = await saveProduct(newProduct)
+      if (success) {
+        setProducts([...products, newProduct])
+        // Inicializar inventario para este producto
+        const newInventoryItem: InventoryItem = {
+          productId: newProduct.id,
+          quantity: 0,
+        }
+        await saveInventoryItem(newInventoryItem)
+        setInventory([...inventory, newInventoryItem])
+        setIsAddingProduct(false)
+        form.reset()
+      } else {
+        alert("Error al guardar el producto")
       }
+    } catch (error) {
+      console.error("Error al guardar producto:", error)
+      alert(`Error al guardar el producto: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
 
-      // Guardar el nuevo producto
-      await saveProduct(newProduct)
+  // Función para editar un producto
+  const handleEditProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentProduct) return
 
-      // Actualizar la lista de productos localmente
-      setProducts([...products, newProduct])
+    const form = e.target as HTMLFormElement
+    const formData = new FormData(form)
 
-      // Añadir el producto al inventario con stock inicial 0
-      const newInventoryItem: ProductStock = { productId: newProductId, quantity: 0 }
-      await saveInventoryItem(newInventoryItem)
+    const updatedProduct: Product = {
+      id: currentProduct.id,
+      name: formData.get("name") as string,
+      unit: formData.get("unit") as string,
+      price: Number.parseFloat(formData.get("price") as string),
+      min_stock: Number.parseInt(formData.get("min_stock") as string, 10),
+    }
 
-      // Actualizar el inventario localmente
-      setInventory([...inventory, newInventoryItem])
+    try {
+      const success = await saveProduct(updatedProduct)
+      if (success) {
+        setProducts(products.map((p) => (p.id === updatedProduct.id ? updatedProduct : p)))
+        setIsEditingProduct(false)
+        setCurrentProduct(null)
+      } else {
+        alert("Error al actualizar el producto")
+      }
+    } catch (error) {
+      console.error("Error al actualizar producto:", error)
+      alert(`Error al actualizar el producto: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
 
-      // Mostrar confirmación
-      setConfirmationMessage(
-        `Se ha creado el nuevo producto: ${newProductName} (${formatCurrency(newProductPrice)} por ${newProductUnit})`,
+  // Añadir esta función para verificar la contraseña de administrador
+  const checkAdminPassword = () => {
+    // En una aplicación real, esto debería ser más seguro
+    // Por ejemplo, usando una verificación en el servidor
+    const correctPassword = "admin123" // Cambia esto a una contraseña más segura
+
+    if (adminPassword === correctPassword) {
+      setIsAdminMode(true)
+      return true
+    } else {
+      alert("Contraseña incorrecta")
+      return false
+    }
+  }
+
+  // Añadir esta función para editar un registro
+  const handleEditRecord = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentRecord) return
+
+    const form = e.target as HTMLFormElement
+    const formData = new FormData(form)
+
+    const productId = Number.parseInt(formData.get("productId") as string, 10)
+    const quantity = Number.parseInt(formData.get("quantity") as string, 10)
+    const product = products.find((p) => p.id === productId)
+
+    if (!product) {
+      alert("Producto no encontrado")
+      return
+    }
+
+    // Manejar el nombre del hotel
+    let hotelName = formData.get("hotelName") as string
+
+    // Si se seleccionó "nuevo", usar el valor del campo de texto
+    if (hotelName === "nuevo") {
+      const newHotelNameInput = document.getElementById("newHotelName") as HTMLInputElement
+      if (newHotelNameInput && newHotelNameInput.value) {
+        hotelName = newHotelNameInput.value
+      } else {
+        alert("Por favor ingresa el nombre del nuevo hotel")
+        return
+      }
+    }
+
+    const recordType = formData.get("recordType") as "entrada" | "salida"
+
+    const updatedRecord: StockRecord = {
+      ...currentRecord,
+      productId,
+      productName: product.name,
+      productUnit: product.unit,
+      quantity,
+      price: product.price,
+      hotelName: recordType === "salida" ? hotelName : null,
+      type: recordType,
+    }
+
+    try {
+      // Importar la función updateRecord desde db-manager
+      const { updateRecord } = await import("@/lib/db-manager")
+
+      const success = await updateRecord(updatedRecord)
+      if (success) {
+        // Actualizar la lista de registros
+        setRecords(records.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)))
+        setIsEditingRecord(false)
+        setCurrentRecord(null)
+      } else {
+        alert("Error al actualizar el registro")
+      }
+    } catch (error) {
+      console.error("Error al actualizar registro:", error)
+      alert(`Error al actualizar el registro: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  // Añadir esta función para eliminar un registro
+  const handleDeleteRecord = async (recordId: number) => {
+    try {
+      // Importar la función deleteRecord desde db-manager
+      const { deleteRecord } = await import("@/lib/db-manager")
+
+      const success = await deleteRecord(recordId)
+      if (success) {
+        // Actualizar la lista de registros
+        setRecords(records.filter((r) => r.id !== recordId))
+        setIsConfirmingDelete(false)
+        setRecordToDelete(null)
+      } else {
+        alert("Error al eliminar el registro")
+      }
+    } catch (error) {
+      console.error("Error al eliminar registro:", error)
+      alert(`Error al eliminar el registro: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  // Función para añadir un registro (entrada o salida)
+  const handleAddRecord = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const form = e.target as HTMLFormElement
+    const formData = new FormData(form)
+
+    const productId = Number.parseInt(formData.get("productId") as string, 10)
+    const quantity = Number.parseInt(formData.get("quantity") as string, 10)
+    const product = products.find((p) => p.id === productId)
+
+    if (!product) {
+      alert("Producto no encontrado")
+      return
+    }
+
+    // Manejar el nombre del hotel
+    let hotelName = formData.get("hotelName") as string
+
+    // Si se seleccionó "nuevo", usar el valor del campo de texto
+    if (hotelName === "nuevo") {
+      const newHotelNameInput = document.getElementById("newHotelName") as HTMLInputElement
+      if (newHotelNameInput && newHotelNameInput.value) {
+        hotelName = newHotelNameInput.value
+      } else {
+        alert("Por favor ingresa el nombre del nuevo hotel")
+        return
+      }
+    }
+
+    const newRecord: StockRecord = {
+      id: records.length > 0 ? Math.max(...records.map((r) => r.id)) + 1 : 1,
+      hotelId: null,
+      hotelName: hotelName || null,
+      productId,
+      productName: product.name,
+      productUnit: product.unit,
+      quantity,
+      price: product.price,
+      date: new Date(),
+      type: recordType,
+    }
+
+    try {
+      const success = await saveRecord(newRecord)
+      if (success) {
+        setRecords([newRecord, ...records])
+
+        // Actualizar inventario
+        const currentItem = inventory.find((i) => i.productId === productId)
+        if (currentItem) {
+          const newQuantity =
+            recordType === "entrada" ? currentItem.quantity + quantity : currentItem.quantity - quantity
+
+          const updatedItem: InventoryItem = {
+            ...currentItem,
+            quantity: newQuantity,
+          }
+
+          await saveInventoryItem(updatedItem)
+          setInventory(inventory.map((i) => (i.productId === productId ? updatedItem : i)))
+        }
+
+        setIsAddingRecord(false)
+        form.reset()
+      } else {
+        alert("Error al guardar el registro")
+      }
+    } catch (error) {
+      console.error("Error al guardar registro:", error)
+      alert(`Error al guardar el registro: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  // Añadir la función generateHotelSummary antes de la función de renderizado (return)
+  // Añadir esta función antes del return final
+  const generateHotelSummary = () => {
+    // Si no hay registros, mostrar mensaje
+    if (records.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">No hay registros de movimientos para generar el resumen.</div>
       )
-      setShowConfirmation(true)
-
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        setShowConfirmation(false)
-      }, 3000)
-
-      // Limpiar el formulario
-      setNewProductName("")
-      setNewProductUnit("")
-      setNewProductPrice(0)
-      setNewProductError("")
-      setShowNewProductForm(false)
-    } catch (error) {
-      console.error("Error al crear nuevo producto:", error)
-      setNewProductError("Error al crear el producto. Por favor, intenta nuevamente.")
-    }
-  }
-
-  const startEditing = (record: StockRecord) => {
-    const hotel = record.hotelId ? hotels.find((h) => h.id === record.hotelId) || null : null
-    const product: Product = {
-      id: record.productId,
-      name: record.productName,
-      unit: record.productUnit,
-      price: record.price,
     }
 
-    setEditingRecord(record.id)
-    setEditHotel(hotel)
-    setEditProduct(product)
-    setEditQuantity(record.quantity)
-    setEditPrice(record.price)
-  }
+    // Filtrar solo los registros de salida (los que van a hoteles)
+    const hotelRecords = records.filter((record) => record.type === "salida" && record.hotelName)
 
-  const cancelEditing = () => {
-    setEditingRecord(null)
-  }
+    if (hotelRecords.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          No hay registros de salidas a hoteles para generar el resumen.
+        </div>
+      )
+    }
 
-  const saveEdit = async (recordId: number) => {
-    const recordToEdit = records.find((r) => r.id === recordId)
+    // Obtener lista única de hoteles
+    const hotels = [...new Set(hotelRecords.map((record) => record.hotelName))]
 
-    if (!recordToEdit || !editProduct || editQuantity <= 0 || editPrice <= 0) return
+    // Obtener lista única de productos
+    const productIds = [...new Set(hotelRecords.map((record) => record.productId))]
 
-    // Si es un registro de salida, necesitamos verificar el hotel
-    if (recordToEdit.type === "salida" && !editHotel) return
-
-    try {
-      // Calcular la diferencia de cantidad para actualizar el inventario
-      const quantityDifference = editQuantity - recordToEdit.quantity
-
-      // Para registros de salida, verificar si hay suficiente stock
-      if (recordToEdit.type === "salida" && quantityDifference > 0) {
-        const currentStock = getProductStock(editProduct.id)
-        if (quantityDifference > currentStock) {
-          setShowStockError(true)
-          setTimeout(() => {
-            setShowStockError(false)
-          }, 3000)
-          return
+    // Crear estructura para el resumen
+    const summary: {
+      [hotelName: string]: {
+        [productId: number]: {
+          quantity: number
+          total: number
+          productName: string
+          productUnit: string
         }
+        total: number
       }
+    } = {}
 
-      // Actualizar el inventario
-      if (recordToEdit.productId === editProduct.id) {
-        // Si es el mismo producto, solo ajustamos la cantidad
-        if (recordToEdit.type === "entrada") {
-          await updateInventory(editProduct.id, Math.abs(quantityDifference), quantityDifference > 0)
-        } else {
-          await updateInventory(editProduct.id, Math.abs(quantityDifference), quantityDifference < 0)
-        }
-      } else {
-        // Si cambió el producto, revertimos la operación original y aplicamos la nueva
-        if (recordToEdit.type === "entrada") {
-          await updateInventory(recordToEdit.productId, recordToEdit.quantity, false)
-          await updateInventory(editProduct.id, editQuantity, true)
-        } else {
-          await updateInventory(recordToEdit.productId, recordToEdit.quantity, true)
-          await updateInventory(editProduct.id, editQuantity, false)
-        }
-      }
-
-      // Si es una entrada y cambió el precio, actualizar el precio del producto
-      if (recordToEdit.type === "entrada" && editPrice !== recordToEdit.price) {
-        await updateProductPrice(editProduct.id, editPrice)
-      }
-
-      // Actualizar el registro
-      const updatedRecord: StockRecord = {
-        ...recordToEdit,
-        hotelId: recordToEdit.type === "salida" ? editHotel?.id || null : null,
-        hotelName: recordToEdit.type === "salida" ? editHotel?.name || null : null,
-        productId: editProduct.id,
-        productName: editProduct.name,
-        productUnit: editProduct.unit,
-        quantity: editQuantity,
-        price: editPrice,
-      }
-
-      // Guardar el registro actualizado
-      await saveRecord(updatedRecord)
-
-      // Actualizar el registro localmente
-      const newRecords = records.map((record) => (record.id === recordId ? updatedRecord : record))
-      setRecords(newRecords)
-
-      setEditingRecord(null)
-    } catch (error) {
-      console.error("Error al editar registro:", error)
-      setError("Error al editar registro. Por favor, intenta nuevamente.")
-    }
-  }
-
-  // Función para exportar datos
-  const handleExportData = async () => {
-    try {
-      const data = await exportAllData()
-
-      // Convertir a JSON
-      const jsonData = JSON.stringify(data, null, 2)
-
-      // Crear un blob y un enlace de descarga
-      const blob = new Blob([jsonData], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `hoteles-stock-backup-${new Date().toISOString().split("T")[0]}.json`
-      document.body.appendChild(a)
-      a.click()
-
-      // Limpiar
-      setTimeout(() => {
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-      }, 0)
-
-      setShowImportExportDialog(false)
-    } catch (error) {
-      console.error("Error al exportar datos:", error)
-      setError("Error al exportar datos. Por favor, intenta nuevamente.")
-    }
-  }
-
-  // Función para importar datos
-  const handleImportData = async () => {
-    if (!importFile) {
-      setImportError("Por favor, selecciona un archivo para importar.")
-      return
-    }
-
-    try {
-      const fileContent = await importFile.text()
-      const data = JSON.parse(fileContent)
-
-      // Validar el formato del archivo
-      if (!data.products || !data.inventory || !data.records) {
-        setImportError("El archivo no tiene el formato correcto.")
-        return
-      }
-
-      // Importar los datos
-      const result = await importAllData(data)
-
-      if (result) {
-        // Recargar los datos
-        await loadInitialData()
-        setShowImportExportDialog(false)
-
-        // Mostrar confirmación
-        setConfirmationMessage("Datos importados correctamente.")
-        setShowConfirmation(true)
-        setTimeout(() => {
-          setShowConfirmation(false)
-        }, 3000)
-      } else {
-        setImportError("Error al importar los datos. Por favor, intenta nuevamente.")
-      }
-    } catch (error) {
-      console.error("Error al importar datos:", error)
-      setImportError("Error al procesar el archivo. Asegúrate de que sea un archivo JSON válido.")
-    }
-  }
-
-  // Calcular totales por hotel y producto
-  const calculateTotals = () => {
-    const totals: Record<
-      string,
-      Record<string, { quantity: number; totalCost: number; price: number; unit: string }>
-    > = {}
-
-    // Inicializar la estructura de datos
+    // Inicializar estructura
     hotels.forEach((hotel) => {
-      totals[hotel.id] = {}
-      products.forEach((product) => {
-        totals[hotel.id][product.id] = { quantity: 0, totalCost: 0, price: product.price, unit: product.unit }
-      })
-    })
-
-    // Sumar las cantidades y costos (solo para registros de salida)
-    records
-      .filter((record) => record.type === "salida" && record.hotelId)
-      .forEach((record) => {
-        if (record.hotelId) {
-          const hotelId = record.hotelId
-          const productId = record.productId
-          const cost = record.quantity * record.price
-
-          if (!totals[hotelId][productId]) {
-            totals[hotelId][productId] = {
+      if (hotel) {
+        summary[hotel] = { total: 0 }
+        productIds.forEach((productId) => {
+          const product = products.find((p) => p.id === productId)
+          if (product) {
+            summary[hotel][productId] = {
               quantity: 0,
-              totalCost: 0,
-              price: record.price,
-              unit: record.productUnit,
+              total: 0,
+              productName: product.name,
+              productUnit: product.unit,
             }
           }
-
-          totals[hotelId][productId].quantity += record.quantity
-          totals[hotelId][productId].totalCost += cost
-        }
-      })
-
-    return totals
-  }
-
-  // Calcular el total gastado por hotel
-  const calculateHotelTotals = () => {
-    const hotelTotals: Record<string, number> = {}
-    const productTotals: Record<string, { quantity: number; totalCost: number }> = {}
-    let grandTotal = 0
-
-    // Inicializar totales por hotel
-    hotels.forEach((hotel) => {
-      hotelTotals[hotel.id] = 0
+        })
+      }
     })
 
-    // Inicializar totales por producto
-    products.forEach((product) => {
-      productTotals[product.id] = { quantity: 0, totalCost: 0 }
-    })
+    // Calcular totales
+    hotelRecords.forEach((record) => {
+      if (record.hotelName) {
+        const hotel = record.hotelName
+        const productId = record.productId
+        const total = record.quantity * record.price
 
-    // Sumar los costos por hotel y producto
-    records
-      .filter((record) => record.type === "salida" && record.hotelId)
-      .forEach((record) => {
-        if (record.hotelId) {
-          const cost = record.quantity * record.price
-          hotelTotals[record.hotelId] += cost
-          grandTotal += cost
-
-          if (!productTotals[record.productId]) {
-            productTotals[record.productId] = { quantity: 0, totalCost: 0 }
+        if (!summary[hotel][productId]) {
+          summary[hotel][productId] = {
+            quantity: 0,
+            total: 0,
+            productName: record.productName,
+            productUnit: record.productUnit,
           }
-          productTotals[record.productId].quantity += record.quantity
-          productTotals[record.productId].totalCost += cost
         }
-      })
 
-    return { hotelTotals, productTotals, grandTotal }
+        summary[hotel][productId].quantity += record.quantity
+        summary[hotel][productId].total += total
+        summary[hotel].total += total
+      }
+    })
+
+    // Calcular totales por producto (para todas las columnas)
+    const productTotals: {
+      [productId: number]: {
+        quantity: number
+        total: number
+        productName: string
+      }
+    } = {}
+
+    productIds.forEach((productId) => {
+      const product = products.find((p) => p.id === productId)
+      if (product) {
+        productTotals[productId] = {
+          quantity: 0,
+          total: 0,
+          productName: product.name,
+        }
+
+        hotels.forEach((hotel) => {
+          if (hotel && summary[hotel][productId]) {
+            productTotals[productId].quantity += summary[hotel][productId].quantity
+            productTotals[productId].total += summary[hotel][productId].total
+          }
+        })
+      }
+    })
+
+    // Calcular gran total
+    const grandTotal = Object.values(summary).reduce((acc, hotel) => acc + hotel.total, 0)
+
+    return (
+      <div>
+        <table className="min-w-full bg-white border border-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="py-2 px-4 border-b text-left">Hotel / Producto</th>
+              {productIds.map((productId) => {
+                const product = products.find((p) => p.id === productId)
+                return (
+                  <th key={productId} className="py-2 px-4 border-b text-left">
+                    {product ? product.name : `Producto ${productId}`}
+                  </th>
+                )
+              })}
+              <th className="py-2 px-4 border-b text-left font-bold">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {hotels.map((hotel) => {
+              if (!hotel) return null
+              return (
+                <tr key={hotel}>
+                  <td className="py-2 px-4 border-b font-medium">{hotel}</td>
+                  {productIds.map((productId) => {
+                    const productSummary = summary[hotel][productId]
+                    if (!productSummary) {
+                      return (
+                        <td key={productId} className="py-2 px-4 border-b">
+                          -
+                        </td>
+                      )
+                    }
+                    return (
+                      <td key={productId} className="py-2 px-4 border-b">
+                        <div>
+                          {productSummary.quantity} {productSummary.productUnit}
+                        </div>
+                        <div className="text-gray-600">${productSummary.total.toLocaleString()}</div>
+                      </td>
+                    )
+                  })}
+                  <td className="py-2 px-4 border-b font-bold">${summary[hotel].total.toLocaleString()}</td>
+                </tr>
+              )
+            })}
+            {/* Fila de totales */}
+            <tr className="bg-gray-50">
+              <td className="py-2 px-4 border-b font-bold">TOTAL</td>
+              {productIds.map((productId) => (
+                <td key={productId} className="py-2 px-4 border-b font-bold">
+                  <div>
+                    {productTotals[productId].quantity} {products.find((p) => p.id === productId)?.unit || ""}
+                  </div>
+                  <div>${productTotals[productId].total.toLocaleString()}</div>
+                </td>
+              ))}
+              <td className="py-2 px-4 border-b font-bold text-lg">${grandTotal.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Resumen visual */}
+        <div className="mt-8">
+          <h4 className="text-md font-medium mb-4">Distribución de Gastos por Hotel</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Gráfico de barras simple */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              {hotels.map((hotel) => {
+                if (!hotel) return null
+                const percentage = (summary[hotel].total / grandTotal) * 100
+                return (
+                  <div key={hotel} className="mb-2">
+                    <div className="flex justify-between mb-1">
+                      <span>{hotel}</span>
+                      <span>
+                        ${summary[hotel].total.toLocaleString()} ({percentage.toFixed(1)}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-4">
+                      <div className="bg-blue-600 h-4 rounded-full" style={{ width: `${percentage}%` }}></div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Top productos */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h5 className="font-medium mb-2">Top Productos por Gasto</h5>
+              <table className="min-w-full">
+                <thead>
+                  <tr>
+                    <th className="text-left">Producto</th>
+                    <th className="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(productTotals)
+                    .sort(([, a], [, b]) => b.total - a.total)
+                    .slice(0, 5)
+                    .map(([productId, data]) => (
+                      <tr key={productId}>
+                        <td>{data.productName}</td>
+                        <td className="text-right">${data.total.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
-  // Manejar el cambio de pestaña
-  const handleTabChange = (value: string) => {
-    // Si intenta acceder a la pestaña de agregar stock y no está autenticado
-    if ((value === "add-stock" || value === "summary") && !isAuthenticated) {
-      setShowAuthDialog(true)
-      return
-    }
-
-    setActiveTab(value)
-  }
-
-  // Verificar la contraseña
-  const handleAuthentication = () => {
-    if (password === ADMIN_PASSWORD) {
-      setIsAuthenticated(true)
-      setShowAuthDialog(false)
-      setAuthError(false)
-      setPassword("")
-      setActiveTab("add-stock")
-    } else {
-      setAuthError(true)
-    }
-  }
-
-  // Cerrar sesión
-  const handleLogout = () => {
-    setIsAuthenticated(false)
-    if (activeTab === "add-stock" || activeTab === "summary") {
-      setActiveTab("register")
-    }
-  }
-
-  const totals = calculateTotals()
-  const { hotelTotals, productTotals, grandTotal } = calculateHotelTotals()
-
-  // Mostrar pantalla de carga mientras se inicializan los datos
+  // Mostrar pantalla de carga
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh]">
         <Loader2 className="h-12 w-12 animate-spin text-gray-400 mb-4" />
-        <h2 className="text-xl font-medium text-gray-700">Cargando datos...</h2>
-        <p className="text-gray-500 mt-2">Por favor espere mientras se cargan los datos del sistema.</p>
+        <h2 className="text-xl font-medium text-gray-700">Conectando con Supabase...</h2>
+        <p className="text-gray-500 mt-2">Por favor espere mientras se establece la conexión.</p>
       </div>
     )
   }
 
-  return (
-    <>
-      <div className="flex flex-col items-start mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">HOTELES DE LA COSTA</h1>
-        <h2 className="text-xl text-gray-600">Sistema de Gestión de Stock</h2>
-        <div className="flex justify-between w-full mt-2">
-          <div className="flex items-center space-x-2">
-            <Badge
-              variant="outline"
-              className={cn(
-                "flex items-center",
-                connectionStatus.isOnlineMode ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700",
+  // Mostrar pantalla de error
+  if (error) {
+    return (
+      <div className="p-4">
+        <h1 className="text-2xl font-bold mb-4">HOTELES DE LA COSTA</h1>
+        <h2 className="text-xl mb-6">Sistema de Gestión de Stock</h2>
+
+        <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+          <div className="flex items-start">
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-2 mt-0.5" />
+            <div>
+              <h3 className="text-lg font-medium text-red-800 mb-2">Error de conexión</h3>
+              <p className="text-red-700 mb-2">No se pudo conectar con Supabase. Esto puede deberse a:</p>
+              <ul className="list-disc pl-5 mb-4 text-red-700">
+                <li>Problemas de conexión a internet</li>
+                <li>Credenciales de Supabase incorrectas o no configuradas</li>
+                <li>El servidor de Supabase no está disponible temporalmente</li>
+              </ul>
+
+              {showFullError && (
+                <div className="bg-red-100 p-3 rounded-md mb-4 overflow-auto max-h-40">
+                  <pre className="text-xs text-red-800 whitespace-pre-wrap">{error}</pre>
+                </div>
               )}
-              onClick={() => setShowBackupDialog(true)}
-            >
-              {connectionStatus.isOnlineMode ? (
-                <>
-                  <Cloud className="h-3 w-3 mr-1" />
-                  Datos sincronizados en la nube
-                </>
-              ) : (
-                <>
-                  <HardDrive className="h-3 w-3 mr-1" />
-                  Datos guardados localmente
-                </>
-              )}
-            </Badge>
-            <Button variant="ghost" size="sm" onClick={() => setShowImportExportDialog(true)}>
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Importar/Exportar
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setShowBackupDialog(true)}>
-              <Download className="h-4 w-4 mr-1" />
-              Crear copia de seguridad
-            </Button>
+
+              <button
+                onClick={() => setShowFullError(!showFullError)}
+                className="text-red-700 underline text-sm mb-4 block"
+              >
+                {showFullError ? "Ocultar detalles técnicos" : "Mostrar detalles técnicos"}
+              </button>
+            </div>
           </div>
-          {isAuthenticated && (
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Cerrar sesión de administrador
-            </Button>
-          )}
+
+          <div className="flex flex-col sm:flex-row gap-4 mt-4">
+            <button
+              onClick={handleRetry}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Reintentar conexión
+            </button>
+
+            <button
+              onClick={handleResetConfig}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+            >
+              Reiniciar configuración
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
+          <h3 className="text-lg font-medium text-yellow-800 mb-2 flex items-center">
+            <Database className="h-5 w-5 mr-2" />
+            Configuración de Supabase
+          </h3>
+          <p className="text-yellow-700 mb-4">
+            Configura las credenciales de Supabase para conectarte a tu base de datos:
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="supabaseUrl" className="block text-sm font-medium text-yellow-700 mb-1 flex items-center">
+                <Database className="h-4 w-4 mr-1" />
+                URL de Supabase
+              </label>
+              <input
+                type="text"
+                id="supabaseUrl"
+                className="w-full px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                placeholder="https://tu-proyecto.supabase.co"
+                value={supabaseUrl}
+                onChange={(e) => setSupabaseUrl(e.target.value)}
+              />
+              <p className="text-xs text-yellow-600 mt-1">Ejemplo: https://abcdefghijklm.supabase.co</p>
+            </div>
+
+            <div>
+              <label htmlFor="supabaseKey" className="block text-sm font-medium text-yellow-700 mb-1 flex items-center">
+                <Key className="h-4 w-4 mr-1" />
+                Clave anónima de Supabase (anon key)
+              </label>
+              <input
+                type="text"
+                id="supabaseKey"
+                className="w-full px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                placeholder="eyJ0eXAiOiJKV1QiLCJhbGci..."
+                value={supabaseKey}
+                onChange={(e) => setSupabaseKey(e.target.value)}
+              />
+              <p className="text-xs text-yellow-600 mt-1">
+                Comienza con "eyJ..." - Puedes encontrarla en la configuración de tu proyecto en Supabase
+              </p>
+            </div>
+
+            <button
+              onClick={handleSaveConfig}
+              className="w-full py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors"
+            >
+              Guardar configuración y reconectar
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>Si los problemas persisten, contacta al administrador del sistema.</p>
         </div>
       </div>
+    )
+  }
 
-      {error && (
-        <Alert className="mb-4 bg-red-50 border-red-200">
-          <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
-          <AlertDescription className="text-red-800">{error}</AlertDescription>
-        </Alert>
-      )}
+  // Si está conectado, mostrar la interfaz completa
+  if (isConnected) {
+    return (
+      <div className="p-4">
+        <h1 className="text-2xl font-bold mb-2">HOTELES DE LA COSTA</h1>
+        <h2 className="text-xl mb-4">Sistema de Gestión de Stock</h2>
 
-      {backupStatus === "success" && (
-        <Alert className="mb-4 bg-green-50 border-green-200">
-          <Check className="h-4 w-4 text-green-500 mr-2" />
-          <AlertDescription className="text-green-800">Copia de seguridad creada correctamente.</AlertDescription>
-        </Alert>
-      )}
+        {/* Tabs de navegación */}
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            className={`px-4 py-2 font-medium ${
+              activeTab === "inventory"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("inventory")}
+          >
+            Inventario
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
+              activeTab === "products"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("products")}
+          >
+            Productos
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
+              activeTab === "records" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("records")}
+          >
+            Movimientos
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
+              activeTab === "hotelSummary"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("hotelSummary")}
+          >
+            Resumen Hoteles
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
+              activeTab === "admin" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("admin")}
+          >
+            Administración
+          </button>
+        </div>
 
-      {backupStatus === "error" && (
-        <Alert className="mb-4 bg-red-50 border-red-200">
-          <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
-          <AlertDescription className="text-red-800">Error al crear la copia de seguridad.</AlertDescription>
-        </Alert>
-      )}
-
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="register">Registrar Retiro</TabsTrigger>
-          <TabsTrigger value="add-stock" className="relative">
-            {!isAuthenticated && <Lock className="h-3 w-3 absolute right-2 top-2" />}
-            Agregar Stock
-          </TabsTrigger>
-          <TabsTrigger value="history">Historial</TabsTrigger>
-          <TabsTrigger value="summary" className="relative">
-            {!isAuthenticated && <Lock className="h-3 w-3 absolute right-2 top-2" />}
-            Resumen
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="register">
-          <div className="grid gap-8 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Registrar Retiro de Stock</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="hotel">Hotel</Label>
-                  <Popover open={hotelOpen} onOpenChange={setHotelOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={hotelOpen}
-                        className="w-full justify-between"
-                      >
-                        {selectedHotel ? selectedHotel.name : "Seleccionar hotel..."}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
-                      <Command>
-                        <CommandInput placeholder="Buscar hotel..." />
-                        <CommandList>
-                          <CommandEmpty>No se encontraron hoteles.</CommandEmpty>
-                          <CommandGroup>
-                            <ScrollArea className="h-72">
-                              {hotels.map((hotel) => (
-                                <CommandItem
-                                  key={hotel.id}
-                                  value={hotel.name}
-                                  onSelect={() => {
-                                    setSelectedHotel(hotel)
-                                    setHotelOpen(false)
-                                  }}
-                                >
-                                  <Hotel className="mr-2 h-4 w-4" />
-                                  {hotel.name}
-                                  <Check
-                                    className={cn(
-                                      "ml-auto h-4 w-4",
-                                      selectedHotel?.id === hotel.id ? "opacity-100" : "opacity-0",
-                                    )}
-                                  />
-                                </CommandItem>
-                              ))}
-                            </ScrollArea>
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="product">Producto</Label>
-                  <Popover open={productOpen} onOpenChange={setProductOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={productOpen}
-                        className="w-full justify-between"
-                      >
-                        {selectedProduct ? selectedProduct.name : "Seleccionar producto..."}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
-                      <Command>
-                        <CommandInput placeholder="Buscar producto..." />
-                        <CommandList>
-                          <CommandEmpty>No se encontraron productos.</CommandEmpty>
-                          <CommandGroup>
-                            <ScrollArea className="h-72">
-                              {products.map((product) => {
-                                const stock = getProductStock(product.id)
-                                return (
-                                  <CommandItem
-                                    key={product.id}
-                                    value={product.name}
-                                    onSelect={() => {
-                                      setSelectedProduct(product)
-                                      setProductOpen(false)
-                                    }}
-                                    disabled={stock <= 0}
-                                  >
-                                    <Package className="mr-2 h-4 w-4" />
-                                    <div className="flex-1">
-                                      {product.name}
-                                      <span className="ml-2 text-xs text-muted-foreground">
-                                        (Stock: {stock} {product.unit} - {formatCurrency(product.price)} c/u)
-                                      </span>
-                                    </div>
-                                    <Check
-                                      className={cn(
-                                        "ml-auto h-4 w-4",
-                                        selectedProduct?.id === product.id ? "opacity-100" : "opacity-0",
-                                      )}
-                                    />
-                                  </CommandItem>
-                                )
-                              })}
-                            </ScrollArea>
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                {selectedProduct && (
-                  <div className="p-2 bg-gray-50 rounded-md">
-                    <p className="text-sm">
-                      Stock disponible:{" "}
-                      <span className="font-medium">
-                        {getProductStock(selectedProduct.id)} {selectedProduct.unit}
-                      </span>
-                    </p>
-                    <p className="text-sm mt-1">
-                      Precio unitario: <span className="font-medium">{formatCurrency(selectedProduct.price)}</span>
-                    </p>
-                    {quantity > 0 && (
-                      <p className="text-sm mt-1">
-                        Total: <span className="font-medium">{formatCurrency(quantity * selectedProduct.price)}</span>
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="quantity">Cantidad</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    max={selectedProduct ? getProductStock(selectedProduct.id) : 1}
-                    value={quantity}
-                    onChange={(e) => setQuantity(Number.parseInt(e.target.value) || 0)}
-                  />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  onClick={handleWithdrawal}
-                  className="w-full"
-                  disabled={
-                    !selectedHotel ||
-                    !selectedProduct ||
-                    quantity <= 0 ||
-                    (selectedProduct && quantity > getProductStock(selectedProduct.id))
-                  }
+        {/* Contenido según la pestaña activa */}
+        {activeTab === "inventory" && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Inventario Actual</h3>
+              <div className="space-x-2">
+                <button
+                  onClick={() => {
+                    setIsAddingRecord(true)
+                    setRecordType("entrada")
+                  }}
+                  className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
                 >
-                  Registrar Retiro
-                </Button>
-              </CardFooter>
-            </Card>
+                  <ArrowDown className="h-4 w-4 mr-1" />
+                  Entrada
+                </button>
+                <button
+                  onClick={() => {
+                    setIsAddingRecord(true)
+                    setRecordType("salida")
+                  }}
+                  className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
+                >
+                  <ArrowUp className="h-4 w-4 mr-1" />
+                  Salida
+                </button>
+              </div>
+            </div>
 
-            <div className="space-y-4">
-              {showConfirmation && (
-                <Alert className="bg-green-50 border-green-200">
-                  <AlertDescription className="text-green-800">{confirmationMessage}</AlertDescription>
-                </Alert>
-              )}
+            {/* Tabla de inventario */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full bg-white border border-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="py-2 px-4 border-b text-left">Producto</th>
+                    <th className="py-2 px-4 border-b text-left">Cantidad</th>
+                    <th className="py-2 px-4 border-b text-left">Unidad</th>
+                    <th className="py-2 px-4 border-b text-left">Stock Mínimo</th>
+                    <th className="py-2 px-4 border-b text-left">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventory.map((item) => {
+                    const product = products.find((p) => p.id === item.productId)
+                    const isLowStock = product && item.quantity < product.min_stock
 
-              {showStockError && (
-                <Alert className="bg-red-50 border-red-200">
-                  <AlertDescription className="text-red-800">
-                    No hay suficiente stock disponible para realizar esta operación.
-                  </AlertDescription>
-                </Alert>
-              )}
+                    return (
+                      <tr key={item.productId} className={isLowStock ? "bg-red-50" : ""}>
+                        <td className="py-2 px-4 border-b">{getProductName(item.productId)}</td>
+                        <td className="py-2 px-4 border-b">{item.quantity}</td>
+                        <td className="py-2 px-4 border-b">{getProductUnit(item.productId)}</td>
+                        <td className="py-2 px-4 border-b">{product?.min_stock || "N/A"}</td>
+                        <td className="py-2 px-4 border-b">
+                          {isLowStock ? (
+                            <span className="text-red-600 font-medium flex items-center">
+                              <AlertTriangle className="h-4 w-4 mr-1" />
+                              Stock bajo
+                            </span>
+                          ) : (
+                            <span className="text-green-600">OK</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Últimos Movimientos</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {records.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">No hay registros de movimientos</p>
-                  ) : (
-                    <ScrollArea className="h-[300px]">
-                      <div className="space-y-3">
-                        {records.slice(0, 5).map((record) => (
-                          <div key={record.id} className="p-3 border rounded-md">
-                            <div className="flex items-center justify-between">
-                              <div className="font-medium">
-                                {record.type === "salida" ? record.hotelName : "Entrada de Stock"}
-                              </div>
-                              <Badge variant={record.type === "entrada" ? "outline" : "secondary"}>
-                                {record.type === "entrada" ? (
-                                  <PlusCircle className="h-3 w-3 mr-1" />
-                                ) : (
-                                  <MinusCircle className="h-3 w-3 mr-1" />
-                                )}
-                                {record.type === "entrada" ? "Entrada" : "Salida"}
-                              </Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {record.type === "entrada" ? "Se agregaron" : "Se retiraron"} {record.quantity}{" "}
-                              {record.productUnit} de {record.productName}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {record.date.toLocaleString()} - {formatCurrency(record.quantity * record.price)}
-                            </div>
-                          </div>
+            {/* Modal para añadir registro */}
+            {isAddingRecord && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                  <h3 className="text-lg font-medium mb-4">
+                    {recordType === "entrada" ? "Registrar Entrada" : "Registrar Salida"}
+                  </h3>
+                  <form onSubmit={handleAddRecord}>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                      <select name="productId" className="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                        <option value="">Seleccionar producto</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} ({product.unit})
+                          </option>
                         ))}
-                      </div>
-                    </ScrollArea>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="add-stock">
-          {!isAuthenticated ? (
-            <div className="flex flex-col items-center justify-center min-h-[300px]">
-              <Lock className="h-10 w-10 text-gray-400 mb-4" />
-              <h2 className="text-xl font-medium text-gray-700">Acceso restringido</h2>
-              <p className="text-gray-500 mt-2">Debes iniciar sesión como administrador para acceder a esta función.</p>
-              <Button className="mt-4" onClick={() => setShowAuthDialog(true)}>
-                Iniciar sesión
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-8 md:grid-cols-2">
-              <div className="space-y-8">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Agregar Stock</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="stockProduct">Producto</Label>
-                      <Popover open={stockProductOpen} onOpenChange={setStockProductOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            aria-expanded={stockProductOpen}
-                            className="w-full justify-between"
-                          >
-                            {selectedStockProduct ? selectedStockProduct.name : "Seleccionar producto..."}
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-full p-0">
-                          <Command>
-                            <CommandInput placeholder="Buscar producto..." />
-                            <CommandList>
-                              <CommandEmpty>No se encontraron productos.</CommandEmpty>
-                              <CommandGroup>
-                                <ScrollArea className="h-72">
-                                  {products.map((product) => (
-                                    <CommandItem
-                                      key={product.id}
-                                      value={product.name}
-                                      onSelect={() => {
-                                        setSelectedStockProduct(product)
-                                        setCurrentPrice(product.price)
-                                        setStockProductOpen(false)
-                                      }}
-                                    >
-                                      <Package className="mr-2 h-4 w-4" />
-                                      {product.name}
-                                      <Check
-                                        className={cn(
-                                          "ml-auto h-4 w-4",
-                                          selectedStockProduct?.id === product.id ? "opacity-100" : "opacity-0",
-                                        )}
-                                      />
-                                    </CommandItem>
-                                  ))}
-                                </ScrollArea>
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
+                      </select>
                     </div>
-
-                    {selectedStockProduct && (
-                      <div className="p-2 bg-gray-50 rounded-md">
-                        <p className="text-sm">
-                          Stock actual:{" "}
-                          <span className="font-medium">
-                            {getProductStock(selectedStockProduct.id)} {selectedStockProduct.unit}
-                          </span>
-                        </p>
-                        <p className="text-sm mt-1">
-                          Precio actual:{" "}
-                          <span className="font-medium">{formatCurrency(selectedStockProduct.price)}</span>
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <Label htmlFor="stockQuantity">Cantidad a agregar</Label>
-                      <Input
-                        id="stockQuantity"
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                      <input
                         type="number"
+                        name="quantity"
                         min="1"
-                        value={stockQuantity}
-                        onChange={(e) => setStockQuantity(Number.parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
                       />
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="currentPrice">Precio por {selectedStockProduct?.unit || "unidad"}</Label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="currentPrice"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="pl-8"
-                          value={currentPrice}
-                          onChange={(e) => setCurrentPrice(Number.parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Si el precio ha cambiado, actualícelo aquí. Se aplicará a todo el stock nuevo.
-                      </p>
-                    </div>
-                  </CardContent>
-                  <CardFooter>
-                    <Button
-                      onClick={handleStockAddition}
-                      className="w-full"
-                      disabled={!selectedStockProduct || stockQuantity <= 0 || currentPrice <= 0}
-                    >
-                      Agregar al Inventario
-                    </Button>
-                  </CardFooter>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Agregar Nuevo Producto</CardTitle>
-                    <Button variant="outline" size="sm" onClick={() => setShowNewProductForm(!showNewProductForm)}>
-                      {showNewProductForm ? <X className="h-4 w-4 mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-                      {showNewProductForm ? "Cancelar" : "Nuevo Producto"}
-                    </Button>
-                  </CardHeader>
-                  {showNewProductForm && (
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="newProductName">Nombre del Producto</Label>
-                        <Input
-                          id="newProductName"
-                          value={newProductName}
-                          onChange={(e) => setNewProductName(e.target.value)}
-                          placeholder="Ej: Detergente"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="newProductUnit">Unidad de Medida</Label>
-                        <Input
-                          id="newProductUnit"
-                          value={newProductUnit}
-                          onChange={(e) => setNewProductUnit(e.target.value)}
-                          placeholder="Ej: litros, kg, cajas"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="newProductPrice">Precio por unidad</Label>
-                        <div className="relative">
-                          <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="newProductPrice"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="pl-8"
-                            value={newProductPrice}
-                            onChange={(e) => setNewProductPrice(Number.parseFloat(e.target.value) || 0)}
-                            placeholder="Ej: 1500"
+                    {recordType === "salida" && (
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Hotel</label>
+                        <div className="flex gap-2">
+                          <select
+                            name="hotelName"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            defaultValue=""
+                            required
+                          >
+                            <option value="">Seleccionar hotel...</option>
+                            {getUniqueHotels().map((hotel) => (
+                              <option key={hotel} value={hotel}>
+                                {hotel}
+                              </option>
+                            ))}
+                            <option value="nuevo">+ Añadir nuevo hotel</option>
+                          </select>
+                        </div>
+                        <div id="newHotelInput" className="mt-2 hidden">
+                          <input
+                            type="text"
+                            id="newHotelName"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            placeholder="Nombre del nuevo hotel"
                           />
                         </div>
                       </div>
-
-                      {newProductError && <p className="text-sm text-red-500">{newProductError}</p>}
-
-                      <Button onClick={handleAddNewProduct} className="w-full">
-                        <Plus className="h-4 w-4 mr-1" />
-                        Crear Producto
-                      </Button>
-                    </CardContent>
-                  )}
-                </Card>
-              </div>
-
-              <div className="space-y-4">
-                {showConfirmation && (
-                  <Alert className="bg-green-50 border-green-200">
-                    <AlertDescription className="text-green-800">{confirmationMessage}</AlertDescription>
-                  </Alert>
-                )}
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Inventario Actual</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Producto</TableHead>
-                          <TableHead>Unidad</TableHead>
-                          <TableHead>Precio</TableHead>
-                          <TableHead className="text-right">Stock Disponible</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {products.map((product) => {
-                          const stock = getProductStock(product.id)
-                          return (
-                            <TableRow key={product.id}>
-                              <TableCell>{product.name}</TableCell>
-                              <TableCell>{product.unit}</TableCell>
-                              <TableCell>{formatCurrency(product.price)}</TableCell>
-                              <TableCell className="text-right font-medium">{stock}</TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="history">
-          <Card>
-            <CardHeader>
-              <CardTitle>Historial de Movimientos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {records.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">No hay registros de movimientos</p>
-              ) : (
-                <ScrollArea className="h-[500px]">
-                  <div className="space-y-3">
-                    {records.map((record) => (
-                      <div key={record.id} className="p-3 border rounded-md">
-                        {editingRecord === record.id ? (
-                          <div className="space-y-3">
-                            {record.type === "salida" && (
-                              <div className="space-y-2">
-                                <Label>Hotel</Label>
-                                <Popover open={editHotelOpen} onOpenChange={setEditHotelOpen}>
-                                  <PopoverTrigger asChild>
-                                    <Button variant="outline" role="combobox" className="w-full justify-between">
-                                      {editHotel ? editHotel.name : "Seleccionar hotel..."}
-                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-full p-0">
-                                    <Command>
-                                      <CommandInput placeholder="Buscar hotel..." />
-                                      <CommandList>
-                                        <CommandEmpty>No se encontraron hoteles.</CommandEmpty>
-                                        <CommandGroup>
-                                          <ScrollArea className="h-72">
-                                            {hotels.map((hotel) => (
-                                              <CommandItem
-                                                key={hotel.id}
-                                                value={hotel.name}
-                                                onSelect={() => {
-                                                  setEditHotel(hotel)
-                                                  setEditHotelOpen(false)
-                                                }}
-                                              >
-                                                <Hotel className="mr-2 h-4 w-4" />
-                                                {hotel.name}
-                                                <Check
-                                                  className={cn(
-                                                    "ml-auto h-4 w-4",
-                                                    editHotel?.id === hotel.id ? "opacity-100" : "opacity-0",
-                                                  )}
-                                                />
-                                              </CommandItem>
-                                            ))}
-                                          </ScrollArea>
-                                        </CommandGroup>
-                                      </CommandList>
-                                    </Command>
-                                  </PopoverContent>
-                                </Popover>
-                              </div>
-                            )}
-
-                            <div className="space-y-2">
-                              <Label>Producto</Label>
-                              <Popover open={editProductOpen} onOpenChange={setEditProductOpen}>
-                                <PopoverTrigger asChild>
-                                  <Button variant="outline" role="combobox" className="w-full justify-between">
-                                    {editProduct ? editProduct.name : "Seleccionar producto..."}
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-full p-0">
-                                  <Command>
-                                    <CommandInput placeholder="Buscar producto..." />
-                                    <CommandList>
-                                      <CommandEmpty>No se encontraron productos.</CommandEmpty>
-                                      <CommandGroup>
-                                        <ScrollArea className="h-72">
-                                          {products.map((product) => (
-                                            <CommandItem
-                                              key={product.id}
-                                              value={product.name}
-                                              onSelect={() => {
-                                                setEditProduct(product)
-                                                setEditPrice(product.price)
-                                                setEditProductOpen(false)
-                                              }}
-                                            >
-                                              <Package className="mr-2 h-4 w-4" />
-                                              {product.name}
-                                              <Check
-                                                className={cn(
-                                                  "ml-auto h-4 w-4",
-                                                  editProduct?.id === product.id ? "opacity-100" : "opacity-0",
-                                                )}
-                                              />
-                                            </CommandItem>
-                                          ))}
-                                        </ScrollArea>
-                                      </CommandGroup>
-                                    </CommandList>
-                                  </Command>
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>Cantidad</Label>
-                              <Input
-                                type="number"
-                                min="1"
-                                value={editQuantity}
-                                onChange={(e) => setEditQuantity(Number.parseInt(e.target.value) || 0)}
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>Precio por unidad</Label>
-                              <div className="relative">
-                                <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  className="pl-8"
-                                  value={editPrice}
-                                  onChange={(e) => setEditPrice(Number.parseFloat(e.target.value) || 0)}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="flex space-x-2 pt-2">
-                              <Button
-                                size="sm"
-                                onClick={() => saveEdit(record.id)}
-                                disabled={
-                                  (record.type === "salida" && !editHotel) ||
-                                  !editProduct ||
-                                  editQuantity <= 0 ||
-                                  editPrice <= 0
-                                }
-                              >
-                                <Save className="h-4 w-4 mr-1" /> Guardar
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={cancelEditing}>
-                                <X className="h-4 w-4 mr-1" /> Cancelar
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <div className="font-medium">
-                                    {record.type === "salida" ? record.hotelName : "Entrada de Stock"}
-                                  </div>
-                                  <Badge variant={record.type === "entrada" ? "outline" : "secondary"}>
-                                    {record.type === "entrada" ? (
-                                      <PlusCircle className="h-3 w-3 mr-1" />
-                                    ) : (
-                                      <MinusCircle className="h-3 w-3 mr-1" />
-                                    )}
-                                    {record.type === "entrada" ? "Entrada" : "Salida"}
-                                  </Badge>
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  {record.type === "entrada" ? "Se agregaron" : "Se retiraron"} {record.quantity}{" "}
-                                  {record.productUnit} de {record.productName} a {formatCurrency(record.price)} c/u
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {record.date.toLocaleString()} - Total:{" "}
-                                  {formatCurrency(record.quantity * record.price)}
-                                </div>
-                              </div>
-                              <Button size="sm" variant="ghost" onClick={() => startEditing(record)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="summary">
-          <div className="grid gap-8 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Inventario Actual</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Producto</TableHead>
-                      <TableHead>Unidad</TableHead>
-                      <TableHead>Precio</TableHead>
-                      <TableHead className="text-right">Stock Disponible</TableHead>
-                      <TableHead className="text-right">Valor Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {products.map((product) => {
-                      const stock = getProductStock(product.id)
-                      const totalValue = stock * product.price
-                      return (
-                        <TableRow key={product.id}>
-                          <TableCell>{product.name}</TableCell>
-                          <TableCell>{product.unit}</TableCell>
-                          <TableCell>{formatCurrency(product.price)}</TableCell>
-                          <TableCell className="text-right font-medium">{stock}</TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(totalValue)}</TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Resumen por Hotel y Producto</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {records.filter((r) => r.type === "salida").length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">No hay datos para mostrar</p>
-                ) : (
-                  <ScrollArea className="h-[500px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Hotel</TableHead>
-                          <TableHead>Producto</TableHead>
-                          <TableHead className="text-right">Cantidad</TableHead>
-                          <TableHead className="text-right">Precio Unitario</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {hotels.map((hotel) =>
-                          products.map((product) => {
-                            const data = totals[hotel.id]?.[product.id]
-                            if (!data || data.quantity === 0) return null
-
-                            return (
-                              <TableRow key={`${hotel.id}-${product.id}`}>
-                                <TableCell>{hotel.name}</TableCell>
-                                <TableCell>{product.name}</TableCell>
-                                <TableCell className="text-right font-medium">
-                                  {data.quantity} {data.unit}
-                                </TableCell>
-                                <TableCell className="text-right">{formatCurrency(data.price)}</TableCell>
-                                <TableCell className="text-right font-medium">
-                                  {formatCurrency(data.totalCost)}
-                                </TableCell>
-                              </TableRow>
-                            )
-                          }),
-                        )}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle>Resumen de Gastos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-8 md:grid-cols-2">
-                  <div>
-                    <h3 className="text-lg font-medium mb-4">Por Hotel</h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Hotel</TableHead>
-                          <TableHead className="text-right">Total Gastado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {hotels.map((hotel) => {
-                          const total = hotelTotals[hotel.id] || 0
-                          if (total === 0) return null
-
-                          return (
-                            <TableRow key={hotel.id}>
-                              <TableCell>{hotel.name}</TableCell>
-                              <TableCell className="text-right font-medium">{formatCurrency(total)}</TableCell>
-                            </TableRow>
-                          )
-                        })}
-                        <TableRow>
-                          <TableCell className="font-bold">TOTAL GENERAL</TableCell>
-                          <TableCell className="text-right font-bold">{formatCurrency(grandTotal)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  <div>
-                    <h3 className="text-lg font-medium mb-4">Por Producto</h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Producto</TableHead>
-                          <TableHead className="text-right">Cantidad Total</TableHead>
-                          <TableHead className="text-right">Total Gastado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {products.map((product) => {
-                          const data = productTotals[product.id]
-                          if (!data || data.quantity === 0) return null
-
-                          return (
-                            <TableRow key={product.id}>
-                              <TableCell>{product.name}</TableCell>
-                              <TableCell className="text-right">
-                                {data.quantity} {product.unit}
-                              </TableCell>
-                              <TableCell className="text-right font-medium">{formatCurrency(data.totalCost)}</TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Diálogo de autenticación */}
-      <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Autenticación requerida</DialogTitle>
-            <DialogDescription>Ingrese la contraseña de administrador para acceder a esta función.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Ingrese la contraseña"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleAuthentication()
-                  }
-                }}
-              />
-              {authError && <p className="text-sm text-red-500">Contraseña incorrecta. Intente nuevamente.</p>}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAuthDialog(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleAuthentication}>Acceder</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Diálogo de copia de seguridad */}
-      <Dialog open={showBackupDialog} onOpenChange={setShowBackupDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Configuración de conexión</DialogTitle>
-            <DialogDescription>Seleccione el modo de almacenamiento y sincronice sus datos.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            <div className="space-y-2">
-              <h3 className="text-lg font-medium">Modo de conexión</h3>
-              <div className="flex flex-col gap-4">
-                <div
-                  className={cn(
-                    "p-4 border rounded-md cursor-pointer flex items-center gap-3",
-                    connectionStatus.isOnlineMode ? "border-green-500 bg-green-50" : "border-gray-200",
-                  )}
-                  onClick={() => connectionStatus.toggleOnlineMode(true)}
-                >
-                  <Cloud
-                    className={cn("h-6 w-6", connectionStatus.isOnlineMode ? "text-green-500" : "text-gray-400")}
-                  />
-                  <div>
-                    <h4 className="font-medium">Modo Online</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Los datos se guardan en la nube y están disponibles en todos los dispositivos.
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  className={cn(
-                    "p-4 border rounded-md cursor-pointer flex items-center gap-3",
-                    !connectionStatus.isOnlineMode ? "border-blue-500 bg-blue-50" : "border-gray-200",
-                  )}
-                  onClick={() => connectionStatus.toggleOnlineMode(false)}
-                >
-                  <HardDrive
-                    className={cn("h-6 w-6", !connectionStatus.isOnlineMode ? "text-blue-500" : "text-gray-400")}
-                  />
-                  <div>
-                    <h4 className="font-medium">Modo Local</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Los datos se guardan localmente en este dispositivo.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {backupError && (
-                <Alert className="mt-4 bg-red-50 border-red-200">
-                  <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
-                  <AlertDescription className="text-red-800">{backupError}</AlertDescription>
-                </Alert>
-              )}
-
-              {connectionStatus.isOnlineMode && (
-                <div className="mt-4">
-                  <Button onClick={handleSyncWithSupabase} disabled={backupStatus === "creating"} className="w-full">
-                    {backupStatus === "creating" ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Sincronizando...
-                      </>
-                    ) : (
-                      <>
-                        <Cloud className="h-4 w-4 mr-2" />
-                        Sincronizar datos con la nube
-                      </>
                     )}
-                  </Button>
-
-                  {connectionStatus.lastSyncTime && (
-                    <p className="text-xs text-center mt-2 text-muted-foreground">
-                      Última sincronización: {connectionStatus.lastSyncTime.toLocaleString()}
-                    </p>
-                  )}
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingRecord(false)}
+                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className={`px-4 py-2 text-white rounded-md ${
+                          recordType === "entrada" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                        }`}
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="text-lg font-medium">Crear copia de seguridad local</h3>
-              <p className="text-sm text-muted-foreground">
-                Cree una copia de seguridad de todos los datos del sistema. Se descargará un archivo que puede guardar
-                para restaurar posteriormente.
-              </p>
-              <Button onClick={handleCreateBackup} className="w-full" disabled={backupStatus === "creating"}>
-                {backupStatus === "creating" ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creando copia de seguridad...
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4 mr-2" />
-                    Crear copia de seguridad local
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowBackupDialog(false)}>
-              Cerrar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Diálogo de importación/exportación */}
-      <Dialog open={showImportExportDialog} onOpenChange={setShowImportExportDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Importar/Exportar Datos</DialogTitle>
-            <DialogDescription>Guarde sus datos o cargue datos previamente guardados.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            <div className="space-y-2">
-              <h3 className="text-lg font-medium">Exportar Datos</h3>
-              <p className="text-sm text-muted-foreground">
-                Guarde todos los datos del sistema en un archivo para respaldo o transferencia.
-              </p>
-              <Button onClick={handleExportData} className="w-full">
-                <Download className="h-4 w-4 mr-2" />
-                Exportar Datos
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="text-lg font-medium">Importar Datos</h3>
-              <p className="text-sm text-muted-foreground">
-                Cargue datos previamente exportados. Esto reemplazará todos los datos actuales.
-              </p>
-              <div className="grid gap-2">
-                <Label htmlFor="importFile">Archivo de datos</Label>
-                <Input
-                  id="importFile"
-                  type="file"
-                  accept=".json"
-                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                />
-                {importError && <p className="text-sm text-red-500">{importError}</p>}
               </div>
-              <Button onClick={handleImportData} className="w-full mt-2" disabled={!importFile}>
-                <Upload className="h-4 w-4 mr-2" />
-                Importar Datos
-              </Button>
+            )}
+          </div>
+        )}
+
+        {activeTab === "products" && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Lista de Productos</h3>
+              <button
+                onClick={() => setIsAddingProduct(true)}
+                className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Nuevo Producto
+              </button>
+            </div>
+
+            {/* Tabla de productos */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full bg-white border border-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="py-2 px-4 border-b text-left">ID</th>
+                    <th className="py-2 px-4 border-b text-left">Nombre</th>
+                    <th className="py-2 px-4 border-b text-left">Unidad</th>
+                    <th className="py-2 px-4 border-b text-left">Precio</th>
+                    <th className="py-2 px-4 border-b text-left">Stock Mínimo</th>
+                    <th className="py-2 px-4 border-b text-left">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.id}>
+                      <td className="py-2 px-4 border-b">{product.id}</td>
+                      <td className="py-2 px-4 border-b">{product.name}</td>
+                      <td className="py-2 px-4 border-b">{product.unit}</td>
+                      <td className="py-2 px-4 border-b">${product.price.toLocaleString()}</td>
+                      <td className="py-2 px-4 border-b">{product.min_stock}</td>
+                      <td className="py-2 px-4 border-b">
+                        <button
+                          onClick={() => {
+                            setCurrentProduct(product)
+                            setIsEditingProduct(true)
+                          }}
+                          className="text-blue-600 hover:text-blue-800 mr-2"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal para añadir producto */}
+            {isAddingProduct && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                  <h3 className="text-lg font-medium mb-4">Añadir Nuevo Producto</h3>
+                  <form onSubmit={handleAddProduct}>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                      <input
+                        type="text"
+                        name="name"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                      <input
+                        type="text"
+                        name="unit"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio</label>
+                      <input
+                        type="number"
+                        name="price"
+                        min="0"
+                        step="0.01"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mínimo</label>
+                      <input
+                        type="number"
+                        name="min_stock"
+                        min="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingProduct(false)}
+                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                      >
+                        Cancelar
+                      </button>
+                      <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Guardar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal para editar producto */}
+            {isEditingProduct && currentProduct && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                  <h3 className="text-lg font-medium mb-4">Editar Producto</h3>
+                  <form onSubmit={handleEditProduct}>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                      <input
+                        type="text"
+                        name="name"
+                        defaultValue={currentProduct.name}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                      <input
+                        type="text"
+                        name="unit"
+                        defaultValue={currentProduct.unit}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio</label>
+                      <input
+                        type="number"
+                        name="price"
+                        min="0"
+                        step="0.01"
+                        defaultValue={currentProduct.price}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mínimo</label>
+                      <input
+                        type="number"
+                        name="min_stock"
+                        min="0"
+                        defaultValue={currentProduct.min_stock}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingProduct(false)
+                          setCurrentProduct(null)
+                        }}
+                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                      >
+                        Cancelar
+                      </button>
+                      <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Actualizar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "records" && (
+          <div>
+            <h3 className="text-lg font-medium mb-4">Historial de Movimientos</h3>
+
+            {/* Tabla de registros */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full bg-white border border-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="py-2 px-4 border-b text-left">Fecha</th>
+                    <th className="py-2 px-4 border-b text-left">Tipo</th>
+                    <th className="py-2 px-4 border-b text-left">Producto</th>
+                    <th className="py-2 px-4 border-b text-left">Cantidad</th>
+                    <th className="py-2 px-4 border-b text-left">Hotel</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((record) => (
+                    <tr key={record.id}>
+                      <td className="py-2 px-4 border-b">
+                        {new Date(record.date).toLocaleDateString()} {new Date(record.date).toLocaleTimeString()}
+                      </td>
+                      <td className="py-2 px-4 border-b">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            record.type === "entrada" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {record.type === "entrada" ? "Entrada" : "Salida"}
+                        </span>
+                      </td>
+                      <td className="py-2 px-4 border-b">{record.productName}</td>
+                      <td className="py-2 px-4 border-b">
+                        {record.quantity} {record.productUnit}
+                      </td>
+                      <td className="py-2 px-4 border-b">{record.hotelName || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowImportExportDialog(false)}>
-              Cerrar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+
+        {activeTab === "hotelSummary" && (
+          <div>
+            <h3 className="text-lg font-medium mb-4">Resumen de Gastos por Hotel</h3>
+
+            {/* Resumen por hotel */}
+            <div className="overflow-x-auto">{generateHotelSummary()}</div>
+          </div>
+        )}
+
+        {activeTab === "admin" && (
+          <div>
+            <h3 className="text-lg font-medium mb-4">Panel de Administración</h3>
+
+            {!isAdminMode ? (
+              <div className="bg-white p-6 rounded-lg border border-gray-200 max-w-md mx-auto">
+                <h4 className="text-lg font-medium mb-4">Acceso de Administrador</h4>
+                <p className="text-gray-600 mb-4">
+                  Ingresa la contraseña de administrador para acceder a las funciones avanzadas.
+                </p>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                  <input
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <button
+                  onClick={() => checkAdminPassword()}
+                  className="w-full py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Acceder
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <AlertTriangle className="h-5 w-5 text-yellow-400" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                        <strong>Precaución:</strong> Las modificaciones y eliminaciones afectan directamente al
+                        inventario. Estas acciones no se pueden deshacer.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <h4 className="text-md font-medium mb-2">Historial de Movimientos</h4>
+                <p className="text-gray-600 mb-4">Aquí puedes editar o eliminar registros de entradas y salidas.</p>
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white border border-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="py-2 px-4 border-b text-left">Fecha</th>
+                        <th className="py-2 px-4 border-b text-left">Tipo</th>
+                        <th className="py-2 px-4 border-b text-left">Producto</th>
+                        <th className="py-2 px-4 border-b text-left">Cantidad</th>
+                        <th className="py-2 px-4 border-b text-left">Hotel</th>
+                        <th className="py-2 px-4 border-b text-left">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {records.map((record) => (
+                        <tr key={record.id}>
+                          <td className="py-2 px-4 border-b">
+                            {new Date(record.date).toLocaleDateString()} {new Date(record.date).toLocaleTimeString()}
+                          </td>
+                          <td className="py-2 px-4 border-b">
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                record.type === "entrada" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {record.type === "entrada" ? "Entrada" : "Salida"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-4 border-b">{record.productName}</td>
+                          <td className="py-2 px-4 border-b">
+                            {record.quantity} {record.productUnit}
+                          </td>
+                          <td className="py-2 px-4 border-b">{record.hotelName || "-"}</td>
+                          <td className="py-2 px-4 border-b">
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => {
+                                  setCurrentRecord(record)
+                                  setIsEditingRecord(true)
+                                }}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Editar"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setRecordToDelete(record.id)
+                                  setIsConfirmingDelete(true)
+                                }}
+                                className="text-red-600 hover:text-red-800"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Modal para editar registro */}
+            {isEditingRecord && currentRecord && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                  <h3 className="text-lg font-medium mb-4">Editar Registro</h3>
+                  <form onSubmit={handleEditRecord}>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Registro</label>
+                      <select
+                        name="recordType"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        defaultValue={currentRecord.type}
+                        required
+                      >
+                        <option value="entrada">Entrada</option>
+                        <option value="salida">Salida</option>
+                      </select>
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                      <select
+                        name="productId"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        defaultValue={currentRecord.productId}
+                        required
+                      >
+                        <option value="">Seleccionar producto</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} ({product.unit})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                      <input
+                        type="number"
+                        name="quantity"
+                        min="1"
+                        defaultValue={currentRecord.quantity}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Hotel (solo para salidas)</label>
+                      <select
+                        name="hotelName"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        defaultValue={currentRecord.hotelName || ""}
+                      >
+                        <option value="">Seleccionar hotel...</option>
+                        {getUniqueHotels().map((hotel) => (
+                          <option key={hotel} value={hotel}>
+                            {hotel}
+                          </option>
+                        ))}
+                        <option value="nuevo">+ Añadir nuevo hotel</option>
+                      </select>
+                      <div id="newHotelInput" className="mt-2 hidden">
+                        <input
+                          type="text"
+                          id="newHotelName"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          placeholder="Nombre del nuevo hotel"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingRecord(false)
+                          setCurrentRecord(null)
+                        }}
+                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                      >
+                        Cancelar
+                      </button>
+                      <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Guardar Cambios
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal de confirmación para eliminar */}
+            {isConfirmingDelete && recordToDelete && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                  <h3 className="text-lg font-medium mb-4">Confirmar Eliminación</h3>
+                  <p className="text-gray-700 mb-6">
+                    ¿Estás seguro de que deseas eliminar este registro? Esta acción no se puede deshacer y afectará al
+                    inventario.
+                  </p>
+                  <div className="flex justify-end space-x-2">
+                    <button
+                      onClick={() => {
+                        setIsConfirmingDelete(false)
+                        setRecordToDelete(null)
+                      }}
+                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRecord(recordToDelete)}
+                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Este punto no debería alcanzarse normalmente
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[50vh]">
+      <h2 className="text-xl font-medium text-gray-700">Estado desconocido</h2>
+      <p className="text-gray-500 mt-2">Por favor recarga la página.</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      >
+        Recargar página
+      </button>
+    </div>
   )
 }

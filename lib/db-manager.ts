@@ -13,113 +13,178 @@ let isOnlineMode = false
 let isInitialized = false
 let isInitializing = false
 let lastSyncTime: Date | null = null
+let connectionError: string | null = null
 
-// Función para inicializar el sistema de base de datos
-export const initializeDB = async (
-  forceOnlineMode = false,
-): Promise<{
+// Función para verificar si las credenciales de Supabase están configuradas
+const areSupabaseCredentialsConfigured = (): boolean => {
+  // Verificar primero las variables de entorno
+  if (
+    typeof process !== "undefined" &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ) {
+    return true
+  }
+
+  // Si no hay variables de entorno, verificar localStorage
+  if (typeof window === "undefined") return false
+
+  try {
+    const url = localStorage.getItem("supabaseUrl")
+    const key = localStorage.getItem("supabaseKey")
+
+    // Verificar que las credenciales no sean null, undefined o cadenas vacías
+    return !!(
+      url &&
+      url !== "null" &&
+      url !== "undefined" &&
+      url !== "" &&
+      key &&
+      key !== "null" &&
+      key !== "undefined" &&
+      key !== ""
+    )
+  } catch (error) {
+    console.error("Error al verificar credenciales en localStorage:", error)
+    return false
+  }
+}
+
+// Modificar la función initializeDB para que sea más robusta
+export const initializeDB = async (): Promise<{
   success: boolean
   online: boolean
   error: string | null
+  needsConfiguration: boolean
 }> => {
   if (isInitializing) {
     console.log("Ya hay una inicialización en progreso, esperando...")
-    // Esperar a que termine la inicialización actual
-    await new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        if (!isInitializing) {
-          clearInterval(checkInterval)
-          resolve(true)
-        }
-      }, 100)
-    })
+
+    // Esperar hasta 20 segundos como máximo
+    let attempts = 0
+    const maxAttempts = 200 // 20 segundos (200 * 100ms)
+
+    while (isInitializing && attempts < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      attempts++
+    }
+
+    // Si sigue inicializando después del tiempo máximo, considerarlo como un error
+    if (isInitializing) {
+      console.error("Tiempo de espera agotado durante la inicialización")
+      return {
+        success: false,
+        online: false,
+        error: "Tiempo de espera agotado durante la inicialización",
+        needsConfiguration: !areSupabaseCredentialsConfigured(),
+      }
+    }
+
+    // Si ya se inicializó correctamente, devolver el estado actual
+    if (isInitialized && isOnlineMode) {
+      return { success: true, online: true, error: null, needsConfiguration: false }
+    }
+
+    // Si hubo un error en la inicialización anterior, devolverlo
+    if (!isInitialized && connectionError) {
+      return {
+        success: false,
+        online: false,
+        error: connectionError,
+        needsConfiguration: !areSupabaseCredentialsConfigured(),
+      }
+    }
   }
 
   isInitializing = true
+  connectionError = null
   console.log("Inicializando sistema de base de datos...")
 
+  // Verificar si las credenciales están configuradas
+  if (!areSupabaseCredentialsConfigured()) {
+    console.log("Credenciales de Supabase no configuradas")
+    isInitializing = false
+    connectionError = "Se requiere configurar las credenciales de Supabase"
+    return {
+      success: false,
+      online: false,
+      error: connectionError,
+      needsConfiguration: true,
+    }
+  }
+
   try {
-    // Intentar inicializar Supabase primero si se fuerza el modo online
-    if (forceOnlineMode) {
-      console.log("Forzando modo online, intentando conectar con Supabase...")
-      try {
-        const supabaseAvailable = await supabaseDB.isSupabaseAvailable()
+    // Intentar conectar con Supabase
+    console.log("Intentando conectar con Supabase...")
 
-        if (supabaseAvailable) {
+    // Intentar la conexión hasta 3 veces
+    let supabaseAvailable = false
+    let attemptCount = 0
+    let lastError = null
+
+    while (!supabaseAvailable && attemptCount < 3) {
+      attemptCount++
+      console.log(`Intento de conexión a Supabase #${attemptCount}`)
+
+      try {
+        // Intentar la conexión con la nueva función que devuelve más información
+        const result = await supabaseDB.isSupabaseAvailable()
+
+        if (result.available) {
           console.log("Supabase disponible, usando modo online")
-          isOnlineMode = true
-          isInitialized = true
-          isInitializing = false
-          return { success: true, online: true, error: null }
+          supabaseAvailable = true
+          break
         } else {
-          console.error("Error al conectar con Supabase")
-          isOnlineMode = false
-          isInitialized = true
-          isInitializing = false
-          return {
-            success: true,
-            online: false,
-            error: `No se pudo conectar con Supabase. Usando modo local.`,
-          }
+          console.log(`Intento #${attemptCount} fallido: ${result.error}`)
+          lastError = result.error || "No se pudo verificar la disponibilidad de Supabase"
+          // Esperar antes del siguiente intento
+          await new Promise((resolve) => setTimeout(resolve, 2000))
         }
       } catch (error) {
-        console.error("Error inesperado al conectar con Supabase:", error)
-        isOnlineMode = false
-        isInitialized = true
-        isInitializing = false
-        return {
-          success: true,
-          online: false,
-          error: `Error inesperado al conectar con Supabase: ${error instanceof Error ? error.message : String(error)}. Usando modo local.`,
-        }
+        console.error(`Error en intento #${attemptCount}:`, error)
+        lastError = error instanceof Error ? error.message : String(error)
+        // Esperar antes del siguiente intento
+        await new Promise((resolve) => setTimeout(resolve, 2000))
       }
-    } else {
-      // Intentar inicializar Supabase, pero no forzar
-      console.log("Intentando conectar con Supabase...")
-      try {
-        const supabaseAvailable = await supabaseDB.isSupabaseAvailable()
+    }
 
-        if (supabaseAvailable) {
-          console.log("Supabase disponible, usando modo online")
-          isOnlineMode = true
-          isInitialized = true
-          isInitializing = false
-          return { success: true, online: true, error: null }
-        } else {
-          console.log("Supabase no disponible, usando modo local")
-          isOnlineMode = false
-          isInitialized = true
-          isInitializing = false
-          return {
-            success: true,
-            online: false,
-            error: null, // No mostramos error al usuario si no se forzó el modo online
-          }
-        }
-      } catch (error) {
-        console.log("Error al conectar con Supabase, usando modo local:", error)
-        isOnlineMode = false
-        isInitialized = true
-        isInitializing = false
-        return {
-          success: true,
-          online: false,
-          error: null, // No mostramos error al usuario si no se forzó el modo online
-        }
+    if (supabaseAvailable) {
+      isOnlineMode = true
+      isInitialized = true
+      isInitializing = false
+      connectionError = null
+      return { success: true, online: true, error: null, needsConfiguration: false }
+    } else {
+      console.error("Error al conectar con Supabase después de 3 intentos:", lastError)
+      isOnlineMode = false
+      isInitialized = false
+      isInitializing = false
+      connectionError = `Error al conectar con Supabase después de 3 intentos: ${lastError}`
+      return {
+        success: false,
+        online: false,
+        error: connectionError,
+        needsConfiguration: true,
       }
     }
   } catch (error) {
     console.error("Error al inicializar el sistema de base de datos:", error)
     isOnlineMode = false
-    isInitialized = true
+    isInitialized = false
     isInitializing = false
+    connectionError = `Error al inicializar el sistema de base de datos: ${error instanceof Error ? error.message : String(error)}. Verifica tu conexión a internet.`
     return {
-      success: true, // Aún consideramos exitoso porque podemos usar el modo local
+      success: false,
       online: false,
-      error: null, // No mostramos error al usuario para no interrumpir la experiencia
+      error: connectionError,
+      needsConfiguration: true,
     }
+  } finally {
+    isInitializing = false
   }
 }
+
+// Resto del código permanece igual...
 
 // Función para verificar el estado de la conexión
 export const getConnectionStatus = () => {
@@ -128,10 +193,12 @@ export const getConnectionStatus = () => {
     isInitialized,
     isInitializing,
     lastSyncTime,
+    connectionError,
+    needsConfiguration: !areSupabaseCredentialsConfigured(),
   }
 }
 
-// Función para cambiar entre modo online y local
+// Modificar la función toggleOnlineMode para que no permita cambiar al modo local
 export const toggleOnlineMode = async (
   forceOnline: boolean,
 ): Promise<{
@@ -139,15 +206,31 @@ export const toggleOnlineMode = async (
   online: boolean
   error: string | null
 }> => {
-  if (forceOnline === isOnlineMode) {
+  // Si se intenta cambiar a modo local, devolver error
+  if (!forceOnline) {
+    return {
+      success: false,
+      online: isOnlineMode,
+      error: "El modo local está deshabilitado. El sistema solo funciona en modo online.",
+    }
+  }
+
+  // Si ya está en modo online, no hacer nada
+  if (isOnlineMode) {
     return {
       success: true,
-      online: isOnlineMode,
+      online: true,
       error: null,
     }
   }
 
-  return initializeDB(forceOnline)
+  // Intentar inicializar en modo online
+  const result = await initializeDB()
+  return {
+    success: result.success,
+    online: result.online,
+    error: result.error,
+  }
 }
 
 // Función para sincronizar datos locales con Supabase
@@ -217,55 +300,73 @@ export const syncWithSupabase = async (): Promise<{
   }
 }
 
-// Funciones para productos
+// Modificar las funciones que interactúan con la base de datos para que requieran modo online
+
+// Ejemplo para saveProduct
 export const saveProduct = async (product: localDB.Product): Promise<boolean> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return false
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return false
   }
 
   try {
-    // Guardar en la base de datos local primero
-    const localResult = await localDB.saveProduct(product)
+    // Guardar en Supabase
+    await supabaseDB.saveProduct({
+      id: product.id,
+      name: product.name,
+      unit: product.unit,
+      price: product.price,
+    })
 
-    // Si estamos en modo online, también guardar en Supabase
-    if (isOnlineMode) {
-      await supabaseDB.saveProduct({
-        id: product.id,
-        name: product.name,
-        unit: product.unit,
-        price: product.price,
-      })
-    }
+    // También guardar en la base de datos local como respaldo
+    await localDB.saveProduct(product)
 
-    return localResult
+    return true
   } catch (error) {
     console.error("Error al guardar producto:", error)
     return false
   }
 }
 
+// Modificar las demás funciones que interactúan con la base de datos para que requieran modo online
+
 export const saveProducts = async (products: localDB.Product[]): Promise<boolean> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return false
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return false
   }
 
   try {
-    // Guardar en la base de datos local primero
-    const localResult = await localDB.saveProducts(products)
+    // Guardar en Supabase
+    await supabaseDB.saveProducts(
+      products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        unit: p.unit,
+        price: p.price,
+      })),
+    )
 
-    // Si estamos en modo online, también guardar en Supabase
-    if (isOnlineMode) {
-      await supabaseDB.saveProducts(
-        products.map((p) => ({
-          id: p.id,
-          name: p.name,
-          unit: p.unit,
-          price: p.price,
-        })),
-      )
-    }
+    // También guardar en la base de datos local como respaldo
+    await localDB.saveProducts(products)
 
-    return localResult
+    return true
   } catch (error) {
     console.error("Error al guardar productos:", error)
     return false
@@ -274,57 +375,65 @@ export const saveProducts = async (products: localDB.Product[]): Promise<boolean
 
 export const getProducts = async (): Promise<localDB.Product[]> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return []
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return []
   }
 
   try {
-    if (isOnlineMode) {
-      // Intentar obtener de Supabase primero
-      const supabaseProducts = await supabaseDB.getProducts()
+    // Obtener de Supabase
+    const supabaseProducts = await supabaseDB.getProducts()
 
-      if (supabaseProducts.length > 0) {
-        // Convertir al formato local
-        const localFormatProducts = supabaseProducts.map((p) => ({
-          id: p.id,
-          name: p.name,
-          unit: p.unit,
-          price: p.price,
-        }))
+    // Convertir al formato local
+    const localFormatProducts = supabaseProducts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      unit: p.unit,
+      price: p.price,
+    }))
 
-        // Actualizar la base de datos local con los datos de Supabase
-        await localDB.saveProducts(localFormatProducts)
-        return localFormatProducts
-      }
-    }
+    // Actualizar la base de datos local como respaldo
+    await localDB.saveProducts(localFormatProducts)
 
-    // Si no estamos en modo online o no hay datos en Supabase, usar la base de datos local
-    return await localDB.getProducts()
+    return localFormatProducts
   } catch (error) {
     console.error("Error al obtener productos:", error)
-    // En caso de error, intentar obtener de la base de datos local
-    return await localDB.getProducts()
+    return []
   }
 }
 
-// Funciones para inventario
 export const saveInventoryItem = async (item: localDB.InventoryItem): Promise<boolean> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return false
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return false
   }
 
   try {
-    // Guardar en la base de datos local primero
-    const localResult = await localDB.saveInventoryItem(item)
+    // Guardar en Supabase
+    await supabaseDB.saveInventoryItem({
+      product_id: item.productId,
+      quantity: item.quantity,
+    })
 
-    // Si estamos en modo online, también guardar en Supabase
-    if (isOnlineMode) {
-      await supabaseDB.saveInventoryItem({
-        product_id: item.productId,
-        quantity: item.quantity,
-      })
-    }
+    // También guardar en la base de datos local como respaldo
+    await localDB.saveInventoryItem(item)
 
-    return localResult
+    return true
   } catch (error) {
     console.error("Error al guardar item de inventario:", error)
     return false
@@ -333,24 +442,31 @@ export const saveInventoryItem = async (item: localDB.InventoryItem): Promise<bo
 
 export const saveInventory = async (inventory: localDB.InventoryItem[]): Promise<boolean> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return false
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return false
   }
 
   try {
-    // Guardar en la base de datos local primero
-    const localResult = await localDB.saveInventory(inventory)
+    // Guardar en Supabase
+    await supabaseDB.saveInventory(
+      inventory.map((item) => ({
+        product_id: item.productId,
+        quantity: item.quantity,
+      })),
+    )
 
-    // Si estamos en modo online, también guardar en Supabase
-    if (isOnlineMode) {
-      await supabaseDB.saveInventory(
-        inventory.map((item) => ({
-          product_id: item.productId,
-          quantity: item.quantity,
-        })),
-      )
-    }
+    // También guardar en la base de datos local como respaldo
+    await localDB.saveInventory(inventory)
 
-    return localResult
+    return true
   } catch (error) {
     console.error("Error al guardar inventario:", error)
     return false
@@ -359,50 +475,294 @@ export const saveInventory = async (inventory: localDB.InventoryItem[]): Promise
 
 export const getInventory = async (): Promise<localDB.InventoryItem[]> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return []
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return []
   }
 
   try {
-    if (isOnlineMode) {
-      // Intentar obtener de Supabase primero
-      const supabaseInventory = await supabaseDB.getInventory()
+    // Obtener de Supabase
+    const supabaseInventory = await supabaseDB.getInventory()
 
-      if (supabaseInventory.length > 0) {
-        // Convertir al formato local
-        const localFormatInventory = supabaseInventory.map((item) => ({
-          productId: item.product_id,
-          quantity: item.quantity,
-        }))
+    // Convertir al formato local
+    const localFormatInventory = supabaseInventory.map((item) => ({
+      productId: item.product_id,
+      quantity: item.quantity,
+    }))
 
-        // Actualizar la base de datos local con los datos de Supabase
-        await localDB.saveInventory(localFormatInventory)
-        return localFormatInventory
-      }
-    }
+    // Actualizar la base de datos local como respaldo
+    await localDB.saveInventory(localFormatInventory)
 
-    // Si no estamos en modo online o no hay datos en Supabase, usar la base de datos local
-    return await localDB.getInventory()
+    return localFormatInventory
   } catch (error) {
     console.error("Error al obtener inventario:", error)
-    // En caso de error, intentar obtener de la base de datos local
-    return await localDB.getInventory()
+    return []
   }
 }
 
-// Funciones para registros
 export const saveRecord = async (record: localDB.StockRecord): Promise<boolean> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return false
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return false
   }
 
   try {
-    // Guardar en la base de datos local primero
-    const localResult = await localDB.saveRecord(record)
+    // Guardar en Supabase
+    await supabaseDB.saveRecord({
+      id: record.id,
+      hotel_id: record.hotelId,
+      hotel_name: record.hotelName,
+      product_id: record.productId,
+      product_name: record.productName,
+      product_unit: record.productUnit,
+      quantity: record.quantity,
+      price: record.price,
+      date: record.date.toISOString(),
+      type: record.type,
+    })
 
-    // Si estamos en modo online, también guardar en Supabase
-    if (isOnlineMode) {
-      await supabaseDB.saveRecord({
-        id: record.id,
+    // También guardar en la base de datos local como respaldo
+    await localDB.saveRecord(record)
+
+    return true
+  } catch (error) {
+    console.error("Error al guardar registro:", error)
+    return false
+  }
+}
+
+export const getRecords = async (): Promise<localDB.StockRecord[]> => {
+  if (!isInitialized) {
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return []
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return []
+  }
+
+  try {
+    // Obtener de Supabase
+    const supabaseRecords = await supabaseDB.getRecords()
+
+    // Convertir al formato local
+    const localFormatRecords = supabaseRecords.map((record) => ({
+      id: record.id,
+      hotelId: record.hotel_id,
+      hotelName: record.hotel_name,
+      productId: record.product_id,
+      productName: record.product_name,
+      productUnit: record.product_unit,
+      quantity: record.quantity,
+      price: record.price,
+      date: new Date(record.date),
+      type: record.type,
+    }))
+
+    // Actualizar la base de datos local como respaldo
+    for (const record of localFormatRecords) {
+      await localDB.saveRecord(record)
+    }
+
+    return localFormatRecords
+  } catch (error) {
+    console.error("Error al obtener registros:", error)
+    return []
+  }
+}
+
+// Añadir estas nuevas funciones después de la función getRecords
+
+// Función para eliminar un registro
+export const deleteRecord = async (recordId: number): Promise<boolean> => {
+  if (!isInitialized) {
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return false
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return false
+  }
+
+  try {
+    // Primero obtenemos el registro para poder actualizar el inventario
+    const supabase = supabaseDB.getSupabaseClient()
+    if (!supabase) return false
+
+    const { data: recordData, error: recordError } = await supabase
+      .from("records")
+      .select("*")
+      .eq("id", recordId)
+      .single()
+
+    if (recordError || !recordData) {
+      console.error("Error al obtener el registro a eliminar:", recordError)
+      return false
+    }
+
+    // Obtener el inventario actual
+    const inventory = await getInventory()
+
+    // Actualizar el inventario (revertir el efecto del registro)
+    const inventoryItem = inventory.find((i) => i.productId === recordData.product_id)
+    if (inventoryItem) {
+      // Si era una entrada, restamos; si era una salida, sumamos
+      const updatedQuantity =
+        recordData.type === "entrada"
+          ? inventoryItem.quantity - recordData.quantity
+          : inventoryItem.quantity + recordData.quantity
+
+      await saveInventoryItem({
+        productId: recordData.product_id,
+        quantity: updatedQuantity,
+      })
+    }
+
+    // Eliminar el registro de Supabase
+    const { error: deleteError } = await supabase.from("records").delete().eq("id", recordId)
+
+    if (deleteError) {
+      console.error("Error al eliminar el registro:", deleteError)
+      return false
+    }
+
+    // También eliminar de la base de datos local
+    // Nota: Esto es una simplificación, en una implementación real
+    // necesitaríamos una función específica en local-db.ts
+    const localRecords = await localDB.getRecords()
+    const updatedRecords = localRecords.filter((r) => r.id !== recordId)
+
+    // Como no tenemos una función directa para eliminar, simulamos reescribiendo todos
+    await localDB.clearDatabase()
+    for (const record of updatedRecords) {
+      await localDB.saveRecord(record)
+    }
+
+    return true
+  } catch (error) {
+    console.error("Error al eliminar registro:", error)
+    return false
+  }
+}
+
+// Función para actualizar un registro existente
+export const updateRecord = async (record: localDB.StockRecord): Promise<boolean> => {
+  if (!isInitialized) {
+    const result = await initializeDB()
+    if (!result.success) {
+      console.error("No se pudo inicializar la base de datos:", result.error)
+      return false
+    }
+  }
+
+  if (!isOnlineMode) {
+    console.error("El sistema solo funciona en modo online")
+    return false
+  }
+
+  try {
+    // Primero obtenemos el registro original para calcular el ajuste de inventario
+    const supabase = supabaseDB.getSupabaseClient()
+    if (!supabase) return false
+
+    const { data: originalRecord, error: recordError } = await supabase
+      .from("records")
+      .select("*")
+      .eq("id", record.id)
+      .single()
+
+    if (recordError || !originalRecord) {
+      console.error("Error al obtener el registro original:", recordError)
+      return false
+    }
+
+    // Obtener el inventario actual
+    const inventory = await getInventory()
+
+    // Actualizar el inventario (ajustar según los cambios)
+    if (originalRecord.product_id === record.productId) {
+      // Si es el mismo producto, solo ajustamos la cantidad
+      const inventoryItem = inventory.find((i) => i.productId === record.productId)
+      if (inventoryItem) {
+        let newQuantity = inventoryItem.quantity
+
+        // Revertir el efecto del registro original
+        if (originalRecord.type === "entrada") {
+          newQuantity -= originalRecord.quantity
+        } else {
+          newQuantity += originalRecord.quantity
+        }
+
+        // Aplicar el efecto del registro actualizado
+        if (record.type === "entrada") {
+          newQuantity += record.quantity
+        } else {
+          newQuantity -= record.quantity
+        }
+
+        await saveInventoryItem({
+          productId: record.productId,
+          quantity: newQuantity,
+        })
+      }
+    } else {
+      // Si cambió el producto, ajustamos ambos inventarios
+      // Revertir el efecto en el producto original
+      const originalInventoryItem = inventory.find((i) => i.productId === originalRecord.product_id)
+      if (originalInventoryItem) {
+        const originalNewQuantity =
+          originalRecord.type === "entrada"
+            ? originalInventoryItem.quantity - originalRecord.quantity
+            : originalInventoryItem.quantity + originalRecord.quantity
+
+        await saveInventoryItem({
+          productId: originalRecord.product_id,
+          quantity: originalNewQuantity,
+        })
+      }
+
+      // Aplicar el efecto en el nuevo producto
+      const newInventoryItem = inventory.find((i) => i.productId === record.productId)
+      if (newInventoryItem) {
+        const newQuantity =
+          record.type === "entrada"
+            ? newInventoryItem.quantity + record.quantity
+            : newInventoryItem.quantity - record.quantity
+
+        await saveInventoryItem({
+          productId: record.productId,
+          quantity: newQuantity,
+        })
+      }
+    }
+
+    // Guardar el registro actualizado en Supabase
+    const { error: updateError } = await supabase
+      .from("records")
+      .update({
         hotel_id: record.hotelId,
         hotel_name: record.hotelName,
         product_id: record.productId,
@@ -413,55 +773,20 @@ export const saveRecord = async (record: localDB.StockRecord): Promise<boolean> 
         date: record.date.toISOString(),
         type: record.type,
       })
+      .eq("id", record.id)
+
+    if (updateError) {
+      console.error("Error al actualizar el registro:", updateError)
+      return false
     }
 
-    return localResult
+    // Actualizar también en la base de datos local
+    await localDB.saveRecord(record)
+
+    return true
   } catch (error) {
-    console.error("Error al guardar registro:", error)
+    console.error("Error al actualizar registro:", error)
     return false
-  }
-}
-
-export const getRecords = async (): Promise<localDB.StockRecord[]> => {
-  if (!isInitialized) {
-    await initializeDB()
-  }
-
-  try {
-    if (isOnlineMode) {
-      // Intentar obtener de Supabase primero
-      const supabaseRecords = await supabaseDB.getRecords()
-
-      if (supabaseRecords.length > 0) {
-        // Convertir al formato local
-        const localFormatRecords = supabaseRecords.map((record) => ({
-          id: record.id,
-          hotelId: record.hotel_id,
-          hotelName: record.hotel_name,
-          productId: record.product_id,
-          productName: record.product_name,
-          productUnit: record.product_unit,
-          quantity: record.quantity,
-          price: record.price,
-          date: new Date(record.date),
-          type: record.type,
-        }))
-
-        // Actualizar la base de datos local con los datos de Supabase
-        for (const record of localFormatRecords) {
-          await localDB.saveRecord(record)
-        }
-
-        return localFormatRecords
-      }
-    }
-
-    // Si no estamos en modo online o no hay datos en Supabase, usar la base de datos local
-    return await localDB.getRecords()
-  } catch (error) {
-    console.error("Error al obtener registros:", error)
-    // En caso de error, intentar obtener de la base de datos local
-    return await localDB.getRecords()
   }
 }
 
@@ -472,7 +797,22 @@ export const createBackup = async (): Promise<{
   error: string | null
 }> => {
   if (!isInitialized) {
-    await initializeDB()
+    const result = await initializeDB()
+    if (!result.success) {
+      return {
+        success: false,
+        data: null,
+        error: result.error || "No se pudo inicializar la base de datos",
+      }
+    }
+  }
+
+  if (!isOnlineMode) {
+    return {
+      success: false,
+      data: null,
+      error: "El sistema solo funciona en modo online",
+    }
   }
 
   try {
@@ -574,6 +914,8 @@ export const useConnectionStatus = () => {
     isInitialized: false,
     isInitializing: false,
     lastSyncTime: null as Date | null,
+    connectionError: null as string | null,
+    needsConfiguration: !areSupabaseCredentialsConfigured(),
   })
 
   useEffect(() => {
