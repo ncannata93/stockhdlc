@@ -22,41 +22,105 @@ const LOCAL_SESSION_KEY = "local_session"
 const SESSION_DURATION_DAYS = 7
 
 // Función para inicializar el sistema de autenticación local
-export function initLocalAuth() {
-  // Verificar si ya hay usuarios creados
+export function ensurePredefinedUsers() {
+  // Obtener usuarios actuales
   const users = getLocalUsers()
 
-  // Si no hay usuarios, crear los usuarios predefinidos
-  if (users.length === 0) {
-    const predefinedUsers: LocalUser[] = [
-      {
-        username: "admin",
-        password: "admin123",
-        isAdmin: true,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        username: "ncannata",
-        password: "nacho1234N",
-        isAdmin: true,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        username: "dpili",
-        password: "pili123",
-        isAdmin: false,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        username: "jprey",
-        password: "qw425540",
-        isAdmin: false,
-        createdAt: new Date().toISOString(),
-      },
-    ]
+  // Lista de usuarios predefinidos que siempre deben existir
+  const predefinedUsers = [
+    {
+      username: "admin",
+      password: "admin123",
+      isAdmin: true,
+    },
+    {
+      username: "ncannata",
+      password: "nacho1234N",
+      isAdmin: true,
+    },
+    {
+      username: "dpili",
+      password: "pili123",
+      isAdmin: false,
+    },
+    {
+      username: "jprey",
+      password: "qw425540",
+      isAdmin: false,
+    },
+  ]
 
-    // Guardar los usuarios predefinidos
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(predefinedUsers))
+  let usersChanged = false
+
+  // Verificar cada usuario predefinido
+  predefinedUsers.forEach((predefinedUser) => {
+    // Comprobar si el usuario ya existe
+    const userExists = users.some((user) => user.username.toLowerCase() === predefinedUser.username.toLowerCase())
+
+    // Si no existe, añadirlo
+    if (!userExists) {
+      users.push({
+        ...predefinedUser,
+        createdAt: new Date().toISOString(),
+      })
+      usersChanged = true
+      console.log(`Usuario predefinido creado: ${predefinedUser.username}`)
+    }
+  })
+
+  // Si se añadió algún usuario, guardar la lista actualizada
+  if (usersChanged) {
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users))
+    console.log("Lista de usuarios actualizada con usuarios predefinidos")
+  }
+
+  return users
+}
+
+// Modificar la función initLocalAuth para usar ensurePredefinedUsers
+export function initLocalAuth() {
+  try {
+    // Verificar si ya hay usuarios creados
+    const users = getLocalUsers()
+
+    // Si no hay usuarios, crear los usuarios predefinidos
+    if (users.length === 0) {
+      const predefinedUsers: LocalUser[] = [
+        {
+          username: "admin",
+          password: "admin123",
+          isAdmin: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          username: "ncannata",
+          password: "nacho1234N",
+          isAdmin: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          username: "dpili",
+          password: "pili123",
+          isAdmin: false,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          username: "jprey",
+          password: "qw425540",
+          isAdmin: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]
+
+      // Guardar los usuarios predefinidos
+      localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(predefinedUsers))
+      console.log("Usuarios predefinidos creados inicialmente")
+    } else {
+      // Asegurarse de que los usuarios predefinidos existan
+      ensurePredefinedUsers()
+    }
+  } catch (error) {
+    console.error("Error en initLocalAuth:", error)
   }
 }
 

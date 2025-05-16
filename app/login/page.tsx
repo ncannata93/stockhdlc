@@ -7,6 +7,9 @@ import { useRouter } from "next/navigation"
 import { Loader2, User, Key, AlertTriangle, Info } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 
+// Importar la función ensurePredefinedUsers directamente al inicio del archivo
+import { ensurePredefinedUsers } from "@/lib/local-auth"
+
 export default function LoginPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
@@ -16,8 +19,14 @@ export default function LoginPage() {
   const router = useRouter()
   const { signIn, isAuthenticated, createUser } = useAuth()
 
-  // Si el usuario ya está autenticado, redirigir a la página principal
+  // Modificar la función useEffect para asegurar que los usuarios predefinidos existan
   useEffect(() => {
+    // Asegurarse de que los usuarios predefinidos existan
+    if (typeof window !== "undefined") {
+      ensurePredefinedUsers()
+    }
+
+    // Si el usuario ya está autenticado, redirigir a la página principal
     if (isAuthenticated) {
       router.push("/stock")
     }

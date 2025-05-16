@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import {
-  initLocalAuth,
   loginLocalUser,
   logoutLocalUser,
   getCurrentLocalSession,
@@ -12,6 +11,7 @@ import {
   usernameToEmail as convertUsernameToEmail,
   type LocalSession,
   type LocalUser,
+  ensurePredefinedUsers,
 } from "@/lib/local-auth"
 
 // Exportar la función para que esté disponible para otros componentes
@@ -57,7 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Solo inicializar en el cliente
         if (typeof window !== "undefined") {
-          initLocalAuth()
+          // Asegurarse de que los usuarios predefinidos siempre existan
+          ensurePredefinedUsers()
+
           const currentSession = getCurrentLocalSession()
           setSession(currentSession)
           setUsers(getLocalUsers())
