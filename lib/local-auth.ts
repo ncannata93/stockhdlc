@@ -26,17 +26,37 @@ export function initLocalAuth() {
   // Verificar si ya hay usuarios creados
   const users = getLocalUsers()
 
-  // Si no hay usuarios, crear un usuario administrador por defecto
+  // Si no hay usuarios, crear los usuarios predefinidos
   if (users.length === 0) {
-    const defaultAdmin: LocalUser = {
-      username: "admin",
-      password: "admin123", // En una aplicación real, esto debería ser un hash
-      isAdmin: true,
-      createdAt: new Date().toISOString(),
-    }
+    const predefinedUsers: LocalUser[] = [
+      {
+        username: "admin",
+        password: "admin123",
+        isAdmin: true,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        username: "ncannata",
+        password: "nacho1234N",
+        isAdmin: true,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        username: "dpili",
+        password: "pili123",
+        isAdmin: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        username: "jprey",
+        password: "qw425540",
+        isAdmin: false,
+        createdAt: new Date().toISOString(),
+      },
+    ]
 
-    // Guardar el usuario administrador
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify([defaultAdmin]))
+    // Guardar los usuarios predefinidos
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(predefinedUsers))
   }
 }
 

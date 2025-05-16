@@ -137,7 +137,7 @@ export interface Database {
         }
         Returns: boolean
       }
-      admin_update_user_password: {
+       admin_update_user_password: {
         Args: {
           user_email: string
           new_password: string
