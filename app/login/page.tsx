@@ -50,7 +50,7 @@ export default function LoginPage() {
         setUsername(testUsername)
         setPassword(testPassword)
       } else {
-        if (result.error === "El usuario ya existe") {
+        if (result.error === "El nombre de usuario ya está en uso") {
           setMessage(`El usuario de prueba ya existe. Puedes iniciar sesión con: ${testUsername} / ${testPassword}`)
           setUsername(testUsername)
           setPassword(testPassword)
@@ -182,8 +182,6 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-
-          {/* Se ha eliminado la información del usuario administrador por defecto por razones de seguridad */}
         </div>
       </div>
     </div>
