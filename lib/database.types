@@ -124,7 +124,32 @@ export interface Database {
       }
     }
     Views: {}
-    Functions: {}
+    Functions: {
+      admin_confirm_user: {
+        Args: {
+          user_email: string
+        }
+        Returns: boolean
+      }
+      check_user_exists: {
+        Args: {
+          user_email: string
+        }
+        Returns: boolean
+      }
+      admin_update_user_password: {
+        Args: {
+          user_email: string
+          new_password: string
+        }
+        Returns: {
+          success: boolean
+          message: string
+          user_id: string
+          email: string
+        }
+      }
+    }
     Enums: {}
     CompositeTypes: {}
   }

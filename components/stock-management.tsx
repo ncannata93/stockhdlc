@@ -12,8 +12,24 @@ import {
   saveInventoryItem,
   saveRecord,
 } from "@/lib/db-manager"
-import { Loader2, AlertTriangle, RefreshCw, Database, Key, Plus, Edit, ArrowUp, ArrowDown, Trash2 } from "lucide-react"
+import {
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
+  Database,
+  Key,
+  Plus,
+  Edit,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  LogOut,
+  User,
+} from "lucide-react"
 import type { Product, InventoryItem, StockRecord } from "@/lib/local-db"
+
+// Añadir esta importación al inicio del archivo
+import { useAuth } from "@/lib/auth-context"
 
 // Lista predefinida de hoteles
 const PREDEFINED_HOTELS = [
@@ -69,6 +85,10 @@ export default function StockManagement() {
   const [currentRecord, setCurrentRecord] = useState<StockRecord | null>(null)
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const [recordToDelete, setRecordToDelete] = useState<number | null>(null)
+
+  // Dentro del componente StockManagement, añadir:
+  const { signOut, session } = useAuth()
+  const username = session?.username || "Usuario"
 
   // Cargar las credenciales guardadas al inicio
   useEffect(() => {
@@ -832,8 +852,25 @@ export default function StockManagement() {
   if (isConnected) {
     return (
       <div className="p-4">
-        <h1 className="text-2xl font-bold mb-2">HOTELES DE LA COSTA</h1>
-        <h2 className="text-xl mb-4">Sistema de Gestión de Stock</h2>
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl font-bold mb-2">HOTELES DE LA COSTA</h1>
+            <h2 className="text-xl mb-4">Sistema de Gestión de Stock</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center text-gray-700">
+              <User className="h-4 w-4 mr-2" />
+              <span className="font-medium">{username}</span>
+            </div>
+            <button
+              onClick={() => signOut()}
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 flex items-center"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
 
         {/* Tabs de navegación */}
         <div className="flex border-b border-gray-200 mb-6">
