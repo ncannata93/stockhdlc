@@ -3,18 +3,20 @@
 import type React from "react"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Loader2 } from "lucide-react"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
   adminOnly?: boolean
+  allowRedirect?: boolean
 }
 
-export default function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, adminOnly = false, allowRedirect = true }: ProtectedRouteProps) {
   const { isAuthenticated, isAdmin, isLoading, session } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [isClient, setIsClient] = useState(false)
   const [isAuthorized, setIsAuthorized] = useState(false)
 
@@ -26,20 +28,26 @@ export default function ProtectedRoute({ children, adminOnly = false }: Protecte
   useEffect(() => {
     // Solo ejecutar la lógica de redirección cuando estamos en el cliente y isLoading es false
     if (isClient && !isLoading) {
-      console.log("ProtectedRoute - Estado:", { isAuthenticated, isAdmin, adminOnly, session })
+      console.log("ProtectedRoute - Estado:", { isAuthenticated, isAdmin, adminOnly, session, pathname })
 
       if (!isAuthenticated) {
-        console.log("ProtectedRoute - Redirigiendo a /login")
-        router.push("/login")
+        console.log("ProtectedRoute - Redirigiendo a /login con redirectTo:", pathname)
+        // Guardar la ruta actual para redirigir después del login
+        if (pathname !== "/login") {
+          router.push(`/login?redirectTo=${encodeURIComponent(pathname)}`)
+        }
       } else if (adminOnly && !isAdmin) {
         console.log("ProtectedRoute - Redirigiendo a /stock (no es admin)")
+        router.push("/stock")
+      } else if (allowRedirect && pathname === "/" && isAuthenticated) {
+        // Solo redirigir a /stock si allowRedirect es true y estamos en la página principal
         router.push("/stock")
       } else {
         console.log("ProtectedRoute - Usuario autorizado")
         setIsAuthorized(true)
       }
     }
-  }, [isAuthenticated, isAdmin, isLoading, router, adminOnly, isClient, session])
+  }, [isAuthenticated, isAdmin, isLoading, router, adminOnly, isClient, session, pathname, allowRedirect])
 
   // Mostrar un indicador de carga mientras se verifica la autenticación
   if (isLoading || !isClient || !isAuthorized) {

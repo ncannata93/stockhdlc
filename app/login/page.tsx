@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, User, Key, AlertTriangle, Info } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 
@@ -17,6 +17,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get("redirectTo") || "/stock"
   const { signIn, isAuthenticated, createUser } = useAuth()
 
   // Modificar la función useEffect para asegurar que los usuarios predefinidos existan
@@ -26,11 +28,12 @@ export default function LoginPage() {
       ensurePredefinedUsers()
     }
 
-    // Si el usuario ya está autenticado, redirigir a la página principal
+    // Si el usuario ya está autenticado, redirigir a la página correspondiente
     if (isAuthenticated) {
-      router.push("/stock")
+      console.log("Usuario ya autenticado, redirigiendo a:", redirectTo)
+      router.push(redirectTo)
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, router, redirectTo])
 
   // Función para crear un usuario de prueba
   const handleCreateTestUser = async () => {
@@ -76,7 +79,8 @@ export default function LoginPage() {
       const result = await signIn(username, password)
 
       if (result.success) {
-        router.push("/stock")
+        console.log("Inicio de sesión exitoso, redirigiendo a:", redirectTo)
+        router.push(redirectTo)
       } else {
         setError(result.error || "Error al iniciar sesión")
       }
