@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   initializeDB,
   getProducts,
@@ -25,16 +24,13 @@ import {
   Trash2,
   LogOut,
   User,
+  Menu,
+  X,
+  Bell,
 } from "lucide-react"
 import type { Product, InventoryItem, StockRecord } from "@/lib/local-db"
-
-// Añadir esta importación al inicio del archivo
 import { useAuth } from "@/lib/auth-context"
-
-// Añadir esta importación después de las importaciones existentes
 import { useNotifications, NotificationsPanel, checkLowStockLevels } from "@/components/notification-system"
-
-// Importar el componente LowStockAlert al inicio del archivo:
 import LowStockAlert from "@/components/low-stock-alert"
 
 // Lista predefinida de hoteles
@@ -55,18 +51,17 @@ const PREDEFINED_HOTELS = [
   "Carama",
 ]
 
-// Componente StockManagement actualizado para mostrar la interfaz completa
 export default function StockManagement() {
-  // Añadir "admin" a los tipos de pestañas activas
   const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "admin">(
     "inventory",
   )
-
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [showFullError, setShowFullError] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
 
   // Datos de la aplicación
   const [products, setProducts] = useState<Product[]>([])
@@ -84,7 +79,7 @@ export default function StockManagement() {
   const [isAddingRecord, setIsAddingRecord] = useState(false)
   const [recordType, setRecordType] = useState<"entrada" | "salida">("entrada")
 
-  // Añadir estos estados para la funcionalidad de administrador
+  // Estados para administrador
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [adminPassword, setAdminPassword] = useState("")
   const [isEditingRecord, setIsEditingRecord] = useState(false)
@@ -92,12 +87,31 @@ export default function StockManagement() {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const [recordToDelete, setRecordToDelete] = useState<number | null>(null)
 
-  // Dentro del componente StockManagement, añadir:
+  // Auth y notificaciones
   const { signOut, session } = useAuth()
   const username = session?.username || "Usuario"
-
-  // Añadir el hook de notificaciones
   const { notifications, addNotification, markAsRead, removeNotification, clearAllNotifications } = useNotifications()
+
+  // Refs para cerrar menús al hacer clic fuera
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
+  const notificationsPanelRef = useRef<HTMLDivElement>(null)
+
+  // Cerrar menús al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setMobileMenuOpen(false)
+      }
+      if (notificationsPanelRef.current && !notificationsPanelRef.current.contains(event.target as Node)) {
+        setNotificationsPanelOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
 
   // Función para verificar stock bajo y generar notificaciones
   const checkAndNotifyLowStock = () => {
@@ -683,69 +697,107 @@ export default function StockManagement() {
     // Calcular gran total
     const grandTotal = Object.values(summary).reduce((acc, hotel) => acc + hotel.total, 0)
 
+    // Versión móvil: mostrar un resumen por hotel
     return (
       <div>
-        <table className="min-w-full bg-white border border-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="py-2 px-4 border-b text-left">Hotel / Producto</th>
-              {productIds.map((productId) => {
-                const product = products.find((p) => p.id === productId)
+        <div className="md:hidden">
+          {hotels.map((hotel) => {
+            if (!hotel) return null
+            return (
+              <div key={hotel} className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 border-b border-gray-200 bg-gray-50">
+                  <h4 className="font-medium">{hotel}</h4>
+                  <p className="text-sm text-gray-500">Total: ${summary[hotel].total.toLocaleString()}</p>
+                </div>
+                <div className="p-3">
+                  {Object.entries(summary[hotel])
+                    .filter(([key]) => key !== "total")
+                    .map(([productId, data]) => (
+                      <div key={productId} className="py-2 border-b border-gray-100 last:border-0">
+                        <div className="flex justify-between">
+                          <span>{data.productName}</span>
+                          <span>
+                            {data.quantity} {data.productUnit}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-500 text-right">${data.total.toLocaleString()}</div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )
+          })}
+
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mt-4">
+            <h4 className="font-medium text-blue-800 mb-2">Total General</h4>
+            <p className="text-xl font-bold text-blue-900">${grandTotal.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* Versión desktop: tabla completa */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="min-w-full bg-white border border-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="py-2 px-4 border-b text-left">Hotel / Producto</th>
+                {productIds.map((productId) => {
+                  const product = products.find((p) => p.id === productId)
+                  return (
+                    <th key={productId} className="py-2 px-4 border-b text-left">
+                      {product ? product.name : `Producto ${productId}`}
+                    </th>
+                  )
+                })}
+                <th className="py-2 px-4 border-b text-left font-bold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hotels.map((hotel) => {
+                if (!hotel) return null
                 return (
-                  <th key={productId} className="py-2 px-4 border-b text-left">
-                    {product ? product.name : `Producto ${productId}`}
-                  </th>
-                )
-              })}
-              <th className="py-2 px-4 border-b text-left font-bold">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hotels.map((hotel) => {
-              if (!hotel) return null
-              return (
-                <tr key={hotel}>
-                  <td className="py-2 px-4 border-b font-medium">{hotel}</td>
-                  {productIds.map((productId) => {
-                    const productSummary = summary[hotel][productId]
-                    if (!productSummary) {
+                  <tr key={hotel}>
+                    <td className="py-2 px-4 border-b font-medium">{hotel}</td>
+                    {productIds.map((productId) => {
+                      const productSummary = summary[hotel][productId]
+                      if (!productSummary) {
+                        return (
+                          <td key={productId} className="py-2 px-4 border-b">
+                            -
+                          </td>
+                        )
+                      }
                       return (
                         <td key={productId} className="py-2 px-4 border-b">
-                          -
+                          <div>
+                            {productSummary.quantity} {productSummary.productUnit}
+                          </div>
+                          <div className="text-gray-600">${productSummary.total.toLocaleString()}</div>
                         </td>
                       )
-                    }
-                    return (
-                      <td key={productId} className="py-2 px-4 border-b">
-                        <div>
-                          {productSummary.quantity} {productSummary.productUnit}
-                        </div>
-                        <div className="text-gray-600">${productSummary.total.toLocaleString()}</div>
-                      </td>
-                    )
-                  })}
-                  <td className="py-2 px-4 border-b font-bold">${summary[hotel].total.toLocaleString()}</td>
-                </tr>
-              )
-            })}
-            {/* Fila de totales */}
-            <tr className="bg-gray-50">
-              <td className="py-2 px-4 border-b font-bold">TOTAL</td>
-              {productIds.map((productId) => (
-                <td key={productId} className="py-2 px-4 border-b font-bold">
-                  <div>
-                    {productTotals[productId].quantity} {products.find((p) => p.id === productId)?.unit || ""}
-                  </div>
-                  <div>${productTotals[productId].total.toLocaleString()}</div>
-                </td>
-              ))}
-              <td className="py-2 px-4 border-b font-bold text-lg">${grandTotal.toLocaleString()}</td>
-            </tr>
-          </tbody>
-        </table>
+                    })}
+                    <td className="py-2 px-4 border-b font-bold">${summary[hotel].total.toLocaleString()}</td>
+                  </tr>
+                )
+              })}
+              {/* Fila de totales */}
+              <tr className="bg-gray-50">
+                <td className="py-2 px-4 border-b font-bold">TOTAL</td>
+                {productIds.map((productId) => (
+                  <td key={productId} className="py-2 px-4 border-b font-bold">
+                    <div>
+                      {productTotals[productId].quantity} {products.find((p) => p.id === productId)?.unit || ""}
+                    </div>
+                    <div>${productTotals[productId].total.toLocaleString()}</div>
+                  </td>
+                ))}
+                <td className="py-2 px-4 border-b font-bold text-lg">${grandTotal.toLocaleString()}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         {/* Resumen visual */}
-        <div className="mt-8">
+        <div className="mt-8 hidden md:block">
           <h4 className="text-md font-medium mb-4">Distribución de Gastos por Hotel</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Gráfico de barras simple */}
@@ -813,12 +865,12 @@ export default function StockManagement() {
   if (error) {
     return (
       <div className="p-4">
-        <h1 className="text-2xl font-bold mb-4">HOTELES DE LA COSTA</h1>
-        <h2 className="text-xl mb-6">Sistema de Gestión de Stock</h2>
+        <h1 className="text-xl md:text-2xl font-bold mb-2">HOTELES DE LA COSTA</h1>
+        <h2 className="text-lg md:text-xl mb-4">Sistema de Gestión de Stock</h2>
 
         <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
           <div className="flex items-start">
-            <AlertTriangle className="h-5 w-5 text-red-500 mr-2 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" />
             <div>
               <h3 className="text-lg font-medium text-red-800 mb-2">Error de conexión</h3>
               <p className="text-red-700 mb-2">No se pudo conectar con Supabase. Esto puede deberse a:</p>
@@ -924,8 +976,70 @@ export default function StockManagement() {
   // Si está conectado, mostrar la interfaz completa
   if (isConnected) {
     return (
-      <div className="p-4">
-        <div className="flex justify-between items-center mb-4">
+      <div className="p-2 md:p-4">
+        {/* Header para móvil */}
+        <div className="md:hidden flex flex-col mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <h1 className="text-xl font-bold">HOTELES DE LA COSTA</h1>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setNotificationsPanelOpen(!notificationsPanelOpen)}
+                className="relative p-1 rounded-full hover:bg-gray-100"
+              >
+                <Bell className="h-5 w-5" />
+                {notifications.length > 0 && (
+                  <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                    {notifications.length}
+                  </span>
+                )}
+              </button>
+              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-1 rounded-full hover:bg-gray-100">
+                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </div>
+          </div>
+          <h2 className="text-lg mb-2">Sistema de Gestión de Stock</h2>
+
+          {/* Menú móvil */}
+          {mobileMenuOpen && (
+            <div
+              ref={mobileMenuRef}
+              className="absolute top-16 right-2 bg-white shadow-lg rounded-lg z-50 w-48 border border-gray-200"
+            >
+              <div className="p-2 border-b border-gray-200">
+                <div className="flex items-center text-gray-700 mb-1">
+                  <User className="h-4 w-4 mr-2" />
+                  <span className="font-medium">{username}</span>
+                </div>
+                <button
+                  onClick={() => signOut()}
+                  className="w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 flex items-center text-sm"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Panel de notificaciones móvil */}
+          {notificationsPanelOpen && (
+            <div
+              ref={notificationsPanelRef}
+              className="absolute top-16 right-2 bg-white shadow-lg rounded-lg z-50 w-64 border border-gray-200"
+            >
+              <NotificationsPanel
+                notifications={notifications}
+                markAsRead={markAsRead}
+                removeNotification={removeNotification}
+                clearAllNotifications={clearAllNotifications}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Header para desktop */}
+        <div className="hidden md:flex justify-between items-center mb-4">
           <div>
             <h1 className="text-2xl font-bold mb-2">HOTELES DE LA COSTA</h1>
             <h2 className="text-xl mb-4">Sistema de Gestión de Stock</h2>
@@ -951,8 +1065,62 @@ export default function StockManagement() {
           </div>
         </div>
 
-        {/* Tabs de navegación */}
-        <div className="flex border-b border-gray-200 mb-6">
+        {/* Tabs de navegación para móvil (scrollable) */}
+        <div className="md:hidden overflow-x-auto pb-2 mb-4">
+          <div className="flex border-b border-gray-200 min-w-max">
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "inventory"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("inventory")}
+            >
+              Inventario
+            </button>
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "products"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("products")}
+            >
+              Productos
+            </button>
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "records"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("records")}
+            >
+              Movimientos
+            </button>
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "hotelSummary"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("hotelSummary")}
+            >
+              Resumen
+            </button>
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "admin" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("admin")}
+            >
+              Admin
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs de navegación para desktop */}
+        <div className="hidden md:flex border-b border-gray-200 mb-6">
           <button
             className={`px-4 py-2 font-medium ${
               activeTab === "inventory"
@@ -1007,15 +1175,15 @@ export default function StockManagement() {
         {/* Contenido según la pestaña activa */}
         {activeTab === "inventory" && (
           <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium">Inventario Actual</h3>
-              <div className="space-x-2">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
+              <h3 className="text-lg font-medium mb-2 md:mb-0">Inventario Actual</h3>
+              <div className="flex gap-2">
                 <button
                   onClick={() => {
                     setIsAddingRecord(true)
                     setRecordType("entrada")
                   }}
-                  className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
+                  className="flex-1 md:flex-none px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center justify-center"
                 >
                   <ArrowDown className="h-4 w-4 mr-1" />
                   Entrada
@@ -1025,7 +1193,7 @@ export default function StockManagement() {
                     setIsAddingRecord(true)
                     setRecordType("salida")
                   }}
-                  className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
+                  className="flex-1 md:flex-none px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center"
                 >
                   <ArrowUp className="h-4 w-4 mr-1" />
                   Salida
@@ -1033,8 +1201,49 @@ export default function StockManagement() {
               </div>
             </div>
 
-            {/* Tabla de inventario */}
-            <div className="overflow-x-auto">
+            {/* Tabla de inventario para móvil */}
+            <div className="md:hidden">
+              {inventory.map((item) => {
+                const product = products.find((p) => p.id === item.productId)
+                const isLowStock = product && item.quantity < product.min_stock
+
+                return (
+                  <div
+                    key={item.productId}
+                    className={`mb-3 p-3 rounded-lg border ${isLowStock ? "bg-red-50 border-red-200" : "bg-white border-gray-200"}`}
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <h4 className="font-medium">{getProductName(item.productId)}</h4>
+                      {isLowStock ? (
+                        <span className="text-red-600 font-medium flex items-center text-sm">
+                          <AlertTriangle className="h-4 w-4 mr-1" />
+                          Stock bajo
+                        </span>
+                      ) : (
+                        <span className="text-green-600 text-sm">OK</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-gray-500">Cantidad:</span>
+                        <span className="ml-1 font-medium">
+                          {item.quantity} {getProductUnit(item.productId)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Mínimo:</span>
+                        <span className="ml-1 font-medium">
+                          {product?.min_stock || "N/A"} {getProductUnit(item.productId)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Tabla de inventario para desktop */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full bg-white border border-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1076,7 +1285,7 @@ export default function StockManagement() {
             {/* Modal para añadir registro */}
             {isAddingRecord && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
                   <h3 className="text-lg font-medium mb-4">
                     {recordType === "entrada" ? "Registrar Entrada" : "Registrar Salida"}
                   </h3>
@@ -1168,8 +1377,46 @@ export default function StockManagement() {
               </button>
             </div>
 
-            {/* Tabla de productos */}
-            <div className="overflow-x-auto">
+            {/* Tabla de productos para móvil */}
+            <div className="md:hidden">
+              {products.map((product) => (
+                <div key={product.id} className="mb-3 p-3 rounded-lg border border-gray-200 bg-white">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-medium">{product.name}</h4>
+                    <button
+                      onClick={() => {
+                        setCurrentProduct(product)
+                        setIsEditingProduct(true)
+                      }}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-500">Unidad:</span>
+                      <span className="ml-1">{product.unit}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Precio:</span>
+                      <span className="ml-1">${product.price.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Stock Mínimo:</span>
+                      <span className="ml-1">{product.min_stock}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">ID:</span>
+                      <span className="ml-1">{product.id}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabla de productos para desktop */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full bg-white border border-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1209,7 +1456,7 @@ export default function StockManagement() {
             {/* Modal para añadir producto */}
             {isAddingProduct && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
                   <h3 className="text-lg font-medium mb-4">Añadir Nuevo Producto</h3>
                   <form onSubmit={handleAddProduct}>
                     <div className="mb-4">
@@ -1271,7 +1518,7 @@ export default function StockManagement() {
             {/* Modal para editar producto */}
             {isEditingProduct && currentProduct && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
                   <h3 className="text-lg font-medium mb-4">Editar Producto</h3>
                   <form onSubmit={handleEditProduct}>
                     <div className="mb-4">
@@ -1343,8 +1590,44 @@ export default function StockManagement() {
           <div>
             <h3 className="text-lg font-medium mb-4">Historial de Movimientos</h3>
 
-            {/* Tabla de registros */}
-            <div className="overflow-x-auto">
+            {/* Tabla de registros para móvil */}
+            <div className="md:hidden">
+              {records.map((record) => (
+                <div key={record.id} className="mb-3 p-3 rounded-lg border border-gray-200 bg-white">
+                  <div className="flex justify-between items-center mb-2">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        record.type === "entrada" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {record.type === "entrada" ? "Entrada" : "Salida"}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(record.date).toLocaleDateString()} {new Date(record.date).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="mb-1">
+                    <h4 className="font-medium">{record.productName}</h4>
+                    <p className="text-sm">
+                      {record.quantity} {record.productUnit}
+                    </p>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <div>
+                      <span className="text-gray-500">Hotel:</span>
+                      <span className="ml-1">{record.hotelName || "-"}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Usuario:</span>
+                      <span className="ml-1">{record.username || "Sistema"}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabla de registros para desktop */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full bg-white border border-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1439,7 +1722,66 @@ export default function StockManagement() {
                 <h4 className="text-md font-medium mb-2">Historial de Movimientos</h4>
                 <p className="text-gray-600 mb-4">Aquí puedes editar o eliminar registros de entradas y salidas.</p>
 
-                <div className="overflow-x-auto">
+                {/* Tabla de registros para móvil (admin) */}
+                <div className="md:hidden">
+                  {records.map((record) => (
+                    <div key={record.id} className="mb-3 p-3 rounded-lg border border-gray-200 bg-white">
+                      <div className="flex justify-between items-center mb-2">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            record.type === "entrada" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {record.type === "entrada" ? "Entrada" : "Salida"}
+                        </span>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => {
+                              setCurrentRecord(record)
+                              setIsEditingRecord(true)
+                            }}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Editar"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setRecordToDelete(record.id)
+                              setIsConfirmingDelete(true)
+                            }}
+                            className="text-red-600 hover:text-red-800"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mb-1">
+                        <h4 className="font-medium">{record.productName}</h4>
+                        <p className="text-sm">
+                          {record.quantity} {record.productUnit}
+                        </p>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <div>
+                          <span className="text-gray-500">Hotel:</span>
+                          <span className="ml-1">{record.hotelName || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Usuario:</span>
+                          <span className="ml-1">{record.username || "Sistema"}</span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(record.date).toLocaleDateString()} {new Date(record.date).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Tabla de registros para desktop (admin) */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="min-w-full bg-white border border-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
@@ -1508,7 +1850,7 @@ export default function StockManagement() {
             {/* Modal para editar registro */}
             {isEditingRecord && currentRecord && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
                   <h3 className="text-lg font-medium mb-4">Editar Registro</h3>
                   <form onSubmit={handleEditRecord}>
                     <div className="mb-4">
@@ -1597,7 +1939,7 @@ export default function StockManagement() {
             {/* Modal de confirmación para eliminar */}
             {isConfirmingDelete && recordToDelete && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
                   <h3 className="text-lg font-medium mb-4">Confirmar Eliminación</h3>
                   <p className="text-gray-700 mb-6">
                     ¿Estás seguro de que deseas eliminar este registro? Esta acción no se puede deshacer y afectará al

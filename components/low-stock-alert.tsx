@@ -50,17 +50,17 @@ export default function LowStockAlert({ products, inventory }: LowStockAlertProp
   if (lowStockProducts.length === 0 || isDismissed) return null
 
   return (
-    <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
-      <div className="p-4 flex justify-between items-center">
+    <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
+      <div className="p-3 flex justify-between items-center">
         <div className="flex items-center">
-          <AlertTriangle className="h-5 w-5 text-amber-500 mr-2" />
+          <AlertTriangle className="h-5 w-5 text-amber-500 mr-2 flex-shrink-0" />
           <div>
-            <h3 className="font-medium text-amber-800">
+            <h3 className="font-medium text-amber-800 text-sm md:text-base">
               {lowStockProducts.length === 1
                 ? "1 producto con stock bajo"
                 : `${lowStockProducts.length} productos con stock bajo`}
             </h3>
-            <p className="text-sm text-amber-700">Es necesario reabastecer estos productos pronto</p>
+            <p className="text-xs md:text-sm text-amber-700">Es necesario reabastecer estos productos pronto</p>
           </div>
         </div>
         <div className="flex items-center">
@@ -82,33 +82,65 @@ export default function LowStockAlert({ products, inventory }: LowStockAlertProp
       </div>
 
       {isExpanded && (
-        <div className="border-t border-amber-200 p-4">
-          <table className="min-w-full">
-            <thead>
-              <tr className="text-amber-800 text-left text-sm">
-                <th className="pb-2">Producto</th>
-                <th className="pb-2">Stock Actual</th>
-                <th className="pb-2">Mínimo</th>
-                <th className="pb-2">Déficit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lowStockProducts.map((product) => (
-                <tr key={product.id} className="text-amber-700">
-                  <td className="py-1">{product.name}</td>
-                  <td className="py-1">
-                    {product.quantity} {product.unit}
-                  </td>
-                  <td className="py-1">
-                    {product.min_stock} {product.unit}
-                  </td>
-                  <td className="py-1 font-medium">
-                    {product.deficit} {product.unit}
-                  </td>
+        <div className="border-t border-amber-200 p-3">
+          {/* Versión móvil */}
+          <div className="md:hidden">
+            {lowStockProducts.map((product) => (
+              <div key={product.id} className="py-2 border-b border-amber-100 last:border-0">
+                <div className="font-medium text-amber-800">{product.name}</div>
+                <div className="grid grid-cols-3 text-xs text-amber-700">
+                  <div>
+                    <span className="text-amber-600">Actual:</span>{" "}
+                    <span className="font-medium">
+                      {product.quantity} {product.unit}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-amber-600">Mínimo:</span>{" "}
+                    <span className="font-medium">
+                      {product.min_stock} {product.unit}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-amber-600">Déficit:</span>{" "}
+                    <span className="font-medium">
+                      {product.deficit} {product.unit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Versión desktop */}
+          <div className="hidden md:block">
+            <table className="min-w-full">
+              <thead>
+                <tr className="text-amber-800 text-left text-sm">
+                  <th className="pb-2">Producto</th>
+                  <th className="pb-2">Stock Actual</th>
+                  <th className="pb-2">Mínimo</th>
+                  <th className="pb-2">Déficit</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {lowStockProducts.map((product) => (
+                  <tr key={product.id} className="text-amber-700">
+                    <td className="py-1">{product.name}</td>
+                    <td className="py-1">
+                      {product.quantity} {product.unit}
+                    </td>
+                    <td className="py-1">
+                      {product.min_stock} {product.unit}
+                    </td>
+                    <td className="py-1 font-medium">
+                      {product.deficit} {product.unit}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
