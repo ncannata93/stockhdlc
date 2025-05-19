@@ -4,8 +4,8 @@
   "description": "Sistema de gestión para Hoteles de la Costa",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#3f83f8",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {
