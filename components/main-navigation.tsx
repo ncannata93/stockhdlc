@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, Home, Package, Users, Menu, X } from "lucide-react"
+import { ArrowLeft, Home, Package, Users, Menu, X, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useRef, useEffect } from "react"
 
@@ -69,6 +69,17 @@ export function MainNavigation() {
                 <span>Empleados</span>
               </Button>
             </Link>
+
+            <Link href="/servicios">
+              <Button
+                variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
+                size="sm"
+                className="w-full justify-start"
+              >
+                <Wrench className="h-4 w-4 mr-2" />
+                <span>Servicios</span>
+              </Button>
+            </Link>
           </div>
         </div>
       )}
@@ -106,6 +117,17 @@ export function MainNavigation() {
             >
               <Users className="h-4 w-4" />
               <span>Empleados</span>
+            </Button>
+          </Link>
+
+          <Link href="/servicios">
+            <Button
+              variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
+              size="sm"
+              className="flex items-center gap-1"
+            >
+              <Wrench className="h-4 w-4" />
+              <span>Servicios</span>
             </Button>
           </Link>
         </div>

@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Package2, Users, Settings, LogIn } from "lucide-react"
+import { Package2, Users, Settings, LogIn, Wrench } from "lucide-react"
 
 export default function Home() {
   const { isAuthenticated, isAdmin } = useAuth()
@@ -40,6 +40,11 @@ export default function Home() {
             <Button className="w-full flex justify-start items-center" onClick={() => handleNavigation("/empleados")}>
               <Users className="mr-2 h-5 w-5" />
               Gestión de Empleados
+            </Button>
+
+            <Button className="w-full flex justify-start items-center" onClick={() => handleNavigation("/servicios")}>
+              <Wrench className="mr-2 h-5 w-5" />
+              Gestión de Servicios
             </Button>
 
             {isAdmin && (
