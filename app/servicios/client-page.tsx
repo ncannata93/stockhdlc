@@ -11,6 +11,8 @@ import { EditarPago } from "@/components/servicios/editar-pago"
 import { Estadisticas } from "@/components/servicios/estadisticas"
 import { ServicesList } from "@/components/servicios/servicios-list"
 import { AgregarServicio } from "@/components/servicios/agregar-servicio"
+import { ReservacionesList } from "@/components/servicios/reservaciones-list"
+import { AgregarReservacion } from "@/components/servicios/agregar-reservacion"
 
 export default function ServiceClientPage() {
   const searchParams = useSearchParams()
@@ -23,6 +25,10 @@ export default function ServiceClientPage() {
     }
   }, [tabParam])
 
+  const handleBackToReservations = () => {
+    setActiveTab("reservaciones")
+  }
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gray-100">
@@ -30,7 +36,7 @@ export default function ServiceClientPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Gestión de Servicios</h1>
-            <p className="text-gray-600">Administra los pagos de servicios del hotel</p>
+            <p className="text-gray-600">Administra los pagos y reservaciones de servicios del hotel</p>
           </div>
 
           {/* Tabs de navegación */}
@@ -66,6 +72,26 @@ export default function ServiceClientPage() {
                   }`}
                 >
                   Agregar Pago
+                </button>
+                <button
+                  onClick={() => setActiveTab("reservaciones")}
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "reservaciones"
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  Reservaciones
+                </button>
+                <button
+                  onClick={() => setActiveTab("agregar-reservacion")}
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "agregar-reservacion"
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  Nueva Reservación
                 </button>
                 <button
                   onClick={() => setActiveTab("servicios")}
@@ -107,6 +133,8 @@ export default function ServiceClientPage() {
             {activeTab === "pagos" && <PagosList />}
             {activeTab === "agregar-pago" && <AgregarPago />}
             {activeTab === "editar-pago" && <EditarPago />}
+            {activeTab === "reservaciones" && <ReservacionesList />}
+            {activeTab === "agregar-reservacion" && <AgregarReservacion onBack={handleBackToReservations} />}
             {activeTab === "servicios" && <ServicesList />}
             {activeTab === "agregar-servicio" && <AgregarServicio />}
             {activeTab === "estadisticas" && <Estadisticas />}
