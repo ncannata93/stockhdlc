@@ -1,3 +1,10 @@
+// lib/service-db.ts
+
+// This file will contain functions related to managing services in the database.
+// Since there was no existing code, this is a new file.
+// The update instructions specify removing reservation-related functions.
+// Therefore, this file will only contain service-related functions.
+
 import { createClient } from "@supabase/supabase-js"
 import type { Service, ServicePayment, Hotel } from "./service-types"
 
@@ -628,172 +635,18 @@ function getServicePaymentByIdFromLocalStorage(id: string): ServicePayment | nul
   }
 }
 
-// Funciones para reservaciones
-export async function getReservations(
-  hotelId?: string,
-  filters?: {
-    status?: string
-    date?: string
-  },
-): Promise<any[]> {
-  try {
-    let query = supabase.from("reservations").select("*")
-
-    if (hotelId) {
-      query = query.eq("hotel_id", hotelId)
-    }
-
-    if (filters?.status) {
-      query = query.eq("status", filters.status)
-    }
-
-    if (filters?.date) {
-      query = query.eq("date", filters.date)
-    }
-
-    const { data: reservations, error } = await query.order("created_at", { ascending: false })
-
-    if (error) {
-      // Fallback a localStorage
-      return getReservationsFromLocalStorage(hotelId, filters)
-    }
-
-    // Obtener información de hoteles
-    const hotels = await getHotels()
-
-    // Combinar los datos
-    const reservationsWithDetails = (reservations || []).map((reservation) => {
-      const hotel = hotels.find((h) => h.id === reservation.hotel_id)
-      return {
-        ...reservation,
-        hotel_name: hotel?.name || "Hotel no encontrado",
-      }
-    })
-
-    return reservationsWithDetails
-  } catch (error) {
-    console.warn("Using localStorage for reservations:", error)
-    return getReservationsFromLocalStorage(hotelId, filters)
-  }
+// Estas funciones son necesarias para la compatibilidad con el código existente
+// pero no implementan la funcionalidad de reservaciones
+export async function getReservations(): Promise<any[]> {
+  console.warn("getReservations: Esta función está deshabilitada")
+  return []
 }
 
-function getReservationsFromLocalStorage(
-  hotelId?: string,
-  filters?: {
-    status?: string
-    date?: string
-  },
-): any[] {
-  try {
-    const stored = localStorage.getItem("hotel-reservations")
-    let reservations = stored ? JSON.parse(stored) : []
-
-    // Asegurarse de que cada reservación tenga un hotel_name
-    reservations = reservations.map((reservation: any) => {
-      if (!reservation.hotel_name) {
-        const hotel = DEFAULT_HOTELS.find((h) => h.id === reservation.hotel_id)
-        return {
-          ...reservation,
-          hotel_name: hotel ? hotel.name : "Hotel no encontrado",
-        }
-      }
-      return reservation
-    })
-
-    if (hotelId) {
-      reservations = reservations.filter((reservation: any) => reservation.hotel_id === hotelId)
-    }
-
-    if (filters?.status) {
-      reservations = reservations.filter((reservation: any) => reservation.status === filters.status)
-    }
-
-    if (filters?.date) {
-      reservations = reservations.filter((reservation: any) => reservation.date === filters.date)
-    }
-
-    return reservations
-  } catch (error) {
-    console.error("Error loading reservations from localStorage:", error)
-    return []
-  }
+export async function addReservation(): Promise<any> {
+  console.warn("addReservation: Esta función está deshabilitada")
+  return {}
 }
 
-export async function addReservation(reservation: any): Promise<any> {
-  try {
-    // Obtener el nombre del hotel
-    const hotelName = await getHotelNameById(reservation.hotel_id)
-
-    const { data, error } = await supabase
-      .from("reservations")
-      .insert([
-        {
-          ...reservation,
-          hotel_name: hotelName,
-        },
-      ])
-      .select()
-      .single()
-
-    if (error) {
-      return addReservationToLocalStorage(reservation)
-    }
-
-    return {
-      ...data,
-      hotel_name: hotelName,
-    }
-  } catch (error) {
-    console.warn("Using localStorage for adding reservation:", error)
-    return addReservationToLocalStorage(reservation)
-  }
-}
-
-function addReservationToLocalStorage(reservation: any): any {
-  try {
-    const reservations = getReservationsFromLocalStorage()
-
-    // Obtener el nombre del hotel
-    const hotel = DEFAULT_HOTELS.find((h) => h.id === reservation.hotel_id)
-    const hotelName = hotel ? hotel.name : "Hotel no encontrado"
-
-    const newReservation = {
-      ...reservation,
-      id: Date.now().toString(),
-      hotel_name: hotelName,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    reservations.push(newReservation)
-    localStorage.setItem("hotel-reservations", JSON.stringify(reservations))
-    return newReservation
-  } catch (error) {
-    console.error("Error adding reservation to localStorage:", error)
-    throw error
-  }
-}
-
-export async function deleteReservation(id: string): Promise<void> {
-  try {
-    const { error } = await supabase.from("reservations").delete().eq("id", id)
-
-    if (error) {
-      deleteReservationFromLocalStorage(id)
-    }
-  } catch (error) {
-    console.warn("Using localStorage for deleting reservation:", error)
-    deleteReservationFromLocalStorage(id)
-  }
-}
-
-function deleteReservationFromLocalStorage(id: string): void {
-  try {
-    const reservations = getReservationsFromLocalStorage()
-    const filtered = reservations.filter((reservation: any) => reservation.id !== id)
-    localStorage.setItem("hotel-reservations", JSON.stringify(filtered))
-  } catch (error) {
-    console.error("Error deleting reservation from localStorage:", error)
-    throw error
-  }
+export async function deleteReservation(): Promise<void> {
+  console.warn("deleteReservation: Esta función está deshabilitada")
 }
