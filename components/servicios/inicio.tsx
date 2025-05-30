@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { getServicePayments } from "@/lib/service-db"
 import type { ServicePayment } from "@/lib/service-types"
 import { Calendar, DollarSign, AlertCircle, CheckCircle, Clock } from "lucide-react"
+import { SupabaseDebug } from "@/components/supabase-debug"
 
 export function Inicio() {
   const [payments, setPayments] = useState<ServicePayment[]>([])
@@ -114,6 +115,12 @@ export function Inicio() {
 
   return (
     <div className="space-y-6">
+      {/* Debug de Supabase */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">Estado de la Base de Datos</h3>
+        <SupabaseDebug />
+      </div>
+
       {/* Estadísticas generales */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-lg shadow p-6">

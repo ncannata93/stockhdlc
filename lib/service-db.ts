@@ -109,6 +109,7 @@ export async function getHotelNameById(hotelId: string): Promise<string> {
 // Funciones para servicios
 export async function getServices(hotelId?: string): Promise<Service[]> {
   try {
+    console.log("Obteniendo servicios de Supabase...")
     let query = supabase.from("services").select("*").eq("active", true)
 
     if (hotelId) {
@@ -118,9 +119,11 @@ export async function getServices(hotelId?: string): Promise<Service[]> {
     const { data: services, error } = await query.order("name")
 
     if (error) {
-      // Fallback a localStorage
+      console.error("Error al obtener servicios de Supabase:", error)
       return getServicesFromLocalStorage(hotelId)
     }
+
+    console.log("Servicios obtenidos de Supabase:", services?.length || 0)
 
     // Obtener información de hoteles
     const hotels = await getHotels()
@@ -138,7 +141,7 @@ export async function getServices(hotelId?: string): Promise<Service[]> {
 
     return servicesWithHotel
   } catch (error) {
-    console.warn("Using localStorage for services:", error)
+    console.error("Error general al obtener servicios:", error)
     return getServicesFromLocalStorage(hotelId)
   }
 }
@@ -176,6 +179,8 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
     // Obtener el nombre del hotel antes de insertar
     const hotelName = await getHotelNameById(service.hotel_id)
 
+    console.log("Intentando guardar servicio en Supabase:", { ...service, hotel_name: hotelName })
+
     const { data, error } = await supabase
       .from("services")
       .insert([
@@ -186,7 +191,7 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
           provider: service.provider,
           account_number: service.account_number,
           hotel_id: service.hotel_id,
-          hotel_name: hotelName, // Guardar el nombre del hotel
+          hotel_name: hotelName,
           notes: service.notes,
           active: service.active,
           average_amount: service.average_amount || 0,
@@ -196,12 +201,14 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
       .single()
 
     if (error) {
-      // Fallback a localStorage
+      console.error("Error de Supabase al guardar servicio:", error)
+      // Solo usar localStorage como último recurso
       const newService = addServiceToLocalStorage(service)
-      // Generar pagos automáticamente
       await generateMonthlyPayments(newService)
       return newService
     }
+
+    console.log("Servicio guardado exitosamente en Supabase:", data)
 
     // Asegurarse de que el servicio tenga el nombre del hotel
     const serviceWithHotel = {
@@ -213,7 +220,7 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
     await generateMonthlyPayments(serviceWithHotel)
     return serviceWithHotel
   } catch (error) {
-    console.warn("Using localStorage for adding service:", error)
+    console.error("Error general al guardar servicio:", error)
     const newService = addServiceToLocalStorage(service)
     await generateMonthlyPayments(newService)
     return newService
