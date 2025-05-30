@@ -1,21 +1,23 @@
+import ProtectedRoute from "@/components/protected-route"
+import ServiciosClient from "./client-page"
 import { Suspense } from "react"
-import ServiceClientPage from "./client-page"
-
-function ServicePageFallback() {
-  return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-        <p className="text-gray-600">Cargando servicios...</p>
-      </div>
-    </div>
-  )
-}
+import { Loader2 } from "lucide-react"
 
 export default function ServiciosPage() {
   return (
-    <Suspense fallback={<ServicePageFallback />}>
-      <ServiceClientPage />
-    </Suspense>
+    <ProtectedRoute>
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center min-h-screen">
+            <div className="text-center">
+              <Loader2 className="h-12 w-12 animate-spin text-gray-400 mx-auto mb-4" />
+              <h2 className="text-xl font-medium text-gray-700">Cargando servicios...</h2>
+            </div>
+          </div>
+        }
+      >
+        <ServiciosClient />
+      </Suspense>
+    </ProtectedRoute>
   )
 }

@@ -36,15 +36,35 @@ export default function ProtectedRoute({ children, adminOnly = false, allowRedir
         if (pathname !== "/login") {
           router.push(`/login?redirectTo=${encodeURIComponent(pathname)}`)
         }
-      } else if (adminOnly && !isAdmin) {
-        console.log("ProtectedRoute - Redirigiendo a /stock (no es admin)")
-        router.push("/stock")
-      } else if (allowRedirect && pathname === "/" && isAuthenticated) {
-        // Solo redirigir a /stock si allowRedirect es true y estamos en la página principal
-        router.push("/stock")
       } else {
-        console.log("ProtectedRoute - Usuario autorizado")
-        setIsAuthorized(true)
+        // Verificar permisos específicos por usuario
+        const username = session?.username || ""
+        let hasAccess = false
+
+        if (username === "admin" || username === "ncannata") {
+          // Admin y ncannata tienen acceso total
+          hasAccess = true
+        } else if (username === "dpili") {
+          // dpili solo tiene acceso a /stock y /empleados
+          hasAccess = pathname.startsWith("/stock") || pathname.startsWith("/empleados")
+        } else if (adminOnly) {
+          // Para otras rutas que requieren admin
+          hasAccess = isAdmin
+        } else {
+          // Para rutas generales
+          hasAccess = true
+        }
+
+        if (!hasAccess) {
+          console.log("ProtectedRoute - Usuario no autorizado para esta ruta:", pathname)
+          router.push("/stock") // Redirigir a una ruta permitida
+        } else if (allowRedirect && pathname === "/" && isAuthenticated) {
+          // Solo redirigir a /stock si allowRedirect es true y estamos en la página principal
+          router.push("/stock")
+        } else {
+          console.log("ProtectedRoute - Usuario autorizado")
+          setIsAuthorized(true)
+        }
       }
     }
   }, [isAuthenticated, isAdmin, isLoading, router, adminOnly, isClient, session, pathname, allowRedirect])
@@ -59,7 +79,7 @@ export default function ProtectedRoute({ children, adminOnly = false, allowRedir
             {isLoading ? "Verificando autenticación..." : "Redirigiendo..."}
           </h2>
           <p className="text-sm text-gray-500 mt-2">
-            {!isAuthenticated ? "No autenticado" : adminOnly && !isAdmin ? "No es administrador" : "Cargando..."}
+            {!isAuthenticated ? "No autenticado" : !isAuthorized ? "No autorizado" : "Cargando..."}
           </p>
         </div>
       </div>
