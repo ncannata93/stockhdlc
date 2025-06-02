@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getServicePayments } from "@/lib/service-db"
+import { getServicePayments, markPaymentAsPaid } from "@/lib/service-db"
 import type { ServicePayment } from "@/lib/service-types"
-import { Calendar, DollarSign, AlertCircle, CheckCircle, Clock } from "lucide-react"
+import { Calendar, DollarSign, AlertCircle, CheckCircle, Clock, Check, Edit, Building2 } from "lucide-react"
 import { SupabaseDebug } from "@/components/supabase-debug"
 
 export function Inicio() {
@@ -16,7 +16,7 @@ export function Inicio() {
     vencidos: 0,
     totalPendiente: 0,
     totalAbonado: 0,
-    proximosVencer: [],
+    proximosVencer: [] as ServicePayment[],
   })
 
   useEffect(() => {
@@ -43,13 +43,22 @@ export function Inicio() {
     const abonados = payments.filter((p) => p.status === "abonado")
     const vencidos = payments.filter((p) => p.status === "vencido")
 
-    // Pagos próximos a vencer (en los próximos 7 días)
-    const proximosVencer = pendientes.filter((p) => {
-      const dueDate = new Date(p.due_date)
-      const diffTime = dueDate.getTime() - now.getTime()
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-      return diffDays >= 0 && diffDays <= 7
-    })
+    // Pagos próximos a vencer (en los próximos 30 días)
+    const proximosVencer = pendientes
+      .filter((p) => {
+        const [year, month, day] = p.due_date.split("T")[0].split("-")
+        const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+        const diffTime = dueDate.getTime() - now.getTime()
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        return diffDays >= -7 && diffDays <= 30 // Incluye vencidos hace 7 días y próximos 30 días
+      })
+      .sort((a, b) => {
+        const [yearA, monthA, dayA] = a.due_date.split("T")[0].split("-")
+        const [yearB, monthB, dayB] = b.due_date.split("T")[0].split("-")
+        const dateA = new Date(Number.parseInt(yearA), Number.parseInt(monthA) - 1, Number.parseInt(dayA))
+        const dateB = new Date(Number.parseInt(yearB), Number.parseInt(monthB) - 1, Number.parseInt(dayB))
+        return dateA.getTime() - dateB.getTime()
+      })
 
     setStats({
       pendientes: pendientes.length,
@@ -62,7 +71,10 @@ export function Inicio() {
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
+    // Crear la fecha sin conversión de zona horaria
+    const [year, month, day] = dateString.split("T")[0].split("-")
+    const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+
     return date.toLocaleDateString("es-ES", {
       day: "2-digit",
       month: "2-digit",
@@ -86,6 +98,49 @@ export function Inicio() {
       "Diciembre",
     ]
     return months[month - 1]
+  }
+
+  const getDaysUntilDue = (dateString: string) => {
+    const now = new Date()
+    const [year, month, day] = dateString.split("T")[0].split("-")
+    const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+    const diffTime = dueDate.getTime() - now.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
+  }
+
+  const getDueDateClass = (dateString: string) => {
+    const days = getDaysUntilDue(dateString)
+    if (days < 0) return "text-red-600 font-semibold" // Vencido
+    if (days <= 7) return "text-orange-600 font-semibold" // Próximo a vencer
+    return "text-gray-600" // Normal
+  }
+
+  const getDueDateText = (dateString: string) => {
+    const days = getDaysUntilDue(dateString)
+    if (days < 0) return `Vencido hace ${Math.abs(days)} día${Math.abs(days) !== 1 ? "s" : ""}`
+    if (days === 0) return "Vence hoy"
+    if (days === 1) return "Vence mañana"
+    if (days <= 7) return `Vence en ${days} días`
+    return `Vence en ${days} días`
+  }
+
+  const handleMarkAsPaid = async (paymentId: string) => {
+    const invoiceNumber = prompt("Número de factura (opcional):")
+    try {
+      await markPaymentAsPaid(paymentId, new Date().toISOString(), invoiceNumber || undefined)
+      // Recargar datos
+      const paymentsData = await getServicePayments()
+      setPayments(paymentsData)
+      calculateStats(paymentsData)
+    } catch (error) {
+      console.error("Error al marcar como abonado:", error)
+      alert("Error al marcar como abonado")
+    }
+  }
+
+  const handleEditPayment = (paymentId: string) => {
+    window.location.href = `/servicios?tab=editar-pago&id=${paymentId}`
   }
 
   if (loading) {
@@ -179,10 +234,11 @@ export function Inicio() {
         <div className="bg-white rounded-lg shadow">
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-800">Pagos Próximos a Vencer</h2>
-            <p className="text-sm text-gray-600">Servicios que vencen en los próximos 7 días</p>
+            <p className="text-sm text-gray-600">Servicios que requieren atención</p>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Vista desktop */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -201,13 +257,21 @@ export function Inicio() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Vencimiento
                   </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {stats.proximosVencer.map((payment) => (
-                  <tr key={payment.id}>
+                  <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{payment.hotel_name}</div>
+                      <div className="flex items-center">
+                        <Building2 className="h-4 w-4 text-blue-600 mr-2" />
+                        <span className="text-sm font-medium text-gray-900">
+                          {payment.hotel_name || "Hotel no encontrado"}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{payment.service_name}</div>
@@ -223,15 +287,91 @@ export function Inicio() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center text-sm text-gray-500">
-                        <Calendar className="h-4 w-4 mr-1 text-gray-400" />
-                        {formatDate(payment.due_date)}
+                      <div className="flex flex-col">
+                        <div className="flex items-center text-sm text-gray-500">
+                          <Calendar className="h-4 w-4 mr-1 text-gray-400" />
+                          {formatDate(payment.due_date)}
+                        </div>
+                        <div className={`text-xs ${getDueDateClass(payment.due_date)}`}>
+                          {getDueDateText(payment.due_date)}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex justify-end space-x-2">
+                        <button
+                          className="text-blue-600 hover:text-blue-900"
+                          onClick={() => handleEditPayment(payment.id)}
+                          title="Editar pago"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="text-green-600 hover:text-green-900"
+                          onClick={() => handleMarkAsPaid(payment.id)}
+                          title="Marcar como abonado"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Vista móvil */}
+          <div className="lg:hidden">
+            <div className="space-y-4 p-4">
+              {stats.proximosVencer.map((payment) => (
+                <div key={payment.id} className="bg-white border rounded-lg shadow-sm p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center mb-1">
+                        <Building2 className="h-4 w-4 text-blue-600 mr-1" />
+                        <span className="text-sm font-medium text-blue-800">
+                          {payment.hotel_name || "Hotel no encontrado"}
+                        </span>
+                      </div>
+                      <h3 className="text-lg font-medium text-gray-900">{payment.service_name}</h3>
+                      <div className="text-sm text-gray-500">
+                        {getMonthName(payment.month)} {payment.year}
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        className="text-blue-600 hover:text-blue-900"
+                        onClick={() => handleEditPayment(payment.id)}
+                      >
+                        <Edit className="h-5 w-5" />
+                      </button>
+                      <button
+                        className="text-green-600 hover:text-green-900"
+                        onClick={() => handleMarkAsPaid(payment.id)}
+                      >
+                        <Check className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="font-medium text-gray-500">Monto:</span>
+                      <span className="ml-1 text-gray-900">${payment.amount.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-500">Vencimiento:</span>
+                      <span className="ml-1 text-gray-900">{formatDate(payment.due_date)}</span>
+                    </div>
+                  </div>
+
+                  <div className={`mt-2 text-sm ${getDueDateClass(payment.due_date)}`}>
+                    {getDueDateText(payment.due_date)}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -3,7 +3,21 @@
 import { useState, useEffect } from "react"
 import { getServicePayments, deleteServicePayment, markPaymentAsPaid, getHotels } from "@/lib/service-db"
 import type { ServicePayment, Hotel } from "@/lib/service-types"
-import { Check, Trash2, Search, Calendar, DollarSign, AlertCircle, Edit, Building2 } from "lucide-react"
+import {
+  Check,
+  Trash2,
+  Search,
+  Calendar,
+  DollarSign,
+  AlertCircle,
+  Edit,
+  Building2,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react"
+
+type SortField = "hotel_name" | "service_name" | "month" | "amount" | "due_date" | "status"
+type SortDirection = "asc" | "desc"
 
 export function PagosList() {
   const [payments, setPayments] = useState<ServicePayment[]>([])
@@ -14,6 +28,8 @@ export function PagosList() {
   const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString())
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [filterHotel, setFilterHotel] = useState<string>("all")
+  const [sortField, setSortField] = useState<SortField>("due_date")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
 
   useEffect(() => {
     loadPayments()
@@ -29,6 +45,15 @@ export function PagosList() {
       console.error("Error al cargar pagos:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDirection("asc")
     }
   }
 
@@ -77,7 +102,10 @@ export function PagosList() {
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
+    // Crear la fecha sin conversión de zona horaria
+    const [year, month, day] = dateString.split("T")[0].split("-")
+    const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+
     return date.toLocaleDateString("es-ES", {
       day: "2-digit",
       month: "2-digit",
@@ -107,23 +135,71 @@ export function PagosList() {
     }
   }
 
-  const filteredPayments = payments.filter((payment) => {
-    // Verificar que service_name existe antes de usar toLowerCase
-    const serviceName = payment.service_name || ""
-    const hotelName = payment.hotel_name || ""
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ChevronUp className="h-4 w-4 text-gray-400" />
+    }
+    return sortDirection === "asc" ? (
+      <ChevronUp className="h-4 w-4 text-gray-600" />
+    ) : (
+      <ChevronDown className="h-4 w-4 text-gray-600" />
+    )
+  }
 
-    const matchesSearch =
-      serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      hotelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      getMonthName(payment.month).toLowerCase().includes(searchTerm.toLowerCase())
+  const sortedAndFilteredPayments = payments
+    .filter((payment) => {
+      const serviceName = payment.service_name || ""
+      const hotelName = payment.hotel_name || ""
 
-    const matchesStatus = filterStatus === "all" || payment.status === filterStatus
-    const matchesMonth = filterMonth === "all" || payment.month.toString() === filterMonth
-    const matchesYear = filterYear === "all" || payment.year.toString() === filterYear
-    const matchesHotel = filterHotel === "all" || payment.hotel_id === filterHotel
+      const matchesSearch =
+        serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        hotelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        getMonthName(payment.month).toLowerCase().includes(searchTerm.toLowerCase())
 
-    return matchesSearch && matchesStatus && matchesMonth && matchesYear && matchesHotel
-  })
+      const matchesStatus = filterStatus === "all" || payment.status === filterStatus
+      const matchesMonth = filterMonth === "all" || payment.month.toString() === filterMonth
+      const matchesYear = filterYear === "all" || payment.year.toString() === filterYear
+      const matchesHotel = filterHotel === "all" || payment.hotel_id === filterHotel
+
+      return matchesSearch && matchesStatus && matchesMonth && matchesYear && matchesHotel
+    })
+    .sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortField) {
+        case "hotel_name":
+          aValue = a.hotel_name || ""
+          bValue = b.hotel_name || ""
+          break
+        case "service_name":
+          aValue = a.service_name || ""
+          bValue = b.service_name || ""
+          break
+        case "month":
+          aValue = a.year * 12 + a.month
+          bValue = b.year * 12 + b.month
+          break
+        case "amount":
+          aValue = a.amount
+          bValue = b.amount
+          break
+        case "due_date":
+          aValue = new Date(a.due_date).getTime()
+          bValue = new Date(b.due_date).getTime()
+          break
+        case "status":
+          aValue = a.status
+          bValue = b.status
+          break
+        default:
+          return 0
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1
+      return 0
+    })
 
   if (loading) {
     return (
@@ -215,7 +291,7 @@ export function PagosList() {
         </div>
       </div>
 
-      {filteredPayments.length === 0 ? (
+      {sortedAndFilteredPayments.length === 0 ? (
         <div className="p-6 text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-4">
             <AlertCircle className="h-8 w-8 text-yellow-600" />
@@ -230,23 +306,59 @@ export function PagosList() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Hotel
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("hotel_name")}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Hotel</span>
+                      {getSortIcon("hotel_name")}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Servicio
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("service_name")}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Servicio</span>
+                      {getSortIcon("service_name")}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Período
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("month")}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Período</span>
+                      {getSortIcon("month")}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Monto
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("amount")}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Monto</span>
+                      {getSortIcon("amount")}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Vencimiento
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("due_date")}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Vencimiento</span>
+                      {getSortIcon("due_date")}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Estado
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("status")}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Estado</span>
+                      {getSortIcon("status")}
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
@@ -254,7 +366,7 @@ export function PagosList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredPayments.map((payment) => (
+                {sortedAndFilteredPayments.map((payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -329,7 +441,7 @@ export function PagosList() {
           {/* Vista móvil - Tarjetas */}
           <div className="lg:hidden">
             <div className="space-y-4 p-4">
-              {filteredPayments.map((payment) => (
+              {sortedAndFilteredPayments.map((payment) => (
                 <div key={payment.id} className="bg-white border rounded-lg shadow-sm p-4">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
