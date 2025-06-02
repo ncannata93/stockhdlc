@@ -177,12 +177,11 @@ async function updateServiceAverage(serviceId: string): Promise<void> {
     console.log(`Actualizando promedio para servicio: ${serviceId}`)
 
     // Obtener todos los pagos abonados de este servicio
-    const allPayments = await getServicePayments()
+    const allPayments = await getServicePaymentsRaw() // Nueva función sin verificaciones automáticas
     const paidPayments = allPayments.filter((p) => p.service_id === serviceId && p.status === "abonado" && p.amount > 0)
 
-    if (paidPayments.length >= 2) {
-      // Solo actualizar si hay al menos 2 pagos
-      // Calcular el nuevo promedio
+    if (paidPayments.length >= 1) {
+      // Actualizar si hay al menos 1 pago (cambiado de 2 a 1)
       const totalAmount = paidPayments.reduce((sum, payment) => sum + payment.amount, 0)
       const newAverage = totalAmount / paidPayments.length
 
@@ -721,7 +720,7 @@ export async function markPaymentAsPaid(id: string, paymentDate: string, invoice
       invoice_number: invoiceNumber,
     })
 
-    // Actualizar el promedio del servicio
+    // Actualizar el promedio del servicio automáticamente
     if (payment?.service_id) {
       await updateServiceAverage(payment.service_id)
     }
@@ -812,5 +811,20 @@ export async function manuallyCheckMissingPayments(): Promise<void> {
     await checkAndGenerateMissingPayments()
   } catch (error) {
     console.error("Error checking missing payments manually:", error)
+  }
+}
+
+// Nueva función para obtener pagos sin verificaciones automáticas
+async function getServicePaymentsRaw(): Promise<ServicePayment[]> {
+  try {
+    const { data: payments, error } = await supabase.from("service_payments").select("*")
+
+    if (error) {
+      return getServicePaymentsFromLocalStorage()
+    }
+
+    return payments || []
+  } catch (error) {
+    return getServicePaymentsFromLocalStorage()
   }
 }

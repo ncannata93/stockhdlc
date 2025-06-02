@@ -1,9 +1,20 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getServicePayments, getHotels, deleteServicePayment } from "@/lib/service-db"
+import { getServicePayments, getHotels, deleteServicePayment, markPaymentAsPaid } from "@/lib/service-db"
 import type { ServicePayment, Hotel } from "@/lib/service-types"
-import { Trash2, Edit, Plus, Search, Building2, DollarSign, Calendar, ChevronUp, ChevronDown } from "lucide-react"
+import {
+  Trash2,
+  Edit,
+  Plus,
+  Search,
+  Building2,
+  DollarSign,
+  Calendar,
+  ChevronUp,
+  ChevronDown,
+  CreditCard,
+} from "lucide-react"
 
 const MONTHS = {
   1: "Enero",
@@ -46,6 +57,12 @@ export function PagosList() {
   const [sortField, setSortField] = useState<string>("")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
 
+  // Estado para modal de pago
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedPayment, setSelectedPayment] = useState<ServicePayment | null>(null)
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0])
+  const [invoiceNumber, setInvoiceNumber] = useState("")
+
   useEffect(() => {
     loadData()
   }, [])
@@ -81,6 +98,27 @@ export function PagosList() {
         console.error("Error al eliminar pago:", error)
         alert("Error al eliminar el pago")
       }
+    }
+  }
+
+  const handlePaymentClick = (payment: ServicePayment) => {
+    setSelectedPayment(payment)
+    setPaymentDate(new Date().toISOString().split("T")[0])
+    setInvoiceNumber("")
+    setShowPaymentModal(true)
+  }
+
+  const handleMarkAsPaid = async () => {
+    if (!selectedPayment) return
+
+    try {
+      await markPaymentAsPaid(selectedPayment.id, paymentDate, invoiceNumber)
+      setShowPaymentModal(false)
+      setSelectedPayment(null)
+      await loadData()
+    } catch (error) {
+      console.error("Error al marcar como pagado:", error)
+      alert("Error al marcar el pago como abonado")
     }
   }
 
@@ -362,6 +400,15 @@ export function PagosList() {
                     <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(payment.status)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
+                        {payment.status === "pendiente" && (
+                          <button
+                            className="text-green-600 hover:text-green-900"
+                            onClick={() => handlePaymentClick(payment)}
+                            title="Marcar como pagado"
+                          >
+                            <CreditCard className="h-5 w-5" />
+                          </button>
+                        )}
                         <button
                           className="text-blue-600 hover:text-blue-900"
                           onClick={() => (window.location.href = `/servicios?tab=editar-pago&id=${payment.id}`)}
@@ -403,6 +450,15 @@ export function PagosList() {
                       </p>
                     </div>
                     <div className="flex space-x-2">
+                      {payment.status === "pendiente" && (
+                        <button
+                          className="text-green-600 hover:text-green-900"
+                          onClick={() => handlePaymentClick(payment)}
+                          title="Marcar como pagado"
+                        >
+                          <CreditCard className="h-5 w-5" />
+                        </button>
+                      )}
                       <button
                         className="text-blue-600 hover:text-blue-900"
                         onClick={() => (window.location.href = `/servicios?tab=editar-pago&id=${payment.id}`)}
@@ -459,6 +515,75 @@ export function PagosList() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal de pago */}
+      {showPaymentModal && selectedPayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Marcar como Pagado</h3>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600">
+                  <strong>Servicio:</strong> {selectedPayment.service_name}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Hotel:</strong> {selectedPayment.hotel_name}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Período:</strong> {MONTHS[selectedPayment.month as keyof typeof MONTHS]}{" "}
+                  {selectedPayment.year}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Monto:</strong> {formatCurrency(selectedPayment.amount)}
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="paymentDate" className="block text-sm font-medium text-gray-700 mb-1">
+                  Fecha de Pago
+                </label>
+                <input
+                  type="date"
+                  id="paymentDate"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="invoiceNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                  Número de Factura (opcional)
+                </label>
+                <input
+                  type="text"
+                  id="invoiceNumber"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="Ej: 001-001-0000123"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleMarkAsPaid}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700"
+              >
+                Marcar como Pagado
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
