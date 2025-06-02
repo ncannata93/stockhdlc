@@ -78,6 +78,137 @@ async function generateMonthlyPayments(service: Service, monthsAhead = 12): Prom
   }
 }
 
+// Función para verificar y generar pagos faltantes automáticamente
+async function checkAndGenerateMissingPayments(): Promise<void> {
+  try {
+    console.log("Verificando pagos faltantes...")
+    const services = await getServices()
+    const currentDate = new Date()
+    const currentMonth = currentDate.getMonth() + 1
+    const currentYear = currentDate.getFullYear()
+
+    for (const service of services) {
+      // Obtener todos los pagos de este servicio
+      const servicePayments = await getServicePayments(service.hotel_id)
+      const paymentsForService = servicePayments.filter((p) => p.service_id === service.id)
+
+      if (paymentsForService.length === 0) {
+        // Si no hay pagos, generar desde el mes actual
+        await generateMonthlyPayments(service, 12)
+        continue
+      }
+
+      // Encontrar el último mes/año con pago generado
+      const lastPayment = paymentsForService.reduce((latest, payment) => {
+        const paymentDate = new Date(payment.year, payment.month - 1)
+        const latestDate = new Date(latest.year, latest.month - 1)
+        return paymentDate > latestDate ? payment : latest
+      })
+
+      // Calcular cuántos meses faltan hasta tener al menos 6 meses de buffer
+      const lastPaymentDate = new Date(lastPayment.year, lastPayment.month - 1)
+      const currentDateForComparison = new Date(currentYear, currentMonth - 1)
+      const monthsDiff =
+        (lastPaymentDate.getFullYear() - currentDateForComparison.getFullYear()) * 12 +
+        (lastPaymentDate.getMonth() - currentDateForComparison.getMonth())
+
+      // Si quedan menos de 3 meses de pagos generados, generar 12 más
+      if (monthsDiff < 3) {
+        console.log(`Generando pagos adicionales para servicio: ${service.name}`)
+
+        // Generar pagos desde el mes siguiente al último pago
+        const nextMonth = lastPayment.month === 12 ? 1 : lastPayment.month + 1
+        const nextYear = lastPayment.month === 12 ? lastPayment.year + 1 : lastPayment.year
+
+        await generateMonthlyPaymentsFromDate(service, nextMonth, nextYear, 12)
+      }
+    }
+  } catch (error) {
+    console.error("Error verificando pagos faltantes:", error)
+  }
+}
+
+// Función para generar pagos desde una fecha específica
+async function generateMonthlyPaymentsFromDate(
+  service: Service,
+  startMonth: number,
+  startYear: number,
+  monthsAhead = 12,
+): Promise<void> {
+  try {
+    const payments: Omit<ServicePayment, "id" | "created_at" | "updated_at">[] = []
+
+    for (let i = 0; i < monthsAhead; i++) {
+      const month = ((startMonth - 1 + i) % 12) + 1
+      const year = startYear + Math.floor((startMonth - 1 + i) / 12)
+
+      // Verificar si ya existe un pago para este mes/año
+      const existingPayments = await getServicePayments(service.hotel_id, { month, year })
+      const exists = existingPayments.some((p) => p.service_id === service.id)
+
+      if (!exists) {
+        payments.push({
+          service_id: service.id,
+          service_name: service.name,
+          hotel_id: service.hotel_id,
+          hotel_name: service.hotel_name || "Hotel no encontrado",
+          month,
+          year,
+          amount: service.average_amount || 0,
+          due_date: generateDueDate(month, year),
+          status: "pendiente",
+          notes: "Generado automáticamente",
+        })
+      }
+    }
+
+    // Insertar todos los pagos
+    for (const payment of payments) {
+      await addServicePayment(payment)
+    }
+  } catch (error) {
+    console.error("Error generating monthly payments from date:", error)
+  }
+}
+
+// Función para actualizar el promedio mensual basándose en pagos reales
+async function updateServiceAverage(serviceId: string): Promise<void> {
+  try {
+    console.log(`Actualizando promedio para servicio: ${serviceId}`)
+
+    // Obtener todos los pagos abonados de este servicio
+    const allPayments = await getServicePayments()
+    const paidPayments = allPayments.filter((p) => p.service_id === serviceId && p.status === "abonado" && p.amount > 0)
+
+    if (paidPayments.length >= 2) {
+      // Solo actualizar si hay al menos 2 pagos
+      // Calcular el nuevo promedio
+      const totalAmount = paidPayments.reduce((sum, payment) => sum + payment.amount, 0)
+      const newAverage = totalAmount / paidPayments.length
+
+      console.log(`Nuevo promedio calculado: ${newAverage} (basado en ${paidPayments.length} pagos)`)
+
+      // Actualizar el servicio con el nuevo promedio
+      await updateService(serviceId, {
+        average_amount: Math.round(newAverage * 100) / 100, // Redondear a 2 decimales
+      })
+
+      // Actualizar pagos futuros pendientes con el nuevo promedio
+      const futurePayments = allPayments.filter((p) => p.service_id === serviceId && p.status === "pendiente")
+
+      for (const payment of futurePayments) {
+        await updateServicePayment(payment.id, {
+          amount: Math.round(newAverage * 100) / 100,
+        })
+      }
+
+      console.log(`Actualizados ${futurePayments.length} pagos futuros con el nuevo promedio`)
+    }
+  } catch (error) {
+    console.error("Error updating service average:", error)
+  }
+}
+
 // Funciones para hoteles
 export async function getHotels(): Promise<Hotel[]> {
   try {
@@ -204,7 +335,6 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
       console.error("Error de Supabase al guardar servicio:", error)
       // Solo usar localStorage como último recurso
       const newService = addServiceToLocalStorage(service)
-      await generateMonthlyPayments(newService)
       return newService
     }
 
@@ -216,13 +346,10 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
       hotel_name: hotelName,
     }
 
-    // Generar pagos automáticamente para Supabase
-    await generateMonthlyPayments(serviceWithHotel)
     return serviceWithHotel
   } catch (error) {
     console.error("Error general al guardar servicio:", error)
     const newService = addServiceToLocalStorage(service)
-    await generateMonthlyPayments(newService)
     return newService
   }
 }
@@ -585,11 +712,19 @@ function deleteServicePaymentFromLocalStorage(id: string): void {
 
 export async function markPaymentAsPaid(id: string, paymentDate: string, invoiceNumber?: string): Promise<void> {
   try {
+    // Obtener el pago antes de actualizarlo para saber el serviceId
+    const payment = await getServicePaymentById(id)
+
     await updateServicePayment(id, {
       status: "abonado",
       payment_date: paymentDate,
       invoice_number: invoiceNumber,
     })
+
+    // Actualizar el promedio del servicio
+    if (payment?.service_id) {
+      await updateServiceAverage(payment.service_id)
+    }
   } catch (error) {
     console.error("Error marking payment as paid:", error)
     throw error
@@ -656,4 +791,26 @@ export async function addReservation(): Promise<any> {
 
 export async function deleteReservation(): Promise<void> {
   console.warn("deleteReservation: Esta función está deshabilitada")
+}
+
+// Nueva función para generar pagos manualmente (sin llamadas automáticas)
+export async function manuallyGeneratePayments(serviceId: string): Promise<void> {
+  try {
+    const services = await getServices()
+    const service = services.find((s) => s.id === serviceId)
+    if (service) {
+      await generateMonthlyPayments(service)
+    }
+  } catch (error) {
+    console.error("Error generating payments manually:", error)
+  }
+}
+
+// Nueva función para verificar pagos manualmente (sin llamadas automáticas)
+export async function manuallyCheckMissingPayments(): Promise<void> {
+  try {
+    await checkAndGenerateMissingPayments()
+  } catch (error) {
+    console.error("Error checking missing payments manually:", error)
+  }
 }

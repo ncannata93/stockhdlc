@@ -1,85 +1,174 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getServicePayments, markPaymentAsPaid } from "@/lib/service-db"
-import type { ServicePayment } from "@/lib/service-types"
-import { Calendar, DollarSign, AlertCircle, CheckCircle, Clock, Check, Edit, Building2 } from "lucide-react"
-import { SupabaseDebug } from "@/components/supabase-debug"
+import { Calendar, DollarSign, AlertCircle, CheckCircle, Clock, Database, Wifi, WifiOff } from "lucide-react"
 
 export function Inicio() {
-  const [payments, setPayments] = useState<ServicePayment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [dbStatus, setDbStatus] = useState<"checking" | "connected" | "disconnected">("checking")
   const [stats, setStats] = useState({
     pendientes: 0,
     abonados: 0,
     vencidos: 0,
     totalPendiente: 0,
     totalAbonado: 0,
-    proximosVencer: [] as ServicePayment[],
+    proximosVencer: [],
   })
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: "ARS",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+      .format(amount)
+      .replace("ARS", "$")
+  }
+
+  const formatNumber = (number: number) => {
+    return new Intl.NumberFormat("es-AR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(number)
+  }
+
   useEffect(() => {
-    const loadData = async () => {
+    const checkDatabase = async () => {
       try {
+        setLoading(true)
         setError(null)
-        const paymentsData = await getServicePayments()
-        setPayments(paymentsData)
-        calculateStats(paymentsData)
+
+        // Verificar si hay variables de entorno
+        const hasSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const hasSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+        if (!hasSupabaseUrl || !hasSupabaseKey) {
+          setDbStatus("disconnected")
+          setError("Variables de entorno de Supabase no configuradas")
+          return
+        }
+
+        // Intentar cargar datos con timeout
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000))
+
+        try {
+          // Importar dinámicamente para evitar errores de SSR
+          const { getServicePayments } = await import("@/lib/service-db")
+
+          const dataPromise = getServicePayments()
+          const payments = (await Promise.race([dataPromise, timeoutPromise])) as any[]
+
+          setDbStatus("connected")
+          calculateStats(payments || [])
+        } catch (dbError) {
+          console.warn("Error conectando a la base de datos:", dbError)
+          setDbStatus("disconnected")
+          // Usar datos de ejemplo en caso de error
+          loadMockData()
+        }
       } catch (error) {
-        console.error("Error loading data:", error)
-        setError("Error al cargar los datos. Por favor, intenta nuevamente.")
+        console.error("Error general:", error)
+        setError("Error al cargar los datos")
+        setDbStatus("disconnected")
+        loadMockData()
       } finally {
         setLoading(false)
       }
     }
 
-    loadData()
+    checkDatabase()
   }, [])
 
-  const calculateStats = (payments: ServicePayment[]) => {
+  const loadMockData = () => {
+    // Datos de ejemplo para mostrar la interfaz
+    setStats({
+      pendientes: 5,
+      abonados: 12,
+      vencidos: 2,
+      totalPendiente: 2500.0,
+      totalAbonado: 8400.0,
+      proximosVencer: [
+        {
+          id: "1",
+          service_name: "Internet Fibra Óptica",
+          hotel_name: "Hotel Jaguel",
+          month: 1,
+          year: 2025,
+          amount: 450.0,
+          due_date: "2025-02-10",
+          status: "pendiente",
+        },
+        {
+          id: "2",
+          service_name: "Electricidad",
+          hotel_name: "Hotel Monaco",
+          month: 1,
+          year: 2025,
+          amount: 1200.0,
+          due_date: "2025-02-15",
+          status: "pendiente",
+        },
+      ],
+    })
+  }
+
+  const calculateStats = (payments: any[]) => {
     const now = new Date()
-    const pendientes = payments.filter((p) => p.status === "pendiente")
-    const abonados = payments.filter((p) => p.status === "abonado")
-    const vencidos = payments.filter((p) => p.status === "vencido")
+
+    // Asegurarse de que los pagos tengan valores numéricos válidos
+    const validPayments = payments.map((p) => ({
+      ...p,
+      amount: typeof p.amount === "number" ? p.amount : Number.parseFloat(p.amount) || 0,
+    }))
+
+    const pendientes = validPayments.filter((p) => p.status === "pendiente")
+    const abonados = validPayments.filter((p) => p.status === "abonado")
+    const vencidos = validPayments.filter((p) => p.status === "vencido")
+
+    // Calcular totales con valores numéricos garantizados
+    const totalPendiente = pendientes.reduce((sum, p) => sum + p.amount, 0)
+    const totalAbonado = abonados.reduce((sum, p) => sum + p.amount, 0)
 
     // Pagos próximos a vencer (en los próximos 30 días)
     const proximosVencer = pendientes
       .filter((p) => {
-        const [year, month, day] = p.due_date.split("T")[0].split("-")
-        const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-        const diffTime = dueDate.getTime() - now.getTime()
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        return diffDays >= -7 && diffDays <= 30 // Incluye vencidos hace 7 días y próximos 30 días
+        if (!p.due_date) return false
+        try {
+          const [year, month, day] = p.due_date.split("T")[0].split("-")
+          const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+          const diffTime = dueDate.getTime() - now.getTime()
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+          return diffDays >= -7 && diffDays <= 30
+        } catch {
+          return false
+        }
       })
-      .sort((a, b) => {
-        const [yearA, monthA, dayA] = a.due_date.split("T")[0].split("-")
-        const [yearB, monthB, dayB] = b.due_date.split("T")[0].split("-")
-        const dateA = new Date(Number.parseInt(yearA), Number.parseInt(monthA) - 1, Number.parseInt(dayA))
-        const dateB = new Date(Number.parseInt(yearB), Number.parseInt(monthB) - 1, Number.parseInt(dayB))
-        return dateA.getTime() - dateB.getTime()
-      })
+      .slice(0, 10) // Limitar a 10 elementos
 
     setStats({
       pendientes: pendientes.length,
       abonados: abonados.length,
       vencidos: vencidos.length,
-      totalPendiente: pendientes.reduce((sum, p) => sum + p.amount, 0),
-      totalAbonado: abonados.reduce((sum, p) => sum + p.amount, 0),
+      totalPendiente,
+      totalAbonado,
       proximosVencer,
     })
   }
 
   const formatDate = (dateString: string) => {
-    // Crear la fecha sin conversión de zona horaria
-    const [year, month, day] = dateString.split("T")[0].split("-")
-    const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-
-    return date.toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
+    try {
+      const [year, month, day] = dateString.split("T")[0].split("-")
+      const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      return date.toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    } catch {
+      return "Fecha inválida"
+    }
   }
 
   const getMonthName = (month: number) => {
@@ -97,23 +186,26 @@ export function Inicio() {
       "Noviembre",
       "Diciembre",
     ]
-    return months[month - 1]
+    return months[month - 1] || "Mes inválido"
   }
 
   const getDaysUntilDue = (dateString: string) => {
-    const now = new Date()
-    const [year, month, day] = dateString.split("T")[0].split("-")
-    const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-    const diffTime = dueDate.getTime() - now.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays
+    try {
+      const now = new Date()
+      const [year, month, day] = dateString.split("T")[0].split("-")
+      const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      const diffTime = dueDate.getTime() - now.getTime()
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    } catch {
+      return 0
+    }
   }
 
   const getDueDateClass = (dateString: string) => {
     const days = getDaysUntilDue(dateString)
-    if (days < 0) return "text-red-600 font-semibold" // Vencido
-    if (days <= 7) return "text-orange-600 font-semibold" // Próximo a vencer
-    return "text-gray-600" // Normal
+    if (days < 0) return "text-red-600 font-semibold"
+    if (days <= 7) return "text-orange-600 font-semibold"
+    return "text-gray-600"
   }
 
   const getDueDateText = (dateString: string) => {
@@ -125,44 +217,16 @@ export function Inicio() {
     return `Vence en ${days} días`
   }
 
-  const handleMarkAsPaid = async (paymentId: string) => {
-    const invoiceNumber = prompt("Número de factura (opcional):")
-    try {
-      await markPaymentAsPaid(paymentId, new Date().toISOString(), invoiceNumber || undefined)
-      // Recargar datos
-      const paymentsData = await getServicePayments()
-      setPayments(paymentsData)
-      calculateStats(paymentsData)
-    } catch (error) {
-      console.error("Error al marcar como abonado:", error)
-      alert("Error al marcar como abonado")
-    }
-  }
-
-  const handleEditPayment = (paymentId: string) => {
-    window.location.href = `/servicios?tab=editar-pago&id=${paymentId}`
+  const retryConnection = () => {
+    window.location.reload()
   }
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex justify-center items-center h-64">
         <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <p className="text-red-600">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Reintentar
-          </button>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando datos...</p>
         </div>
       </div>
     )
@@ -170,10 +234,38 @@ export function Inicio() {
 
   return (
     <div className="space-y-6">
-      {/* Debug de Supabase */}
+      {/* Estado de la Base de Datos */}
       <div className="bg-white rounded-lg shadow p-4">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Estado de la Base de Datos</h3>
-        <SupabaseDebug />
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-700">Estado de la Conexión</h3>
+          <div className="flex items-center space-x-2">
+            {dbStatus === "checking" && (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500"></div>
+                <span className="text-sm text-gray-600">Verificando...</span>
+              </>
+            )}
+            {dbStatus === "connected" && (
+              <>
+                <Wifi className="h-4 w-4 text-green-500" />
+                <span className="text-sm text-green-600">Conectado a Supabase</span>
+              </>
+            )}
+            {dbStatus === "disconnected" && (
+              <>
+                <WifiOff className="h-4 w-4 text-red-500" />
+                <span className="text-sm text-red-600">Usando datos locales</span>
+                <button
+                  onClick={retryConnection}
+                  className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+                >
+                  Reintentar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
       </div>
 
       {/* Estadísticas generales */}
@@ -189,7 +281,7 @@ export function Inicio() {
             </div>
           </div>
           <p className="mt-2 text-sm text-gray-600">
-            Total: <span className="font-semibold">${stats.totalPendiente.toFixed(2)}</span>
+            Total: <span className="font-semibold">{formatCurrency(stats.totalPendiente)}</span>
           </p>
         </div>
 
@@ -204,7 +296,7 @@ export function Inicio() {
             </div>
           </div>
           <p className="mt-2 text-sm text-gray-600">
-            Total: <span className="font-semibold">${stats.totalAbonado.toFixed(2)}</span>
+            Total: <span className="font-semibold">{formatCurrency(stats.totalAbonado)}</span>
           </p>
         </div>
 
@@ -221,11 +313,18 @@ export function Inicio() {
         </div>
       </div>
 
-      {/* Mensaje si no hay datos */}
-      {payments.length === 0 && (
-        <div className="bg-white rounded-lg shadow p-6 text-center">
-          <p className="text-gray-500">No hay pagos registrados aún.</p>
-          <p className="text-sm text-gray-400 mt-2">Comienza agregando servicios y sus pagos mensuales.</p>
+      {/* Mensaje informativo */}
+      {dbStatus === "disconnected" && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
+            <div>
+              <p className="text-sm font-medium text-yellow-800">Modo sin conexión</p>
+              <p className="text-xs text-yellow-700 mt-1">
+                Mostrando datos de ejemplo. Para ver datos reales, configura la conexión a Supabase.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -237,8 +336,7 @@ export function Inicio() {
             <p className="text-sm text-gray-600">Servicios que requieren atención</p>
           </div>
 
-          {/* Vista desktop */}
-          <div className="hidden lg:block overflow-x-auto">
+          <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -257,20 +355,14 @@ export function Inicio() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Vencimiento
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {stats.proximosVencer.map((payment) => (
+                {stats.proximosVencer.map((payment: any) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Building2 className="h-4 w-4 text-blue-600 mr-2" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {payment.hotel_name || "Hotel no encontrado"}
-                        </span>
+                      <div className="text-sm font-medium text-gray-900">
+                        {payment.hotel_name || "Hotel no encontrado"}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -283,7 +375,8 @@ export function Inicio() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center text-sm text-gray-900">
-                        <DollarSign className="h-4 w-4 mr-1 text-gray-400" />${payment.amount.toFixed(2)}
+                        <DollarSign className="h-4 w-4 mr-1 text-gray-400" />
+                        {formatCurrency(payment.amount || 0)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -297,82 +390,24 @@ export function Inicio() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-2">
-                        <button
-                          className="text-blue-600 hover:text-blue-900"
-                          onClick={() => handleEditPayment(payment.id)}
-                          title="Editar pago"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          className="text-green-600 hover:text-green-900"
-                          onClick={() => handleMarkAsPaid(payment.id)}
-                          title="Marcar como abonado"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
 
-          {/* Vista móvil */}
-          <div className="lg:hidden">
-            <div className="space-y-4 p-4">
-              {stats.proximosVencer.map((payment) => (
-                <div key={payment.id} className="bg-white border rounded-lg shadow-sm p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center mb-1">
-                        <Building2 className="h-4 w-4 text-blue-600 mr-1" />
-                        <span className="text-sm font-medium text-blue-800">
-                          {payment.hotel_name || "Hotel no encontrado"}
-                        </span>
-                      </div>
-                      <h3 className="text-lg font-medium text-gray-900">{payment.service_name}</h3>
-                      <div className="text-sm text-gray-500">
-                        {getMonthName(payment.month)} {payment.year}
-                      </div>
-                    </div>
-                    <div className="flex space-x-2">
-                      <button
-                        className="text-blue-600 hover:text-blue-900"
-                        onClick={() => handleEditPayment(payment.id)}
-                      >
-                        <Edit className="h-5 w-5" />
-                      </button>
-                      <button
-                        className="text-green-600 hover:text-green-900"
-                        onClick={() => handleMarkAsPaid(payment.id)}
-                      >
-                        <Check className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-500">Monto:</span>
-                      <span className="ml-1 text-gray-900">${payment.amount.toFixed(2)}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-500">Vencimiento:</span>
-                      <span className="ml-1 text-gray-900">{formatDate(payment.due_date)}</span>
-                    </div>
-                  </div>
-
-                  <div className={`mt-2 text-sm ${getDueDateClass(payment.due_date)}`}>
-                    {getDueDateText(payment.due_date)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* Mensaje si no hay datos */}
+      {stats.proximosVencer.length === 0 && (
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <Database className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">No hay pagos próximos a vencer.</p>
+          <p className="text-sm text-gray-400 mt-2">
+            {dbStatus === "connected"
+              ? "Comienza agregando servicios y sus pagos mensuales."
+              : "Configura la conexión a la base de datos para ver datos reales."}
+          </p>
         </div>
       )}
     </div>

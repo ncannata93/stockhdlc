@@ -24,6 +24,24 @@ import {
 import { Calendar, DollarSign, TrendingUp, Download, HotelIcon, Wrench } from "lucide-react"
 
 export function Estadisticas() {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: "ARS",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+      .format(amount)
+      .replace("ARS", "$")
+  }
+
+  const formatNumber = (number: number) => {
+    return new Intl.NumberFormat("es-AR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(number)
+  }
+
   const [payments, setPayments] = useState<ServicePayment[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
@@ -323,7 +341,7 @@ export function Estadisticas() {
             <div>
               <p className="text-sm font-medium text-gray-600">Total Anual</p>
               <p className="text-2xl font-bold text-blue-600">
-                ${filteredPayments.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                {formatCurrency(filteredPayments.reduce((sum, p) => sum + p.amount, 0))}
               </p>
             </div>
             <DollarSign className="h-8 w-8 text-blue-600" />
@@ -335,7 +353,7 @@ export function Estadisticas() {
             <div>
               <p className="text-sm font-medium text-gray-600">Promedio Mensual</p>
               <p className="text-2xl font-bold text-green-600">
-                ${(filteredPayments.reduce((sum, p) => sum + p.amount, 0) / 12).toLocaleString()}
+                {formatCurrency(filteredPayments.reduce((sum, p) => sum + p.amount, 0) / 12)}
               </p>
             </div>
             <Calendar className="h-8 w-8 text-green-600" />
@@ -374,7 +392,7 @@ export function Estadisticas() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
-                  <Tooltip formatter={(value) => [`$${value}`, "Monto"]} />
+                  <Tooltip formatter={(value) => [formatCurrency(Number(value)), "Monto"]} />
                   <Legend />
                   <Bar dataKey="abonado" fill="#10B981" name="Abonado" />
                   <Bar dataKey="pendiente" fill="#F59E0B" name="Pendiente" />
@@ -391,19 +409,33 @@ export function Estadisticas() {
                 <PieChart>
                   <Pie
                     data={categoryStats}
-                    cx="50%"
+                    cx="40%"
                     cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
+                    outerRadius={60}
                     fill="#8884d8"
                     dataKey="total"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    nameKey="name"
+                    label={false}
                   >
                     {categoryStats.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => [`$${value}`, "Total"]} />
+                  <Tooltip
+                    formatter={(value) => [formatCurrency(Number(value)), "Total"]}
+                    labelFormatter={(name) => `${name}`}
+                  />
+                  <Legend
+                    layout="vertical"
+                    verticalAlign="middle"
+                    align="right"
+                    wrapperStyle={{ paddingLeft: "20px", fontSize: "12px" }}
+                    formatter={(value, entry) => (
+                      <span style={{ color: entry.color }}>
+                        {value}: {formatCurrency(entry.payload.total)}
+                      </span>
+                    )}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -422,7 +454,7 @@ export function Estadisticas() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" />
                   <YAxis dataKey="name" type="category" width={80} />
-                  <Tooltip formatter={(value) => [`$${value}`, "Total"]} />
+                  <Tooltip formatter={(value) => [formatCurrency(Number(value)), "Total"]} />
                   <Legend />
                   <Bar dataKey="total" fill="#3B82F6" name="Total" />
                 </BarChart>
@@ -456,23 +488,23 @@ export function Estadisticas() {
                         <div className="text-sm text-gray-500">{hotel.code}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${hotel.total.toLocaleString()}
+                        {formatCurrency(hotel.total)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${hotel.avgMonthly.toLocaleString()}
+                        {formatCurrency(hotel.avgMonthly)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{hotel.servicesCount}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{hotel.paymentsCount}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col gap-1">
                           <div className="text-xs">
-                            <span className="text-green-600">Abonado: ${hotel.abonado.toLocaleString()}</span>
+                            <span className="text-green-600">Abonado: {formatCurrency(hotel.abonado)}</span>
                           </div>
                           <div className="text-xs">
-                            <span className="text-yellow-600">Pendiente: ${hotel.pendiente.toLocaleString()}</span>
+                            <span className="text-yellow-600">Pendiente: {formatCurrency(hotel.pendiente)}</span>
                           </div>
                           <div className="text-xs">
-                            <span className="text-red-600">Vencido: ${hotel.vencido.toLocaleString()}</span>
+                            <span className="text-red-600">Vencido: {formatCurrency(hotel.vencido)}</span>
                           </div>
                         </div>
                       </td>
@@ -496,7 +528,7 @@ export function Estadisticas() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
-                  <Tooltip formatter={(value) => [`$${value}`, "Total"]} />
+                  <Tooltip formatter={(value) => [formatCurrency(Number(value)), "Total"]} />
                   <Legend />
                   <Bar dataKey="total" fill="#8B5CF6" name="Total" />
                 </BarChart>
@@ -526,12 +558,12 @@ export function Estadisticas() {
                     <tr key={category.category}>
                       <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{category.name}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${category.total.toLocaleString()}
+                        {formatCurrency(category.total)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{category.servicesCount}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{category.paymentsCount}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${category.avgAmount.toLocaleString()}
+                        {formatCurrency(category.avgAmount)}
                       </td>
                     </tr>
                   ))}
@@ -553,7 +585,7 @@ export function Estadisticas() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="period" />
                   <YAxis />
-                  <Tooltip formatter={(value) => [`$${value}`, "Total"]} />
+                  <Tooltip formatter={(value) => [formatCurrency(Number(value)), "Total"]} />
                   <Legend />
                   <Area
                     type="monotone"
