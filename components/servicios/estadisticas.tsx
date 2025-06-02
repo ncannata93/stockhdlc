@@ -32,7 +32,7 @@ export function Estadisticas() {
 
   // Filtros
   const [filters, setFilters] = useState({
-    year: new Date().getFullYear(),
+    year: 0, // 0 significa "todos los años"
     hotel: "",
     service: "",
     category: "",
@@ -80,7 +80,7 @@ export function Estadisticas() {
 
   // Filtrar pagos según los filtros activos
   const filteredPayments = payments.filter((payment) => {
-    if (filters.year && payment.year !== filters.year) return false
+    if (filters.year && filters.year !== 0 && payment.year !== filters.year) return false
     if (filters.hotel && payment.hotel_id !== filters.hotel) return false
     if (filters.service && payment.service_id !== filters.service) return false
     if (filters.status && payment.status !== filters.status) return false
@@ -227,7 +227,8 @@ export function Estadisticas() {
               onChange={(e) => setFilters({ ...filters, year: Number(e.target.value) })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+              <option value={0}>Todos los años</option>
+              {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map((year) => (
                 <option key={year} value={year}>
                   {year}
                 </option>
@@ -285,9 +286,7 @@ export function Estadisticas() {
 
           <div className="flex items-end">
             <button
-              onClick={() =>
-                setFilters({ year: new Date().getFullYear(), hotel: "", service: "", category: "", status: "" })
-              }
+              onClick={() => setFilters({ year: 0, hotel: "", service: "", category: "", status: "" })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
             >
               Limpiar Filtros
