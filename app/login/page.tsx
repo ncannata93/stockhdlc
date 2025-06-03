@@ -17,7 +17,7 @@ export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirectTo") || "/stock"
-  const { signIn, isAuthenticated, createUser, isLoading: authLoading } = useAuth()
+  const { signIn, isAuthenticated, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -30,37 +30,6 @@ export default function LoginPage() {
       router.replace(redirectTo)
     }
   }, [isAuthenticated, authLoading, redirectTo, router])
-
-  const handleCreateTestUser = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-      setMessage(null)
-
-      const testUsername = "test"
-      const testPassword = "test123"
-
-      const result = await createUser(testUsername, testPassword)
-
-      if (result.success) {
-        setMessage(`Usuario de prueba creado: ${testUsername} / ${testPassword}`)
-        setUsername(testUsername)
-        setPassword(testPassword)
-      } else {
-        if (result.error === "El nombre de usuario ya está en uso") {
-          setMessage(`El usuario de prueba ya existe. Puedes iniciar sesión con: ${testUsername} / ${testPassword}`)
-          setUsername(testUsername)
-          setPassword(testPassword)
-        } else {
-          setError(`Error al crear usuario de prueba: ${result.error}`)
-        }
-      }
-    } catch (error) {
-      setError(`Error: ${error instanceof Error ? error.message : String(error)}`)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -180,22 +149,6 @@ export default function LoginPage() {
                   </>
                 ) : (
                   "Iniciar sesión"
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCreateTestUser}
-                disabled={isLoading}
-                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="animate-spin h-5 w-5 mr-2" />
-                    Procesando...
-                  </>
-                ) : (
-                  "Crear usuario de prueba"
                 )}
               </button>
             </div>
