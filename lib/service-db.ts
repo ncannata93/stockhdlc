@@ -28,12 +28,10 @@ const DEFAULT_HOTELS: Hotel[] = [
   { id: "14", name: "Carama", code: "CAR", active: true },
 ]
 
-// Función para generar fecha de vencimiento basada en el mes
+// Función para generar fecha de vencimiento basada en el mes (MISMO MES)
 function generateDueDate(month: number, year: number): string {
-  // Generalmente los servicios vencen el día 10 del mes siguiente
-  const dueMonth = month === 12 ? 1 : month + 1
-  const dueYear = month === 12 ? year + 1 : year
-  return `${dueYear}-${dueMonth.toString().padStart(2, "0")}-10`
+  // Los servicios vencen el día 10 del MISMO mes
+  return `${year}-${month.toString().padStart(2, "0")}-10`
 }
 
 // Función para auto-generar pagos mensuales
@@ -62,7 +60,7 @@ async function generateMonthlyPayments(service: Service, monthsAhead = 12): Prom
           month,
           year,
           amount: service.average_amount || 0,
-          due_date: generateDueDate(month, year),
+          due_date: generateDueDate(month, year), // Ahora vence en el mismo mes
           status: "pendiente",
           notes: "Generado automáticamente",
         })
@@ -73,6 +71,8 @@ async function generateMonthlyPayments(service: Service, monthsAhead = 12): Prom
     for (const payment of payments) {
       await addServicePayment(payment)
     }
+
+    console.log(`Generados ${payments.length} pagos para el servicio: ${service.name}`)
   } catch (error) {
     console.error("Error generating monthly payments:", error)
   }
@@ -155,7 +155,7 @@ async function generateMonthlyPaymentsFromDate(
           month,
           year,
           amount: service.average_amount || 0,
-          due_date: generateDueDate(month, year),
+          due_date: generateDueDate(month, year), // Ahora vence en el mismo mes
           status: "pendiente",
           notes: "Generado automáticamente",
         })
@@ -334,6 +334,10 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
       console.error("Error de Supabase al guardar servicio:", error)
       // Solo usar localStorage como último recurso
       const newService = addServiceToLocalStorage(service)
+
+      // Generar pagos automáticamente después de crear el servicio
+      await generateMonthlyPayments(newService, 12)
+
       return newService
     }
 
@@ -345,10 +349,17 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
       hotel_name: hotelName,
     }
 
+    // Generar pagos automáticamente después de crear el servicio
+    await generateMonthlyPayments(serviceWithHotel, 12)
+
     return serviceWithHotel
   } catch (error) {
     console.error("Error general al guardar servicio:", error)
     const newService = addServiceToLocalStorage(service)
+
+    // Generar pagos automáticamente después de crear el servicio
+    await generateMonthlyPayments(newService, 12)
+
     return newService
   }
 }
