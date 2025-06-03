@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import StockManagement from "@/components/stock/stock-management"
+import StockManagement from "@/components/stock-management"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const ClientPage = () => {
