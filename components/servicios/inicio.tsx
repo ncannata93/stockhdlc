@@ -146,6 +146,20 @@ export function Inicio() {
           return false
         }
       })
+      .sort((a, b) => {
+        // Ordenar por fecha de vencimiento (más urgente primero)
+        try {
+          const [yearA, monthA, dayA] = a.due_date.split("T")[0].split("-")
+          const [yearB, monthB, dayB] = b.due_date.split("T")[0].split("-")
+
+          const dateA = new Date(Number.parseInt(yearA), Number.parseInt(monthA) - 1, Number.parseInt(dayA))
+          const dateB = new Date(Number.parseInt(yearB), Number.parseInt(monthB) - 1, Number.parseInt(dayB))
+
+          return dateA.getTime() - dateB.getTime()
+        } catch {
+          return 0
+        }
+      })
       .slice(0, 10) // Limitar a 10 elementos
 
     setStats({
