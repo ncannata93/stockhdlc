@@ -8,15 +8,16 @@ import { Loader2 } from "lucide-react"
 interface ProtectedRouteProps {
   children: ReactNode
   adminOnly?: boolean
+  allowRedirect?: boolean
 }
 
-export default function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, adminOnly = false, allowRedirect = true }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, session } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && pathname !== "/login") {
+    if (!isLoading && !isAuthenticated && pathname !== "/login" && allowRedirect) {
       router.replace(`/login?redirectTo=${encodeURIComponent(pathname)}`)
       return
     }
@@ -26,12 +27,12 @@ export default function ProtectedRoute({ children, adminOnly = false }: Protecte
       const username = session?.username || ""
       const isAdmin = username === "admin" || username === "ncannata"
 
-      if (!isAdmin) {
+      if (!isAdmin && allowRedirect) {
         router.replace("/stock")
         return
       }
     }
-  }, [isLoading, isAuthenticated, pathname, router, adminOnly, session])
+  }, [isLoading, isAuthenticated, pathname, router, adminOnly, session, allowRedirect])
 
   if (isLoading) {
     return (
@@ -42,6 +43,10 @@ export default function ProtectedRoute({ children, adminOnly = false }: Protecte
         </div>
       </div>
     )
+  }
+
+  if (!isAuthenticated && !allowRedirect) {
+    return null
   }
 
   if (!isAuthenticated) {
