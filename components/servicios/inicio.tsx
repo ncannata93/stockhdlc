@@ -27,13 +27,6 @@ export function Inicio() {
       .replace("ARS", "$")
   }
 
-  const formatNumber = (number: number) => {
-    return new Intl.NumberFormat("es-AR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(number)
-  }
-
   useEffect(() => {
     const checkDatabase = async () => {
       try {
@@ -47,6 +40,7 @@ export function Inicio() {
         if (!hasSupabaseUrl || !hasSupabaseKey) {
           setDbStatus("disconnected")
           setError("Variables de entorno de Supabase no configuradas")
+          loadMockData()
           return
         }
 
@@ -83,10 +77,14 @@ export function Inicio() {
 
   const loadMockData = () => {
     // Datos de ejemplo para mostrar la interfaz
+    const today = new Date()
+    const pastDate = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000) // 5 días atrás
+    const futureDate = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000) // 10 días adelante
+
     setStats({
-      pendientes: 5,
+      pendientes: 3,
       abonados: 12,
-      vencidos: 2,
+      vencidos: 2, // Ahora mostrará 2 pagos vencidos
       totalPendiente: 2500.0,
       totalAbonado: 8400.0,
       proximosVencer: [
@@ -97,7 +95,7 @@ export function Inicio() {
           month: 1,
           year: 2025,
           amount: 450.0,
-          due_date: "2025-02-10",
+          due_date: futureDate.toISOString().split("T")[0],
           status: "pendiente",
         },
         {
@@ -107,7 +105,7 @@ export function Inicio() {
           month: 1,
           year: 2025,
           amount: 1200.0,
-          due_date: "2025-02-15",
+          due_date: pastDate.toISOString().split("T")[0], // Este estará vencido
           status: "pendiente",
         },
       ],
@@ -116,6 +114,7 @@ export function Inicio() {
 
   const calculateStats = (payments: any[]) => {
     const now = new Date()
+    now.setHours(0, 0, 0, 0) // Resetear horas para comparación de solo fecha
 
     // Asegurarse de que los pagos tengan valores numéricos válidos
     const validPayments = payments.map((p) => ({
@@ -123,9 +122,45 @@ export function Inicio() {
       amount: typeof p.amount === "number" ? p.amount : Number.parseFloat(p.amount) || 0,
     }))
 
-    const pendientes = validPayments.filter((p) => p.status === "pendiente")
+    // Separar pagos por estado, pero también verificar fechas para vencidos
+    const pendientes = validPayments.filter((p) => {
+      if (p.status !== "pendiente") return false
+
+      // Verificar si está vencido
+      if (p.due_date) {
+        try {
+          const [year, month, day] = p.due_date.split("T")[0].split("-")
+          const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+          dueDate.setHours(0, 0, 0, 0)
+
+          // Si está vencido, no lo contamos como pendiente
+          return dueDate >= now
+        } catch {
+          return true // Si hay error parseando fecha, lo consideramos pendiente
+        }
+      }
+      return true
+    })
+
     const abonados = validPayments.filter((p) => p.status === "abonado")
-    const vencidos = validPayments.filter((p) => p.status === "vencido")
+
+    // Pagos vencidos: status "vencido" O status "pendiente" pero con fecha pasada
+    const vencidos = validPayments.filter((p) => {
+      if (p.status === "vencido") return true
+
+      if (p.status === "pendiente" && p.due_date) {
+        try {
+          const [year, month, day] = p.due_date.split("T")[0].split("-")
+          const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+          dueDate.setHours(0, 0, 0, 0)
+
+          return dueDate < now
+        } catch {
+          return false
+        }
+      }
+      return false
+    })
 
     // Calcular totales con valores numéricos garantizados
     const totalPendiente = pendientes.reduce((sum, p) => sum + p.amount, 0)
@@ -141,7 +176,7 @@ export function Inicio() {
           const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
           const diffTime = dueDate.getTime() - now.getTime()
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-          return diffDays >= -7 && diffDays <= 30
+          return diffDays >= 0 && diffDays <= 30
         } catch {
           return false
         }
@@ -209,9 +244,11 @@ export function Inicio() {
   const getDaysUntilDue = (dateString: string) => {
     try {
       const now = new Date()
+      now.setHours(0, 0, 0, 0)
       // Crear fecha sin conversión de zona horaria
       const [year, month, day] = dateString.split("T")[0].split("-")
       const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      dueDate.setHours(0, 0, 0, 0)
       const diffTime = dueDate.getTime() - now.getTime()
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     } catch {
