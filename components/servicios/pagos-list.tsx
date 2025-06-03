@@ -123,8 +123,19 @@ export function PagosList() {
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("es-ES")
+    try {
+      // Crear fecha sin conversión de zona horaria
+      const [year, month, day] = dateString.split("T")[0].split("-")
+      const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      return date.toLocaleDateString("es-AR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    } catch {
+      return "Fecha inválida"
+    }
   }
 
   const formatCurrency = (amount: number) => {

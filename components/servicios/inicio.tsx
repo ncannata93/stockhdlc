@@ -136,6 +136,7 @@ export function Inicio() {
       .filter((p) => {
         if (!p.due_date) return false
         try {
+          // Crear fecha sin conversión de zona horaria
           const [year, month, day] = p.due_date.split("T")[0].split("-")
           const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
           const diffTime = dueDate.getTime() - now.getTime()
@@ -159,12 +160,14 @@ export function Inicio() {
 
   const formatDate = (dateString: string) => {
     try {
+      // Crear fecha sin conversión de zona horaria
       const [year, month, day] = dateString.split("T")[0].split("-")
       const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-      return date.toLocaleDateString("es-ES", {
+      return date.toLocaleDateString("es-AR", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
+        timeZone: "UTC",
       })
     } catch {
       return "Fecha inválida"
@@ -192,6 +195,7 @@ export function Inicio() {
   const getDaysUntilDue = (dateString: string) => {
     try {
       const now = new Date()
+      // Crear fecha sin conversión de zona horaria
       const [year, month, day] = dateString.split("T")[0].split("-")
       const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
       const diffTime = dueDate.getTime() - now.getTime()
