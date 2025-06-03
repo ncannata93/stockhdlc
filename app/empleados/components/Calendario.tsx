@@ -1,1 +1,5 @@
-export { default } from "@/components/empleados/calendario"
+import EmpleadosCalendario from "@/components/empleados/calendario"
+
+export default function Calendario() {
+  return <EmpleadosCalendario />
+}

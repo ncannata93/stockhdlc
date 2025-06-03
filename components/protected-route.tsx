@@ -45,11 +45,7 @@ export default function ProtectedRoute({ children, adminOnly = false, allowRedir
     )
   }
 
-  if (!isAuthenticated && !allowRedirect) {
-    return null
-  }
-
-  if (!isAuthenticated) {
+  if (!isAuthenticated && allowRedirect) {
     return null
   }
 

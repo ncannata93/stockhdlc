@@ -6,12 +6,12 @@ import { useAuth } from "@/lib/auth-context"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { LogOut, UserPlus, ClipboardList, Calendar, BarChart } from "lucide-react"
-import Inicio from "./components/Inicio"
-import EmpleadosList from "./components/EmpleadosList"
-import Agregar from "./components/Agregar"
-import Historial from "./components/Historial"
-import Resumen from "./components/Resumen"
-import Calendario from "./components/Calendario"
+import EmpleadosInicio from "@/components/empleados/inicio"
+import EmpleadosHistorial from "@/components/empleados/historial"
+import EmpleadosAgregar from "@/components/empleados/agregar"
+import EmpleadosCalendario from "@/components/empleados/calendario"
+import EmpleadosResumen from "@/components/empleados/resumen"
+import EmpleadosList from "@/components/empleados/empleados-list"
 
 export default function EmpleadosClient() {
   const { signOut, session } = useAuth()
@@ -65,7 +65,7 @@ export default function EmpleadosClient() {
         </TabsList>
 
         <TabsContent value="inicio" className="mt-6">
-          <Inicio />
+          <EmpleadosInicio />
         </TabsContent>
 
         <TabsContent value="empleados" className="mt-6">
@@ -73,19 +73,19 @@ export default function EmpleadosClient() {
         </TabsContent>
 
         <TabsContent value="agregar" className="mt-6">
-          <Agregar />
+          <EmpleadosAgregar />
         </TabsContent>
 
         <TabsContent value="calendario" className="mt-6">
-          <Calendario />
+          <EmpleadosCalendario />
         </TabsContent>
 
         <TabsContent value="historial" className="mt-6">
-          <Historial />
+          <EmpleadosHistorial />
         </TabsContent>
 
         <TabsContent value="resumen" className="mt-6">
-          <Resumen />
+          <EmpleadosResumen />
         </TabsContent>
       </Tabs>
     </div>
