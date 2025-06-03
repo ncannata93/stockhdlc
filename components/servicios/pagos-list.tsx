@@ -1,7 +1,15 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
-import { getServicePayments, getHotels, deleteServicePayment, markPaymentAsPaid } from "@/lib/service-db"
+import {
+  getServicePayments,
+  getHotels,
+  deleteServicePayment,
+  markPaymentAsPaid,
+  updateServicePayment,
+} from "@/lib/service-db"
 import type { ServicePayment, Hotel } from "@/lib/service-types"
 import {
   Trash2,
@@ -63,6 +71,23 @@ export function PagosList() {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0])
   const [invoiceNumber, setInvoiceNumber] = useState("")
 
+  // Estado para modal de edición
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingPayment, setEditingPayment] = useState<ServicePayment | null>(null)
+  const [editFormData, setEditFormData] = useState({
+    serviceId: "",
+    serviceName: "",
+    hotelId: "",
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+    amount: "",
+    dueDate: "",
+    paymentDate: "",
+    status: "pendiente",
+    invoiceNumber: "",
+    notes: "",
+  })
+
   useEffect(() => {
     loadData()
   }, [])
@@ -106,6 +131,74 @@ export function PagosList() {
     setPaymentDate(new Date().toISOString().split("T")[0])
     setInvoiceNumber("")
     setShowPaymentModal(true)
+  }
+
+  const handleEditClick = (payment: ServicePayment) => {
+    setEditingPayment(payment)
+    setEditFormData({
+      serviceId: payment.service_id,
+      serviceName: payment.service_name,
+      hotelId: payment.hotel_id,
+      month: payment.month,
+      year: payment.year,
+      amount: payment.amount.toString(),
+      dueDate: payment.due_date,
+      paymentDate: payment.payment_date || "",
+      status: payment.status,
+      invoiceNumber: payment.invoice_number || "",
+      notes: payment.notes || "",
+    })
+    setShowEditModal(true)
+  }
+
+  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setEditFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleUpdatePayment = async () => {
+    if (!editingPayment) return
+
+    try {
+      await updateServicePayment(editingPayment.id, {
+        service_id: editFormData.serviceId,
+        service_name: editFormData.serviceName,
+        hotel_id: editFormData.hotelId,
+        month: Number(editFormData.month),
+        year: Number(editFormData.year),
+        amount: Number(editFormData.amount),
+        due_date: editFormData.dueDate,
+        payment_date: editFormData.paymentDate || undefined,
+        status: editFormData.status,
+        invoice_number: editFormData.invoiceNumber || undefined,
+        notes: editFormData.notes,
+      })
+
+      setShowEditModal(false)
+      setEditingPayment(null)
+      await loadData()
+    } catch (error) {
+      console.error("Error al actualizar pago:", error)
+      alert("Error al actualizar el pago. Intente nuevamente.")
+    }
+  }
+
+  const getMonthName = (month: number) => {
+    const months = [
+      "Enero",
+      "Febrero",
+      "Marzo",
+      "Abril",
+      "Mayo",
+      "Junio",
+      "Julio",
+      "Agosto",
+      "Septiembre",
+      "Octubre",
+      "Noviembre",
+      "Diciembre",
+    ]
+    return months[month - 1]
   }
 
   const handleMarkAsPaid = async () => {
@@ -422,7 +515,7 @@ export function PagosList() {
                         )}
                         <button
                           className="text-blue-600 hover:text-blue-900"
-                          onClick={() => (window.location.href = `/servicios?tab=editar-pago&id=${payment.id}`)}
+                          onClick={() => handleEditClick(payment)}
                           title="Editar pago"
                         >
                           <Edit className="h-5 w-5" />
@@ -470,10 +563,7 @@ export function PagosList() {
                           <CreditCard className="h-5 w-5" />
                         </button>
                       )}
-                      <button
-                        className="text-blue-600 hover:text-blue-900"
-                        onClick={() => (window.location.href = `/servicios?tab=editar-pago&id=${payment.id}`)}
-                      >
+                      <button className="text-blue-600 hover:text-blue-900" onClick={() => handleEditClick(payment)}>
                         <Edit className="h-5 w-5" />
                       </button>
                       <button
@@ -591,6 +681,166 @@ export function PagosList() {
                 className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700"
               >
                 Marcar como Pagado
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de edición */}
+      {showEditModal && editingPayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Editar Pago</h3>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Servicio</label>
+                  <input
+                    type="text"
+                    value={editFormData.serviceName}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Hotel</label>
+                  <input
+                    type="text"
+                    value={hotels.find((h) => h.id === editFormData.hotelId)?.name || ""}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mes *</label>
+                  <select
+                    name="month"
+                    value={editFormData.month}
+                    onChange={handleEditFormChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                      <option key={month} value={month}>
+                        {getMonthName(month)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Año *</label>
+                  <select
+                    name="year"
+                    value={editFormData.year}
+                    onChange={handleEditFormChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500">$</span>
+                    </div>
+                    <input
+                      type="number"
+                      name="amount"
+                      value={editFormData.amount}
+                      onChange={handleEditFormChange}
+                      min="0"
+                      step="0.01"
+                      className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Vencimiento *</label>
+                  <input
+                    type="date"
+                    name="dueDate"
+                    value={editFormData.dueDate}
+                    onChange={handleEditFormChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado *</label>
+                  <select
+                    name="status"
+                    value={editFormData.status}
+                    onChange={handleEditFormChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="pendiente">Pendiente</option>
+                    <option value="abonado">Abonado</option>
+                    <option value="vencido">Vencido</option>
+                  </select>
+                </div>
+
+                {editFormData.status === "abonado" && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Pago</label>
+                      <input
+                        type="date"
+                        name="paymentDate"
+                        value={editFormData.paymentDate}
+                        onChange={handleEditFormChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Número de Factura</label>
+                      <input
+                        type="text"
+                        name="invoiceNumber"
+                        value={editFormData.invoiceNumber}
+                        onChange={handleEditFormChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                  <textarea
+                    name="notes"
+                    value={editFormData.notes}
+                    onChange={handleEditFormChange}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleUpdatePayment}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+              >
+                Actualizar Pago
               </button>
             </div>
           </div>
