@@ -92,12 +92,63 @@ export function PagosList() {
     loadData()
   }, [])
 
+  // Función para verificar si un pago está vencido
+  const isPaymentOverdue = (payment: ServicePayment): boolean => {
+    if (payment.status === "abonado") return false
+
+    try {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const [year, month, day] = payment.due_date.split("T")[0].split("-")
+      const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      dueDate.setHours(0, 0, 0, 0)
+
+      return dueDate < today
+    } catch {
+      return false
+    }
+  }
+
+  // Función para actualizar estados de pagos vencidos
+  const updateOverduePayments = async (paymentsData: ServicePayment[]) => {
+    const updatedPayments = []
+    let hasUpdates = false
+
+    for (const payment of paymentsData) {
+      if (payment.status === "pendiente" && isPaymentOverdue(payment)) {
+        // Actualizar el pago a vencido en la base de datos
+        try {
+          await updateServicePayment(payment.id, { status: "vencido" })
+          updatedPayments.push({ ...payment, status: "vencido" as const })
+          hasUpdates = true
+          console.log(`Pago ${payment.id} marcado como vencido automáticamente`)
+        } catch (error) {
+          console.error(`Error actualizando pago ${payment.id}:`, error)
+          updatedPayments.push(payment)
+        }
+      } else {
+        updatedPayments.push(payment)
+      }
+    }
+
+    return { updatedPayments, hasUpdates }
+  }
+
   const loadData = async () => {
     setLoading(true)
     try {
       const [paymentsData, hotelsData] = await Promise.all([getServicePayments(), getHotels()])
-      setPayments(paymentsData)
+
+      // Actualizar pagos vencidos automáticamente
+      const { updatedPayments, hasUpdates } = await updateOverduePayments(paymentsData)
+
+      setPayments(updatedPayments)
       setHotels(hotelsData)
+
+      if (hasUpdates) {
+        console.log("Se actualizaron pagos vencidos automáticamente")
+      }
     } catch (error) {
       console.error("Error al cargar datos:", error)
     } finally {
@@ -504,7 +555,7 @@ export function PagosList() {
                     <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(payment.status)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
-                        {payment.status === "pendiente" && (
+                        {(payment.status === "pendiente" || payment.status === "vencido") && (
                           <button
                             className="text-green-600 hover:text-green-900"
                             onClick={() => handlePaymentClick(payment)}
@@ -554,7 +605,7 @@ export function PagosList() {
                       </p>
                     </div>
                     <div className="flex space-x-2">
-                      {payment.status === "pendiente" && (
+                      {(payment.status === "pendiente" || payment.status === "vencido") && (
                         <button
                           className="text-green-600 hover:text-green-900"
                           onClick={() => handlePaymentClick(payment)}
