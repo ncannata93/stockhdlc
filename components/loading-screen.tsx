@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react"
 
-export function LoadingScreen({ message = "Cargando..." }: { message?: string }) {
+export default function LoadingScreen({ message = "Cargando..." }: { message?: string }) {
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">

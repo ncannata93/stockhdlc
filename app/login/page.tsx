@@ -6,8 +6,6 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, User, Key, AlertTriangle, Info } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
-
-// Importar la función ensurePredefinedUsers directamente al inicio del archivo
 import { ensurePredefinedUsers } from "@/lib/local-auth"
 
 export default function LoginPage() {
@@ -19,30 +17,26 @@ export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirectTo") || "/stock"
-  const { signIn, isAuthenticated, createUser } = useAuth()
+  const { signIn, isAuthenticated, createUser, isLoading: authLoading } = useAuth()
 
-  // Modificar la función useEffect para asegurar que los usuarios predefinidos existan
   useEffect(() => {
-    // Asegurarse de que los usuarios predefinidos existan
     if (typeof window !== "undefined") {
       ensurePredefinedUsers()
     }
+  }, [])
 
-    // Si el usuario ya está autenticado, redirigir a la página correspondiente
-    if (isAuthenticated) {
-      console.log("Usuario ya autenticado, redirigiendo a:", redirectTo)
-      router.push(redirectTo)
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.replace(redirectTo)
     }
-  }, [isAuthenticated, router, redirectTo])
+  }, [isAuthenticated, authLoading, redirectTo, router])
 
-  // Función para crear un usuario de prueba
   const handleCreateTestUser = async () => {
     try {
       setIsLoading(true)
       setError(null)
       setMessage(null)
 
-      // Crear un usuario de prueba
       const testUsername = "test"
       const testPassword = "test123"
 
@@ -68,7 +62,6 @@ export default function LoginPage() {
     }
   }
 
-  // Función para iniciar sesión
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -79,8 +72,7 @@ export default function LoginPage() {
       const result = await signIn(username, password)
 
       if (result.success) {
-        console.log("Inicio de sesión exitoso, redirigiendo a:", redirectTo)
-        router.push(redirectTo)
+        // La redirección se maneja en el useEffect
       } else {
         setError(result.error || "Error al iniciar sesión")
       }
@@ -89,6 +81,28 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-medium text-gray-700">Cargando...</h2>
+        </div>
+      </div>
+    )
+  }
+
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-medium text-gray-700">Redirigiendo...</h2>
+        </div>
+      </div>
+    )
   }
 
   return (

@@ -27,6 +27,16 @@ export function MainNavigation() {
     }
   }, [])
 
+  // Función para cerrar sesión
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      // La redirección se maneja en el AuthContext o ProtectedRoute
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error)
+    }
+  }
+
   // Determinar qué enlaces mostrar según el usuario
   const showServiciosLink = !session || session.username === "admin" || session.username === "ncannata"
 
@@ -39,7 +49,7 @@ export function MainNavigation() {
 
         <div className="flex items-center">
           {session && <span className="text-sm font-medium text-gray-700 mr-2">{session.username}</span>}
-          <Button variant="ghost" size="icon" onClick={() => signOut()} title="Cerrar sesión" className="mr-2">
+          <Button variant="ghost" size="icon" onClick={handleLogout} title="Cerrar sesión" className="mr-2">
             <LogOut className="h-5 w-5 text-gray-600" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -152,7 +162,7 @@ export function MainNavigation() {
         {/* Información de usuario y botón de cerrar sesión */}
         <div className="flex items-center space-x-3">
           {session && <span className="text-sm font-medium text-gray-700">{session.username}</span>}
-          <Button variant="ghost" size="sm" onClick={() => signOut()} className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="flex items-center gap-1">
             <LogOut className="h-4 w-4" />
             <span>Cerrar sesión</span>
           </Button>
