@@ -171,19 +171,71 @@ async function generateMonthlyPaymentsFromDate(
   }
 }
 
+// Función para actualizar información de pagos cuando se actualiza un servicio
+async function updateServicePaymentsInfo(serviceId: string, updates: Partial<Service>): Promise<void> {
+  try {
+    console.log(`Actualizando información de pagos para servicio: ${serviceId}`)
+
+    // Obtener todos los pagos de este servicio
+    const allPayments = await getServicePaymentsRaw()
+    const servicePayments = allPayments.filter((p) => p.service_id === serviceId)
+
+    if (servicePayments.length === 0) {
+      console.log("No hay pagos para actualizar")
+      return
+    }
+
+    // Preparar las actualizaciones para los pagos
+    const paymentUpdates: Partial<ServicePayment> = {}
+
+    // Si se actualizó el nombre del servicio
+    if (updates.name) {
+      paymentUpdates.service_name = updates.name
+    }
+
+    // Si se actualizó el hotel
+    if (updates.hotel_id && updates.hotel_name) {
+      paymentUpdates.hotel_id = updates.hotel_id
+      paymentUpdates.hotel_name = updates.hotel_name
+    }
+
+    // Si hay actualizaciones que hacer
+    if (Object.keys(paymentUpdates).length > 0) {
+      console.log(`Actualizando ${servicePayments.length} pagos con:`, paymentUpdates)
+
+      // Actualizar cada pago
+      for (const payment of servicePayments) {
+        await updateServicePayment(payment.id, paymentUpdates)
+      }
+
+      console.log(`Actualizados ${servicePayments.length} pagos del servicio`)
+    }
+  } catch (error) {
+    console.error("Error updating service payments info:", error)
+  }
+}
+
 // Función para actualizar el promedio mensual basándose en pagos reales
-async function updateServiceAverage(serviceId: string): Promise<void> {
+export async function updateServiceAverage(serviceId: string): Promise<void> {
   try {
     console.log(`Actualizando promedio para servicio: ${serviceId}`)
 
     // Obtener todos los pagos abonados de este servicio
     const allPayments = await getServicePaymentsRaw() // Nueva función sin verificaciones automáticas
-    const paidPayments = allPayments.filter((p) => p.service_id === serviceId && p.status === "abonado" && p.amount > 0)
+    const paidPayments = allPayments.filter((p) => p.service_id === serviceId && p.status === "abonado")
+
+    console.log(
+      `Pagos abonados encontrados:`,
+      paidPayments.map((p) => ({ month: p.month, year: p.year, amount: p.amount })),
+    )
 
     if (paidPayments.length >= 1) {
       // Actualizar si hay al menos 1 pago (cambiado de 2 a 1)
       const totalAmount = paidPayments.reduce((sum, payment) => sum + payment.amount, 0)
       const newAverage = totalAmount / paidPayments.length
+
+      console.log(`Montos: [${paidPayments.map((p) => p.amount).join(", ")}]`)
+      console.log(`Total: ${totalAmount}, Cantidad: ${paidPayments.length}, Promedio: ${newAverage}`)
 
       console.log(`Nuevo promedio calculado: ${newAverage} (basado en ${paidPayments.length} pagos)`)
 
@@ -407,9 +459,15 @@ export async function updateService(id: string, updates: Partial<Service>): Prom
     if (error) {
       updateServiceInLocalStorage(id, updates)
     }
+
+    // Actualizar información en los pagos relacionados
+    await updateServicePaymentsInfo(id, updates)
   } catch (error) {
     console.warn("Using localStorage for updating service:", error)
     updateServiceInLocalStorage(id, updates)
+
+    // Actualizar información en los pagos relacionados (también para localStorage)
+    await updateServicePaymentsInfo(id, updates)
   }
 }
 

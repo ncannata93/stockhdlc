@@ -8,6 +8,9 @@ import { getServices, addServicePayment, getHotels } from "@/lib/service-db"
 import type { Service, Hotel } from "@/lib/service-types"
 import { Save, ArrowLeft, Building2 } from "lucide-react"
 
+// Importar la función para actualizar promedio
+import { updateServiceAverage } from "@/lib/service-db"
+
 export function AgregarPago() {
   const searchParams = useSearchParams()
   const [services, setServices] = useState<Service[]>([])
@@ -127,7 +130,7 @@ export function AgregarPago() {
     setLoading(true)
 
     try {
-      await addServicePayment({
+      const newPayment = await addServicePayment({
         service_id: formData.serviceId,
         service_name: formData.serviceName,
         hotel_id: formData.hotelId,
@@ -137,7 +140,17 @@ export function AgregarPago() {
         due_date: formData.dueDate,
         status: formData.status,
         notes: formData.notes,
+        // Si el estado es abonado, agregar la fecha de pago
+        payment_date: formData.status === "abonado" ? new Date().toISOString().split("T")[0] : undefined,
       })
+
+      console.log("Pago creado:", newPayment)
+
+      // Si el pago se creó como "abonado", actualizar el promedio del servicio
+      if (formData.status === "abonado") {
+        console.log("Pago creado como abonado, actualizando promedio...")
+        await updateServiceAverage(formData.serviceId)
+      }
 
       // Redireccionar a la lista de pagos
       window.location.href = "/servicios?tab=pagos"
