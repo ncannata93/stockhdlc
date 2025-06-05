@@ -12,6 +12,7 @@ export interface EmployeeAssignment {
   employee_id: number
   hotel_name: string
   assignment_date: string
+  daily_rate_used: number // Nueva columna para guardar la tarifa del día
   notes?: string
   created_at?: string
   created_by?: string

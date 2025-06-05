@@ -9,7 +9,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Loader2, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, BarChart3, AlertTriangle } from "lucide-react"
+import {
+  Loader2,
+  Calendar,
+  DollarSign,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  BarChart3,
+  AlertTriangle,
+  TrendingUp,
+} from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment, EmployeePayment } from "@/lib/employee-types"
 import { Badge } from "@/components/ui/badge"
@@ -199,7 +209,7 @@ export default function EmpleadosResumen() {
     {} as Record<number, EmployeePayment[]>,
   )
 
-  // Calcular resumen por empleado con división de tarifas
+  // Calcular resumen por empleado con división de tarifas USANDO LA TARIFA GUARDADA
   const employeeSummary = employees
     .map((employee) => {
       const employeeAssignments = assignments.filter((a) => a.employee_id === employee.id)
@@ -217,14 +227,15 @@ export default function EmpleadosResumen() {
         {} as Record<string, EmployeeAssignment[]>,
       )
 
-      // Calcular días trabajados y monto total
+      // Calcular días trabajados y monto total USANDO LA TARIFA GUARDADA
       const daysWorked = Object.keys(assignmentsByDate).length
       let totalAmount = 0
 
-      // Calcular el monto dividiendo la tarifa diaria entre los hoteles del mismo día
+      // Calcular el monto usando la tarifa guardada en cada asignación
       Object.values(assignmentsByDate).forEach((dayAssignments) => {
-        const dailyRate = employee.daily_rate / dayAssignments.length
-        totalAmount += dailyRate * dayAssignments.length
+        // Usar la tarifa guardada de cada asignación y dividir entre hoteles del mismo día
+        const dailyRatePerHotel = dayAssignments[0].daily_rate_used / dayAssignments.length
+        totalAmount += dailyRatePerHotel * dayAssignments.length
       })
 
       // Obtener hoteles únicos
@@ -241,14 +252,16 @@ export default function EmpleadosResumen() {
       // Obtener pagos pendientes de semanas anteriores para este empleado
       const previousPendingPayments = pendingPaymentsByEmployee[employee.id] || []
 
-      // Crear detalle de asignaciones con tarifa dividida
+      // Crear detalle de asignaciones con tarifa dividida USANDO LA TARIFA GUARDADA
       const assignmentDetails = Object.entries(assignmentsByDate).map(([date, dayAssignments]) => {
-        const dailyRatePerHotel = employee.daily_rate / dayAssignments.length
+        const savedDailyRate = dayAssignments[0].daily_rate_used
+        const dailyRatePerHotel = savedDailyRate / dayAssignments.length
         return {
           date,
           assignments: dayAssignments,
           dailyRatePerHotel,
-          totalForDay: employee.daily_rate,
+          totalForDay: savedDailyRate,
+          savedDailyRate, // Agregar la tarifa guardada para mostrar
         }
       })
 
@@ -272,7 +285,7 @@ export default function EmpleadosResumen() {
       return summary.daysWorked > 0
     })
 
-  // Calcular totales por hotel para el año
+  // Calcular totales por hotel para el año USANDO LA TARIFA GUARDADA
   const hotelYearlyTotals = yearlyAssignments.reduce(
     (acc, assignment) => {
       const hotelName = assignment.hotel_name
@@ -284,21 +297,20 @@ export default function EmpleadosResumen() {
         }
       }
 
-      // Encontrar el empleado
-      const employee = employees.find((e) => e.id === assignment.employee_id)
-      if (employee) {
-        // Contar cuántas asignaciones tiene este empleado en este día
-        const sameDay = yearlyAssignments.filter(
-          (a) => a.employee_id === assignment.employee_id && a.assignment_date === assignment.assignment_date,
-        )
+      // Usar la tarifa guardada en la asignación
+      const savedDailyRate = assignment.daily_rate_used || 0
 
-        // Dividir la tarifa entre el número de hoteles visitados ese día
-        const dailyRate = employee.daily_rate / sameDay.length
+      // Contar cuántas asignaciones tiene este empleado en este día
+      const sameDay = yearlyAssignments.filter(
+        (a) => a.employee_id === assignment.employee_id && a.assignment_date === assignment.assignment_date,
+      )
 
-        acc[hotelName].count++
-        acc[hotelName].amount += dailyRate
-        acc[hotelName].employees.add(employee.id)
-      }
+      // Dividir la tarifa guardada entre el número de hoteles visitados ese día
+      const dailyRate = savedDailyRate / sameDay.length
+
+      acc[hotelName].count++
+      acc[hotelName].amount += dailyRate
+      acc[hotelName].employees.add(assignment.employee_id)
 
       return acc
     },
@@ -445,7 +457,9 @@ export default function EmpleadosResumen() {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle>Resumen de Empleados</CardTitle>
-              <CardDescription>Información detallada de trabajo y pagos por empleado</CardDescription>
+              <CardDescription>
+                Información detallada de trabajo y pagos por empleado con tarifas históricas
+              </CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={() => setShowDebugInfo(!showDebugInfo)}>
               {showDebugInfo ? "Ocultar Detalles" : "Ver Detalles"}
@@ -607,8 +621,17 @@ export default function EmpleadosResumen() {
                                 </Badge>
                               )}
                             </CardTitle>
-                            <CardDescription>
-                              {summary.employee.role} - Tarifa diaria: ${summary.employee.daily_rate.toLocaleString()}
+                            <CardDescription className="flex items-center gap-2">
+                              {summary.employee.role} - Tarifa actual: ${summary.employee.daily_rate.toLocaleString()}
+                              {/* Mostrar si hay diferencia entre tarifa actual y tarifas usadas */}
+                              {summary.assignmentDetails.some(
+                                (detail) => detail.savedDailyRate !== summary.employee.daily_rate,
+                              ) && (
+                                <Badge variant="secondary" className="text-xs">
+                                  <TrendingUp className="w-3 h-3 mr-1" />
+                                  Tarifas históricas aplicadas
+                                </Badge>
+                              )}
                             </CardDescription>
                           </div>
                           <div className="text-right">
@@ -658,12 +681,15 @@ export default function EmpleadosResumen() {
                         </div>
 
                         <div>
-                          <div className="text-sm font-medium mb-3">Detalle de asignaciones y tarifas</div>
+                          <div className="text-sm font-medium mb-3">
+                            Detalle de asignaciones y tarifas (usando tarifas históricas)
+                          </div>
                           <Table>
                             <TableHeader>
                               <TableRow>
                                 <TableHead>Fecha</TableHead>
                                 <TableHead>Hoteles</TableHead>
+                                <TableHead>Tarifa Usada</TableHead>
                                 <TableHead>Tarifa por Hotel</TableHead>
                                 <TableHead>Total del Día</TableHead>
                                 <TableHead>Notas</TableHead>
@@ -690,6 +716,14 @@ export default function EmpleadosResumen() {
                                     <div className="text-xs text-muted-foreground mt-1">
                                       {detail.assignments.length} hotel{detail.assignments.length > 1 ? "es" : ""}
                                     </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="font-medium">${detail.savedDailyRate.toLocaleString()}</div>
+                                    {detail.savedDailyRate !== summary.employee.daily_rate && (
+                                      <div className="text-xs text-muted-foreground">
+                                        (actual: ${summary.employee.daily_rate.toLocaleString()})
+                                      </div>
+                                    )}
                                   </TableCell>
                                   <TableCell>
                                     <div className="font-medium">${detail.dailyRatePerHotel.toLocaleString()}</div>
@@ -766,10 +800,10 @@ export default function EmpleadosResumen() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5" />
-                    Gastos por Hotel en {currentYear}
+                    Gastos por Hotel en {currentYear} (con tarifas históricas)
                   </CardTitle>
                   <CardDescription>
-                    Distribución de gastos por hotel durante el año actual
+                    Distribución de gastos por hotel durante el año actual usando las tarifas aplicadas en cada momento
                     {selectedEmployee !== "todos" &&
                       ` para ${employees.find((e) => e.id.toString() === selectedEmployee)?.name}`}
                   </CardDescription>
@@ -822,7 +856,8 @@ export default function EmpleadosResumen() {
                           </span>
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">
-                          {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales
+                          {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales con tarifas
+                          históricas
                         </div>
                       </div>
                     </div>

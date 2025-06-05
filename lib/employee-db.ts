@@ -179,6 +179,23 @@ export const saveAssignment = async (
   if (!supabase) return null
 
   try {
+    // Si no se proporciona daily_rate_used, obtener la tarifa actual del empleado
+    let dailyRateUsed = assignment.daily_rate_used
+    if (!dailyRateUsed && assignment.employee_id) {
+      const { data: employeeData, error: employeeError } = await supabase
+        .from("employees")
+        .select("daily_rate")
+        .eq("id", assignment.employee_id)
+        .single()
+
+      if (employeeError) {
+        console.error("Error al obtener tarifa del empleado:", employeeError)
+        return null
+      }
+
+      dailyRateUsed = employeeData.daily_rate
+    }
+
     if (assignment.id) {
       // Actualizar asignación existente
       const { data, error } = await supabase
@@ -187,6 +204,7 @@ export const saveAssignment = async (
           employee_id: assignment.employee_id,
           hotel_name: assignment.hotel_name,
           assignment_date: assignment.assignment_date,
+          daily_rate_used: dailyRateUsed,
           notes: assignment.notes,
           created_by: username,
         })
@@ -214,6 +232,7 @@ export const saveAssignment = async (
           employee_id: assignment.employee_id,
           hotel_name: assignment.hotel_name,
           assignment_date: assignment.assignment_date,
+          daily_rate_used: dailyRateUsed,
           notes: assignment.notes,
           created_by: username,
         })
