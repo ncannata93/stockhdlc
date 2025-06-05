@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
+import { HOTELS } from "@/lib/employee-types"
 
 export default function EmpleadosHistorial() {
   const { getAssignments, getEmployees, deleteAssignment, saveAssignment } = useEmployeeDB()
@@ -45,7 +46,7 @@ export default function EmpleadosHistorial() {
     }
 
     loadData()
-  }, [getAssignments, getEmployees])
+  }, [])
 
   const handleDelete = async (id: number) => {
     if (window.confirm("¿Estás seguro de que deseas eliminar esta asignación?")) {
@@ -253,22 +254,7 @@ export default function EmpleadosHistorial() {
                                         <SelectValue placeholder="Seleccionar hotel" />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {[
-                                          "Jaguel",
-                                          "Monaco",
-                                          "Mallak",
-                                          "Argentina",
-                                          "Falkner",
-                                          "Stromboli",
-                                          "San Miguel",
-                                          "Colores",
-                                          "Puntarenas",
-                                          "Tupe",
-                                          "Munich",
-                                          "Tiburones",
-                                          "Barlovento",
-                                          "Carama",
-                                        ].map((hotel) => (
+                                        {HOTELS.map((hotel) => (
                                           <SelectItem key={hotel} value={hotel}>
                                             {hotel}
                                           </SelectItem>

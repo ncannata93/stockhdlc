@@ -137,13 +137,11 @@ export const getAssignments = async (filters?: {
   if (!supabase) return []
 
   try {
-    console.log("Obteniendo asignaciones con filtros:", filters)
-
     let query = supabase
       .from("employee_assignments")
       .select(`
         *,
-        employees(name)
+        employees!inner(name)
       `)
       .order("assignment_date", { ascending: false })
 
@@ -162,10 +160,8 @@ export const getAssignments = async (filters?: {
       return []
     }
 
-    console.log("Asignaciones obtenidas:", data?.length || 0)
-
     // Formatear los datos para incluir el nombre del empleado
-    return (data || []).map((item) => ({
+    return (data || []).map((item: any) => ({
       ...item,
       employee_name: item.employees?.name,
     }))
@@ -195,7 +191,10 @@ export const saveAssignment = async (
           created_by: username,
         })
         .eq("id", assignment.id)
-        .select()
+        .select(`
+          *,
+          employees!inner(name)
+        `)
         .single()
 
       if (error) {
@@ -203,7 +202,10 @@ export const saveAssignment = async (
         return null
       }
 
-      return data
+      return {
+        ...data,
+        employee_name: data.employees?.name,
+      }
     } else {
       // Crear nueva asignación
       const { data, error } = await supabase
@@ -215,7 +217,10 @@ export const saveAssignment = async (
           notes: assignment.notes,
           created_by: username,
         })
-        .select()
+        .select(`
+          *,
+          employees!inner(name)
+        `)
         .single()
 
       if (error) {
@@ -223,7 +228,10 @@ export const saveAssignment = async (
         return null
       }
 
-      return data
+      return {
+        ...data,
+        employee_name: data.employees?.name,
+      }
     }
   } catch (err) {
     console.error("Error inesperado al guardar asignación:", err)
@@ -265,7 +273,7 @@ export const getPayments = async (filters?: {
       .from("employee_payments")
       .select(`
         *,
-        employees(name)
+        employees!inner(name)
       `)
       .order("payment_date", { ascending: false })
 
@@ -289,7 +297,7 @@ export const getPayments = async (filters?: {
     }
 
     // Formatear los datos para incluir el nombre del empleado
-    return (data || []).map((item) => ({
+    return (data || []).map((item: any) => ({
       ...item,
       employee_name: item.employees?.name,
     }))
@@ -322,7 +330,10 @@ export const savePayment = async (
           created_by: username,
         })
         .eq("id", payment.id)
-        .select()
+        .select(`
+          *,
+          employees!inner(name)
+        `)
         .single()
 
       if (error) {
@@ -330,7 +341,10 @@ export const savePayment = async (
         return null
       }
 
-      return data
+      return {
+        ...data,
+        employee_name: data.employees?.name,
+      }
     } else {
       // Crear nuevo pago
       const { data, error } = await supabase
@@ -345,7 +359,10 @@ export const savePayment = async (
           notes: payment.notes,
           created_by: username,
         })
-        .select()
+        .select(`
+          *,
+          employees!inner(name)
+        `)
         .single()
 
       if (error) {
@@ -353,7 +370,10 @@ export const savePayment = async (
         return null
       }
 
-      return data
+      return {
+        ...data,
+        employee_name: data.employees?.name,
+      }
     }
   } catch (err) {
     console.error("Error inesperado al guardar pago:", err)

@@ -69,7 +69,7 @@ export default function EmpleadosResumen() {
     }
 
     loadData()
-  }, [getEmployees, getAssignments, getPayments, selectedEmployee, selectedWeek, startDate, endDate])
+  }, [selectedEmployee, selectedWeek]) // Solo estas dependencias
 
   // Agrupar asignaciones por empleado
   const assignmentsByEmployee = assignments.reduce(

@@ -18,35 +18,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Loader2, CalendarIcon, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { createClient } from "@supabase/supabase-js"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-
-// Definición de tipos
-interface Employee {
-  id: number
-  name: string
-}
-
-interface Assignment {
-  id: number
-  employee_id: number
-  hotel_name: string
-  assignment_date: string
-  notes?: string
-  employee_name?: string
-}
+import { useEmployeeDB } from "@/lib/employee-db"
+import type { EmployeeAssignment } from "@/lib/employee-types"
+import { HOTELS } from "@/lib/employee-types"
 
 // Colores para los hoteles
 const hotelColors: Record<string, string> = {
-  "Hotel A": "bg-red-100 border-red-200 text-red-800",
-  "Hotel B": "bg-blue-100 border-blue-200 text-blue-800",
-  "Hotel C": "bg-green-100 border-green-200 text-green-800",
-  "Hotel D": "bg-purple-100 border-purple-200 text-purple-800",
-  "Hotel E": "bg-yellow-100 border-yellow-200 text-yellow-800",
-  "Hotel F": "bg-pink-100 border-pink-200 text-pink-800",
-  "Hotel G": "bg-indigo-100 border-indigo-200 text-indigo-800",
-  "Hotel H": "bg-orange-100 border-orange-200 text-orange-800",
+  Jaguel: "bg-red-100 border-red-200 text-red-800",
+  Monaco: "bg-blue-100 border-blue-200 text-blue-800",
+  Mallak: "bg-green-100 border-green-200 text-green-800",
+  Argentina: "bg-purple-100 border-purple-200 text-purple-800",
+  Falkner: "bg-yellow-100 border-yellow-200 text-yellow-800",
+  Stromboli: "bg-pink-100 border-pink-200 text-pink-800",
+  "San Miguel": "bg-indigo-100 border-indigo-200 text-indigo-800",
+  Colores: "bg-orange-100 border-orange-200 text-orange-800",
+  Puntarenas: "bg-teal-100 border-teal-200 text-teal-800",
+  Tupe: "bg-cyan-100 border-cyan-200 text-cyan-800",
+  Munich: "bg-lime-100 border-lime-200 text-lime-800",
+  Tiburones: "bg-emerald-100 border-emerald-200 text-emerald-800",
+  Barlovento: "bg-violet-100 border-violet-200 text-violet-800",
+  Carama: "bg-rose-100 border-rose-200 text-rose-800",
   // Color por defecto para otros hoteles
   default: "bg-gray-100 border-gray-200 text-gray-800",
 }
@@ -58,32 +51,54 @@ const getHotelColor = (hotelName: string) => {
 
 export default function EmpleadosCalendario() {
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [assignments, setAssignments] = useState<Assignment[]>([])
-  const [employees, setEmployees] = useState<Employee[]>([])
+  const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Obtener el cliente de Supabase
-  const getSupabaseClient = () => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+  const { getAssignments } = useEmployeeDB()
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error("Faltan credenciales de Supabase")
-      return null
+  useEffect(() => {
+    const monthStart = startOfMonth(currentDate)
+    const monthEnd = endOfMonth(currentDate)
+    const startDate = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
+
+    const loadCalendarData = async () => {
+      setLoading(true)
+      setError(null)
+
+      try {
+        const startDateStr = format(startDate, "yyyy-MM-dd")
+        const endDateStr = format(endDate, "yyyy-MM-dd")
+
+        console.log("Cargando asignaciones para calendario:", { startDateStr, endDateStr })
+
+        const assignmentsData = await getAssignments({
+          start_date: startDateStr,
+          end_date: endDateStr,
+        })
+
+        console.log("Asignaciones cargadas:", assignmentsData.length)
+        setAssignments(assignmentsData)
+      } catch (error) {
+        console.error("Error al cargar datos del calendario:", error)
+        setError("Error al cargar los datos. Por favor, intenta de nuevo.")
+      } finally {
+        setLoading(false)
+      }
     }
 
-    return createClient(supabaseUrl, supabaseKey)
-  }
+    loadCalendarData()
+  }, [currentDate])
 
-  // Calcular fechas del mes
+  // Calcular fechas del mes (mover después del useEffect)
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
-  const startDate = startOfWeek(monthStart, { weekStartsOn: 1 }) // Lunes
-  const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 }) // Domingo
+  const calendarStartDate = startOfWeek(monthStart, { weekStartsOn: 1 })
+  const calendarEndDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
 
-  // Crear array de días para mostrar (incluye días del mes anterior y siguiente para completar semanas)
-  const daysToDisplay = eachDayOfInterval({ start: startDate, end: endDate })
+  // Crear array de días para mostrar
+  const daysToDisplay = eachDayOfInterval({ start: calendarStartDate, end: calendarEndDate })
 
   // Agrupar días por semanas
   const weeks: Date[][] = []
@@ -96,74 +111,6 @@ export default function EmpleadosCalendario() {
       currentWeek = []
     }
   })
-
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const supabase = getSupabaseClient()
-        if (!supabase) {
-          setError("No se pudo conectar a la base de datos")
-          setLoading(false)
-          return
-        }
-
-        // Cargar empleados
-        const { data: employeesData, error: employeesError } = await supabase
-          .from("employees")
-          .select("*")
-          .order("name")
-
-        if (employeesError) {
-          console.error("Error al cargar empleados:", employeesError)
-          setError("Error al cargar empleados")
-          setLoading(false)
-          return
-        }
-
-        setEmployees(employeesData || [])
-
-        // Formatear fechas para la consulta
-        const startDateStr = format(startDate, "yyyy-MM-dd")
-        const endDateStr = format(endDate, "yyyy-MM-dd")
-
-        // Cargar asignaciones para el mes
-        const { data: assignmentsData, error: assignmentsError } = await supabase
-          .from("employee_assignments")
-          .select(`
-            *,
-            employees(name)
-          `)
-          .gte("assignment_date", startDateStr)
-          .lte("assignment_date", endDateStr)
-          .order("assignment_date")
-
-        if (assignmentsError) {
-          console.error("Error al cargar asignaciones:", assignmentsError)
-          setError("Error al cargar asignaciones")
-          setLoading(false)
-          return
-        }
-
-        // Formatear los datos para incluir el nombre del empleado
-        const formattedAssignments = (assignmentsData || []).map((item) => ({
-          ...item,
-          employee_name: item.employees?.name,
-        }))
-
-        setAssignments(formattedAssignments)
-      } catch (error) {
-        console.error("Error al cargar datos del calendario:", error)
-        setError("Error al cargar los datos. Por favor, intenta de nuevo.")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadData()
-  }, [startDate, endDate])
 
   // Navegar al mes anterior
   const prevMonth = () => {
@@ -189,7 +136,7 @@ export default function EmpleadosCalendario() {
   // Agrupar asignaciones por hotel para un día específico
   const getHotelGroups = (date: Date) => {
     const dayAssignments = getAssignmentsForDay(date)
-    const hotelGroups: Record<string, Assignment[]> = {}
+    const hotelGroups: Record<string, EmployeeAssignment[]> = {}
 
     dayAssignments.forEach((assignment) => {
       if (!hotelGroups[assignment.hotel_name]) {
@@ -237,13 +184,11 @@ export default function EmpleadosCalendario() {
           <div className="space-y-4">
             {/* Leyenda de hoteles */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {Object.keys(hotelColors)
-                .filter((hotel) => hotel !== "default")
-                .map((hotel) => (
-                  <Badge key={hotel} className={`${getHotelColor(hotel)} border`}>
-                    {hotel}
-                  </Badge>
-                ))}
+              {HOTELS.slice(0, 8).map((hotel) => (
+                <Badge key={hotel} className={`${getHotelColor(hotel)} border text-xs`}>
+                  {hotel}
+                </Badge>
+              ))}
             </div>
 
             {/* Días de la semana */}
@@ -284,7 +229,7 @@ export default function EmpleadosCalendario() {
                                   <TooltipTrigger asChild>
                                     <div
                                       className={`
-                                        text-xs p-1 rounded border truncate
+                                        text-xs p-1 rounded border truncate cursor-pointer
                                         ${getHotelColor(hotel)}
                                       `}
                                     >
@@ -318,6 +263,15 @@ export default function EmpleadosCalendario() {
                 </div>
               ))}
             </div>
+
+            {/* Información adicional */}
+            {assignments.length === 0 && !loading && (
+              <div className="text-center py-8 text-muted-foreground">
+                <CalendarIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No hay asignaciones para este mes</p>
+                <p className="text-sm">Agrega asignaciones desde la sección "Agregar"</p>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
