@@ -14,11 +14,12 @@ import { useEmployeeDB } from "@/lib/employee-db"
 import { HOTELS } from "@/lib/employee-types"
 import { Loader2, Plus, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Checkbox } from "@/components/ui/checkbox"
 
 export default function EmpleadosAgregar() {
   const { getEmployees, saveAssignment } = useEmployeeDB()
   const { toast } = useToast()
-  const [employees, setEmployees] = useState<{ id: number; name: string }[]>([])
+  const [employees, setEmployees] = useState<{ id: number; name: string; daily_rate: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -26,7 +27,7 @@ export default function EmpleadosAgregar() {
   // Estado del formulario
   const [formData, setFormData] = useState({
     employee_id: "",
-    hotel_name: "",
+    hotel_names: [] as string[], // Array de hoteles seleccionados
     assignment_date: format(new Date(), "yyyy-MM-dd"),
     notes: "",
   })
@@ -36,7 +37,7 @@ export default function EmpleadosAgregar() {
       setLoading(true)
       try {
         const data = await getEmployees()
-        setEmployees(data.map((emp) => ({ id: emp.id, name: emp.name })))
+        setEmployees(data.map((emp) => ({ id: emp.id, name: emp.name, daily_rate: emp.daily_rate })))
       } catch (error) {
         console.error("Error al cargar empleados:", error)
         toast({
@@ -52,9 +53,37 @@ export default function EmpleadosAgregar() {
     loadEmployees()
   }, [getEmployees, toast])
 
-  const handleChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+  const handleEmployeeChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, employee_id: value }))
     setSuccess(false)
+  }
+
+  const handleHotelChange = (hotelName: string, checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      hotel_names: checked ? [...prev.hotel_names, hotelName] : prev.hotel_names.filter((h) => h !== hotelName),
+    }))
+    setSuccess(false)
+  }
+
+  const handleDateChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, assignment_date: value }))
+    setSuccess(false)
+  }
+
+  const handleNotesChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, notes: value }))
+    setSuccess(false)
+  }
+
+  const getSelectedEmployee = () => {
+    return employees.find((emp) => emp.id.toString() === formData.employee_id)
+  }
+
+  const calculateDividedRate = () => {
+    const employee = getSelectedEmployee()
+    if (!employee || formData.hotel_names.length === 0) return 0
+    return employee.daily_rate / formData.hotel_names.length
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,44 +92,68 @@ export default function EmpleadosAgregar() {
 
     try {
       // Validar datos
-      if (!formData.employee_id || !formData.hotel_name || !formData.assignment_date) {
+      if (!formData.employee_id || formData.hotel_names.length === 0 || !formData.assignment_date) {
         toast({
           title: "Error",
-          description: "Por favor completa todos los campos obligatorios",
+          description: "Por favor completa todos los campos obligatorios y selecciona al menos un hotel",
           variant: "destructive",
         })
         return
       }
 
-      // Guardar asignación
-      const result = await saveAssignment({
-        employee_id: Number.parseInt(formData.employee_id),
-        hotel_name: formData.hotel_name,
-        assignment_date: formData.assignment_date,
-        notes: formData.notes,
-      })
+      const employee = getSelectedEmployee()
+      if (!employee) {
+        toast({
+          title: "Error",
+          description: "No se pudo encontrar la información del empleado",
+          variant: "destructive",
+        })
+        return
+      }
 
-      if (result) {
+      // Calcular la tarifa dividida entre los hoteles
+      const dividedRate = employee.daily_rate / formData.hotel_names.length
+
+      // Crear una asignación por cada hotel seleccionado
+      const promises = formData.hotel_names.map((hotelName) =>
+        saveAssignment({
+          employee_id: Number.parseInt(formData.employee_id),
+          hotel_name: hotelName,
+          assignment_date: formData.assignment_date,
+          daily_rate_used: dividedRate, // Usar la tarifa dividida
+          notes: formData.notes,
+        }),
+      )
+
+      const results = await Promise.all(promises)
+
+      if (results.every((result) => result !== null)) {
         toast({
           title: "Éxito",
-          description: "Asignación guardada correctamente",
+          description: `${formData.hotel_names.length} asignación(es) guardada(s) correctamente`,
         })
 
         // Resetear formulario pero mantener la fecha
         setFormData({
           employee_id: "",
-          hotel_name: "",
+          hotel_names: [],
           assignment_date: formData.assignment_date,
           notes: "",
         })
 
         setSuccess(true)
+      } else {
+        toast({
+          title: "Error parcial",
+          description: "Algunas asignaciones no se pudieron guardar",
+          variant: "destructive",
+        })
       }
     } catch (error) {
-      console.error("Error al guardar asignación:", error)
+      console.error("Error al guardar asignaciones:", error)
       toast({
         title: "Error",
-        description: "No se pudo guardar la asignación",
+        description: "No se pudieron guardar las asignaciones",
         variant: "destructive",
       })
     } finally {
@@ -123,14 +176,14 @@ export default function EmpleadosAgregar() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="employee">Empleado</Label>
-                <Select value={formData.employee_id} onValueChange={(value) => handleChange("employee_id", value)}>
+                <Select value={formData.employee_id} onValueChange={handleEmployeeChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona un empleado" />
                   </SelectTrigger>
                   <SelectContent>
                     {employees.map((emp) => (
                       <SelectItem key={emp.id} value={emp.id.toString()}>
-                        {emp.name}
+                        {emp.name} - ${emp.daily_rate.toLocaleString()}/día
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -138,19 +191,37 @@ export default function EmpleadosAgregar() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="hotel">Hotel</Label>
-                <Select value={formData.hotel_name} onValueChange={(value) => handleChange("hotel_name", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un hotel" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HOTELS.map((hotel) => (
-                      <SelectItem key={hotel} value={hotel}>
+                <Label>Hoteles (selecciona uno o más)</Label>
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                  {HOTELS.map((hotel) => (
+                    <div key={hotel} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`hotel-${hotel}`}
+                        checked={formData.hotel_names.includes(hotel)}
+                        onCheckedChange={(checked) => handleHotelChange(hotel, checked as boolean)}
+                      />
+                      <Label htmlFor={`hotel-${hotel}`} className="text-sm font-normal cursor-pointer">
                         {hotel}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {formData.hotel_names.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">
+                      Seleccionados: {formData.hotel_names.join(", ")}
+                    </div>
+                    {getSelectedEmployee() && (
+                      <div className="text-sm bg-blue-50 border border-blue-200 rounded-md p-2">
+                        <div className="font-medium text-blue-800">Distribución de tarifa:</div>
+                        <div className="text-blue-700">
+                          ${getSelectedEmployee()?.daily_rate.toLocaleString()} ÷ {formData.hotel_names.length} hoteles
+                          = ${calculateDividedRate().toLocaleString()} por hotel
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -159,7 +230,7 @@ export default function EmpleadosAgregar() {
                   type="date"
                   id="date"
                   value={formData.assignment_date}
-                  onChange={(e) => handleChange("assignment_date", e.target.value)}
+                  onChange={(e) => handleDateChange(e.target.value)}
                 />
               </div>
 
@@ -169,7 +240,7 @@ export default function EmpleadosAgregar() {
                   id="notes"
                   placeholder="Detalles adicionales..."
                   value={formData.notes}
-                  onChange={(e) => handleChange("notes", e.target.value)}
+                  onChange={(e) => handleNotesChange(e.target.value)}
                 />
               </div>
 
@@ -177,7 +248,7 @@ export default function EmpleadosAgregar() {
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Guardando...
+                    Guardando {formData.hotel_names.length} asignación(es)...
                   </>
                 ) : success ? (
                   <>
@@ -187,7 +258,8 @@ export default function EmpleadosAgregar() {
                 ) : (
                   <>
                     <Plus className="mr-2 h-4 w-4" />
-                    Agregar Asignación
+                    Agregar {formData.hotel_names.length > 0 ? `${formData.hotel_names.length} ` : ""}Asignación
+                    {formData.hotel_names.length !== 1 ? "es" : ""}
                   </>
                 )}
               </Button>
@@ -202,17 +274,30 @@ export default function EmpleadosAgregar() {
         </CardHeader>
         <CardContent>
           <div className="prose">
-            <p>Para agregar una nueva asignación:</p>
+            <p>Para agregar nuevas asignaciones:</p>
             <ol className="list-decimal pl-4 space-y-2">
               <li>Selecciona el empleado que realizará el trabajo</li>
-              <li>Elige el hotel donde se realizará la tarea</li>
-              <li>Establece la fecha de la asignación</li>
+              <li>
+                <strong>Selecciona uno o más hoteles</strong> donde trabajará el mismo día
+              </li>
+              <li>Establece la fecha de las asignaciones</li>
               <li>Opcionalmente, agrega notas o detalles sobre el trabajo</li>
-              <li>Haz clic en "Agregar Asignación" para guardar</li>
+              <li>Haz clic en "Agregar Asignaciones" para guardar</li>
             </ol>
-            <p className="mt-4">
-              Las asignaciones guardadas aparecerán en el historial y en el calendario para su seguimiento.
-            </p>
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm text-blue-800 font-medium">💡 Consejo:</p>
+              <p className="text-sm text-blue-700 mt-1">
+                Si el empleado trabaja en múltiples hoteles el mismo día, selecciona todos los hoteles. Su tarifa diaria
+                se dividirá automáticamente entre los hoteles seleccionados.
+              </p>
+            </div>
+            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
+              <p className="text-sm text-green-800 font-medium">✅ Ejemplo:</p>
+              <p className="text-sm text-green-700 mt-1">
+                Si Juan trabaja en "Monaco" y "Mallak" el mismo día, y su tarifa es $60,000, recibirá $30,000 por cada
+                hotel.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
