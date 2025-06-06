@@ -18,7 +18,7 @@ import {
   AlertCircle,
   BarChart3,
   AlertTriangle,
-  TrendingUp,
+  Info,
 } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment, EmployeePayment } from "@/lib/employee-types"
@@ -231,12 +231,20 @@ export default function EmpleadosResumen() {
       const daysWorked = Object.keys(assignmentsByDate).length
       let totalAmount = 0
 
-      // Calcular el monto usando la tarifa guardada en cada asignación
-      Object.values(assignmentsByDate).forEach((dayAssignments) => {
-        // Usar la tarifa guardada de cada asignación y dividir entre hoteles del mismo día
-        const dailyRatePerHotel = dayAssignments[0].daily_rate_used / dayAssignments.length
-        totalAmount += dailyRatePerHotel * dayAssignments.length
+      // Crear detalle de asignaciones con tarifa guardada
+      const assignmentDetails = Object.entries(assignmentsByDate).map(([date, dayAssignments]) => {
+        // Calcular el total para este día sumando las tarifas guardadas de cada asignación
+        const totalForDay = dayAssignments.reduce((sum, assignment) => sum + assignment.daily_rate_used, 0)
+
+        return {
+          date,
+          assignments: dayAssignments,
+          totalForDay,
+        }
       })
+
+      // Calcular el monto total sumando los totales de cada día
+      totalAmount = assignmentDetails.reduce((sum, detail) => sum + detail.totalForDay, 0)
 
       // Obtener hoteles únicos
       const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
@@ -251,19 +259,6 @@ export default function EmpleadosResumen() {
 
       // Obtener pagos pendientes de semanas anteriores para este empleado
       const previousPendingPayments = pendingPaymentsByEmployee[employee.id] || []
-
-      // Crear detalle de asignaciones con tarifa dividida USANDO LA TARIFA GUARDADA
-      const assignmentDetails = Object.entries(assignmentsByDate).map(([date, dayAssignments]) => {
-        const savedDailyRate = dayAssignments[0].daily_rate_used
-        const dailyRatePerHotel = savedDailyRate / dayAssignments.length
-        return {
-          date,
-          assignments: dayAssignments,
-          dailyRatePerHotel,
-          totalForDay: savedDailyRate,
-          savedDailyRate, // Agregar la tarifa guardada para mostrar
-        }
-      })
 
       return {
         employee,
@@ -300,16 +295,8 @@ export default function EmpleadosResumen() {
       // Usar la tarifa guardada en la asignación
       const savedDailyRate = assignment.daily_rate_used || 0
 
-      // Contar cuántas asignaciones tiene este empleado en este día
-      const sameDay = yearlyAssignments.filter(
-        (a) => a.employee_id === assignment.employee_id && a.assignment_date === assignment.assignment_date,
-      )
-
-      // Dividir la tarifa guardada entre el número de hoteles visitados ese día
-      const dailyRate = savedDailyRate / sameDay.length
-
       acc[hotelName].count++
-      acc[hotelName].amount += dailyRate
+      acc[hotelName].amount += savedDailyRate
       acc[hotelName].employees.add(assignment.employee_id)
 
       return acc
@@ -623,15 +610,6 @@ export default function EmpleadosResumen() {
                             </CardTitle>
                             <CardDescription className="flex items-center gap-2">
                               {summary.employee.role} - Tarifa actual: ${summary.employee.daily_rate.toLocaleString()}
-                              {/* Mostrar si hay diferencia entre tarifa actual y tarifas usadas */}
-                              {summary.assignmentDetails.some(
-                                (detail) => detail.savedDailyRate !== summary.employee.daily_rate,
-                              ) && (
-                                <Badge variant="secondary" className="text-xs">
-                                  <TrendingUp className="w-3 h-3 mr-1" />
-                                  Tarifas históricas aplicadas
-                                </Badge>
-                              )}
                             </CardDescription>
                           </div>
                           <div className="text-right">
@@ -681,15 +659,18 @@ export default function EmpleadosResumen() {
                         </div>
 
                         <div>
-                          <div className="text-sm font-medium mb-3">
-                            Detalle de asignaciones y tarifas (usando tarifas históricas)
+                          <div className="text-sm font-medium mb-3 flex items-center gap-2">
+                            <span>Detalle de asignaciones y tarifas</span>
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
+                              Se muestran las tarifas guardadas en cada asignación
+                            </span>
                           </div>
                           <Table>
                             <TableHeader>
                               <TableRow>
                                 <TableHead>Fecha</TableHead>
                                 <TableHead>Hoteles</TableHead>
-                                <TableHead>Tarifa Usada</TableHead>
                                 <TableHead>Tarifa por Hotel</TableHead>
                                 <TableHead>Total del Día</TableHead>
                                 <TableHead>Notas</TableHead>
@@ -709,7 +690,7 @@ export default function EmpleadosResumen() {
                                           className={getHotelColor(assignment.hotel_name)}
                                           variant="outline"
                                         >
-                                          {assignment.hotel_name}
+                                          {assignment.hotel_name}: ${assignment.daily_rate_used.toLocaleString()}
                                         </Badge>
                                       ))}
                                     </div>
@@ -718,16 +699,11 @@ export default function EmpleadosResumen() {
                                     </div>
                                   </TableCell>
                                   <TableCell>
-                                    <div className="font-medium">${detail.savedDailyRate.toLocaleString()}</div>
-                                    {detail.savedDailyRate !== summary.employee.daily_rate && (
-                                      <div className="text-xs text-muted-foreground">
-                                        (actual: ${summary.employee.daily_rate.toLocaleString()})
+                                    {detail.assignments.map((assignment, idx) => (
+                                      <div key={idx} className="text-sm">
+                                        {assignment.hotel_name}: ${assignment.daily_rate_used.toLocaleString()}
                                       </div>
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="font-medium">${detail.dailyRatePerHotel.toLocaleString()}</div>
-                                    <div className="text-xs text-muted-foreground">por hotel</div>
+                                    ))}
                                   </TableCell>
                                   <TableCell className="font-bold">${detail.totalForDay.toLocaleString()}</TableCell>
                                   <TableCell>
