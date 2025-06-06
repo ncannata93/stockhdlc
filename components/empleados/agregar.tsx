@@ -114,16 +114,23 @@ export default function EmpleadosAgregar() {
       // Calcular la tarifa dividida entre los hoteles
       const dividedRate = employee.daily_rate / formData.hotel_names.length
 
+      console.log(`Empleado: ${employee.name}`)
+      console.log(`Tarifa diaria original: ${employee.daily_rate}`)
+      console.log(`Número de hoteles: ${formData.hotel_names.length}`)
+      console.log(`Tarifa dividida: ${dividedRate}`)
+      console.log(`Hoteles seleccionados: ${formData.hotel_names.join(", ")}`)
+
       // Crear una asignación por cada hotel seleccionado
-      const promises = formData.hotel_names.map((hotelName) =>
-        saveAssignment({
+      const promises = formData.hotel_names.map((hotelName, index) => {
+        console.log(`Creando asignación ${index + 1} para hotel: ${hotelName} con tarifa: ${dividedRate}`)
+        return saveAssignment({
           employee_id: Number.parseInt(formData.employee_id),
           hotel_name: hotelName,
           assignment_date: formData.assignment_date,
-          daily_rate_used: dividedRate, // Usar la tarifa dividida
+          daily_rate_used: dividedRate, // Usar la tarifa dividida calculada
           notes: formData.notes,
-        }),
-      )
+        })
+      })
 
       const results = await Promise.all(promises)
 

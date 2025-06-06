@@ -179,9 +179,12 @@ export const saveAssignment = async (
   if (!supabase) return null
 
   try {
-    // Obtener la tarifa diaria del empleado si no se proporciona
+    // IMPORTANTE: Usar la tarifa que se pasa explícitamente o obtener la tarifa actual del empleado
     let dailyRateUsed = assignment.daily_rate_used
-    if (!dailyRateUsed && assignment.employee_id) {
+
+    // Solo obtener la tarifa del empleado si no se proporciona explícitamente
+    if (dailyRateUsed === undefined && assignment.employee_id) {
+      console.log("Obteniendo tarifa del empleado desde la base de datos...")
       const { data: employeeData, error: employeeError } = await supabase
         .from("employees")
         .select("daily_rate")
@@ -194,6 +197,9 @@ export const saveAssignment = async (
       }
 
       dailyRateUsed = employeeData.daily_rate
+      console.log(`Tarifa obtenida del empleado: ${dailyRateUsed}`)
+    } else {
+      console.log(`Usando tarifa proporcionada explícitamente: ${dailyRateUsed}`)
     }
 
     if (assignment.id) {
@@ -226,6 +232,8 @@ export const saveAssignment = async (
       }
     } else {
       // Crear nueva asignación
+      console.log(`Creando asignación con tarifa: ${dailyRateUsed} para hotel: ${assignment.hotel_name}`)
+
       const { data, error } = await supabase
         .from("employee_assignments")
         .insert({
@@ -246,6 +254,8 @@ export const saveAssignment = async (
         console.error("Error al crear asignación:", error)
         return null
       }
+
+      console.log(`Asignación creada exitosamente con tarifa: ${data.daily_rate_used}`)
 
       return {
         ...data,
