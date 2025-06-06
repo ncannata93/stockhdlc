@@ -114,6 +114,10 @@ export default function EmpleadosAgregar() {
       // Calcular la tarifa dividida entre los hoteles
       const dividedRate = employee.daily_rate / formData.hotel_names.length
 
+      // Asegurar que la fecha se maneje correctamente sin problemas de zona horaria
+      const assignmentDate = formData.assignment_date
+      console.log(`Fecha seleccionada: ${assignmentDate}`)
+
       console.log(`Empleado: ${employee.name}`)
       console.log(`Tarifa diaria original: ${employee.daily_rate}`)
       console.log(`Número de hoteles: ${formData.hotel_names.length}`)
@@ -126,7 +130,7 @@ export default function EmpleadosAgregar() {
         return saveAssignment({
           employee_id: Number.parseInt(formData.employee_id),
           hotel_name: hotelName,
-          assignment_date: formData.assignment_date,
+          assignment_date: assignmentDate,
           daily_rate_used: dividedRate, // Usar la tarifa dividida calculada
           notes: formData.notes,
         })

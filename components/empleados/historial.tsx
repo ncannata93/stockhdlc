@@ -204,7 +204,9 @@ export default function EmpleadosHistorial() {
               <TableBody>
                 {filteredAssignments.map((assignment) => (
                   <TableRow key={assignment.id}>
-                    <TableCell>{format(new Date(assignment.assignment_date), "dd/MM/yyyy", { locale: es })}</TableCell>
+                    <TableCell>
+                      {format(new Date(assignment.assignment_date + "T00:00:00"), "dd/MM/yyyy", { locale: es })}
+                    </TableCell>
                     <TableCell>{assignment.employee_name}</TableCell>
                     <TableCell>{assignment.hotel_name}</TableCell>
                     <TableCell>{assignment.notes || "-"}</TableCell>

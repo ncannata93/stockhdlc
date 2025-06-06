@@ -130,7 +130,12 @@ export default function EmpleadosCalendario() {
   // Obtener asignaciones para un día específico
   const getAssignmentsForDay = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd")
-    return assignments.filter((a) => a.assignment_date === dateStr)
+    return assignments.filter((a) => {
+      // Asegurar que la comparación de fechas sea correcta
+      const assignmentDate = new Date(a.assignment_date + "T00:00:00")
+      const assignmentDateStr = format(assignmentDate, "yyyy-MM-dd")
+      return assignmentDateStr === dateStr
+    })
   }
 
   // Agrupar asignaciones por hotel para un día específico
