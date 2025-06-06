@@ -62,9 +62,6 @@ importers:
       react-dom:
         specifier: ^19
         version: 19.0.0(react@19.0.0)
-      react-modern-calendar-datepicker:
-        specifier: latest
-        version: 3.1.6(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       recharts:
         specifier: latest
         version: 2.15.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -2063,9 +2060,6 @@ packages:
   jackspeak@3.4.3:
     resolution: {integrity: sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==}
 
-  jalaali-js@1.2.8:
-    resolution: {integrity: sha512-Jl/EwY84JwjW2wsWqeU4pNd22VNQ7EkjI36bDuLw31wH98WQW4fPjD0+mG7cdCK+Y8D6s9R3zLiQ3LaKu6bD8A==}
-
   jiti@1.21.7:
     resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
@@ -2401,12 +2395,6 @@ packages:
 
   react-is@18.3.1:
     resolution: {integrity: sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==}
-
-  react-modern-calendar-datepicker@3.1.6:
-    resolution: {integrity: sha512-lnMqEMj9Wn32/sm119tjCl5lOkq4u9vJE7wggi7hdXV4s8rPdKlH56FVVehlBi0dfYeWQVZ9npY384Zprjn4WA==}
-    peerDependencies:
-      react: '>=16.8.0'
-      react-dom: '>=16.8.0'
 
   react-remove-scroll-bar@2.3.8:
     resolution: {integrity: sha512-9r+yi9+mgU33AKcj6IbT9oRCO78WriSj6t/cF8DWBZJ9aOGPOTEDvdUDz1FwKim7QXWwmHqtdHnRJfhAxEG46Q==}
@@ -5177,8 +5165,6 @@ snapshots:
     optionalDependencies:
       '@pkgjs/parseargs': 0.11.0
 
-  jalaali-js@1.2.8: {}
-
   jiti@1.21.7: {}
 
   js-tokens@4.0.0: {}
@@ -5493,12 +5479,6 @@ snapshots:
   react-is@16.13.1: {}
 
   react-is@18.3.1: {}
-
-  react-modern-calendar-datepicker@3.1.6(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
-    dependencies:
-      jalaali-js: 1.2.8
-      react: 19.0.0
-      react-dom: 19.0.0(react@19.0.0)
 
   react-remove-scroll-bar@2.3.8(@types/react@19.0.0)(react@19.0.0):
     dependencies:
