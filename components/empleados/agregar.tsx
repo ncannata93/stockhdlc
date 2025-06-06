@@ -14,7 +14,6 @@ import { useEmployeeDB } from "@/lib/employee-db"
 import { HOTELS } from "@/lib/employee-types"
 import { Loader2, Plus, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { Checkbox } from "@/components/ui/checkbox"
 
 export default function EmpleadosAgregar() {
   const { getEmployees, saveAssignment } = useEmployeeDB()
@@ -27,7 +26,7 @@ export default function EmpleadosAgregar() {
   // Estado del formulario
   const [formData, setFormData] = useState({
     employee_id: "",
-    hotel_names: [] as string[], // Cambiar de hotel_name a hotel_names array
+    hotel_name: "",
     assignment_date: format(new Date(), "yyyy-MM-dd"),
     notes: "",
   })
@@ -53,26 +52,8 @@ export default function EmpleadosAgregar() {
     loadEmployees()
   }, [getEmployees, toast])
 
-  const handleEmployeeChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, employee_id: value }))
-    setSuccess(false)
-  }
-
-  const handleHotelChange = (hotelName: string, checked: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      hotel_names: checked ? [...prev.hotel_names, hotelName] : prev.hotel_names.filter((h) => h !== hotelName),
-    }))
-    setSuccess(false)
-  }
-
-  const handleDateChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, assignment_date: value }))
-    setSuccess(false)
-  }
-
-  const handleNotesChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, notes: value }))
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
     setSuccess(false)
   }
 
@@ -82,54 +63,44 @@ export default function EmpleadosAgregar() {
 
     try {
       // Validar datos
-      if (!formData.employee_id || formData.hotel_names.length === 0 || !formData.assignment_date) {
+      if (!formData.employee_id || !formData.hotel_name || !formData.assignment_date) {
         toast({
           title: "Error",
-          description: "Por favor completa todos los campos obligatorios y selecciona al menos un hotel",
+          description: "Por favor completa todos los campos obligatorios",
           variant: "destructive",
         })
         return
       }
 
-      // Crear una asignación por cada hotel seleccionado
-      const promises = formData.hotel_names.map((hotelName) =>
-        saveAssignment({
-          employee_id: Number.parseInt(formData.employee_id),
-          hotel_name: hotelName,
-          assignment_date: formData.assignment_date,
-          notes: formData.notes,
-        }),
-      )
+      // Guardar asignación
+      const result = await saveAssignment({
+        employee_id: Number.parseInt(formData.employee_id),
+        hotel_name: formData.hotel_name,
+        assignment_date: formData.assignment_date,
+        notes: formData.notes,
+      })
 
-      const results = await Promise.all(promises)
-
-      if (results.every((result) => result !== null)) {
+      if (result) {
         toast({
           title: "Éxito",
-          description: `${formData.hotel_names.length} asignación(es) guardada(s) correctamente`,
+          description: "Asignación guardada correctamente",
         })
 
         // Resetear formulario pero mantener la fecha
         setFormData({
           employee_id: "",
-          hotel_names: [],
+          hotel_name: "",
           assignment_date: formData.assignment_date,
           notes: "",
         })
 
         setSuccess(true)
-      } else {
-        toast({
-          title: "Error parcial",
-          description: "Algunas asignaciones no se pudieron guardar",
-          variant: "destructive",
-        })
       }
     } catch (error) {
-      console.error("Error al guardar asignaciones:", error)
+      console.error("Error al guardar asignación:", error)
       toast({
         title: "Error",
-        description: "No se pudieron guardar las asignaciones",
+        description: "No se pudo guardar la asignación",
         variant: "destructive",
       })
     } finally {
@@ -152,7 +123,7 @@ export default function EmpleadosAgregar() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="employee">Empleado</Label>
-                <Select value={formData.employee_id} onValueChange={handleEmployeeChange}>
+                <Select value={formData.employee_id} onValueChange={(value) => handleChange("employee_id", value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona un empleado" />
                   </SelectTrigger>
@@ -167,24 +138,19 @@ export default function EmpleadosAgregar() {
               </div>
 
               <div className="space-y-2">
-                <Label>Hoteles (selecciona uno o más)</Label>
-                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                  {HOTELS.map((hotel) => (
-                    <div key={hotel} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`hotel-${hotel}`}
-                        checked={formData.hotel_names.includes(hotel)}
-                        onCheckedChange={(checked) => handleHotelChange(hotel, checked as boolean)}
-                      />
-                      <Label htmlFor={`hotel-${hotel}`} className="text-sm font-normal cursor-pointer">
+                <Label htmlFor="hotel">Hotel</Label>
+                <Select value={formData.hotel_name} onValueChange={(value) => handleChange("hotel_name", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un hotel" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HOTELS.map((hotel) => (
+                      <SelectItem key={hotel} value={hotel}>
                         {hotel}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-                {formData.hotel_names.length > 0 && (
-                  <div className="text-sm text-muted-foreground">Seleccionados: {formData.hotel_names.join(", ")}</div>
-                )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -193,7 +159,7 @@ export default function EmpleadosAgregar() {
                   type="date"
                   id="date"
                   value={formData.assignment_date}
-                  onChange={(e) => handleDateChange(e.target.value)}
+                  onChange={(e) => handleChange("assignment_date", e.target.value)}
                 />
               </div>
 
@@ -203,7 +169,7 @@ export default function EmpleadosAgregar() {
                   id="notes"
                   placeholder="Detalles adicionales..."
                   value={formData.notes}
-                  onChange={(e) => handleNotesChange(e.target.value)}
+                  onChange={(e) => handleChange("notes", e.target.value)}
                 />
               </div>
 
@@ -211,7 +177,7 @@ export default function EmpleadosAgregar() {
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Guardando {formData.hotel_names.length} asignación(es)...
+                    Guardando...
                   </>
                 ) : success ? (
                   <>
@@ -221,8 +187,7 @@ export default function EmpleadosAgregar() {
                 ) : (
                   <>
                     <Plus className="mr-2 h-4 w-4" />
-                    Agregar {formData.hotel_names.length > 0 ? `${formData.hotel_names.length} ` : ""}Asignación
-                    {formData.hotel_names.length !== 1 ? "es" : ""}
+                    Agregar Asignación
                   </>
                 )}
               </Button>
@@ -237,30 +202,17 @@ export default function EmpleadosAgregar() {
         </CardHeader>
         <CardContent>
           <div className="prose">
-            <p>Para agregar nuevas asignaciones:</p>
+            <p>Para agregar una nueva asignación:</p>
             <ol className="list-decimal pl-4 space-y-2">
               <li>Selecciona el empleado que realizará el trabajo</li>
-              <li>
-                <strong>Selecciona uno o más hoteles</strong> donde trabajará el mismo día
-              </li>
-              <li>Establece la fecha de las asignaciones</li>
+              <li>Elige el hotel donde se realizará la tarea</li>
+              <li>Establece la fecha de la asignación</li>
               <li>Opcionalmente, agrega notas o detalles sobre el trabajo</li>
-              <li>Haz clic en "Agregar Asignaciones" para guardar</li>
+              <li>Haz clic en "Agregar Asignación" para guardar</li>
             </ol>
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <p className="text-sm text-blue-800 font-medium">💡 Consejo:</p>
-              <p className="text-sm text-blue-700 mt-1">
-                Si el empleado trabaja en múltiples hoteles el mismo día, selecciona todos los hoteles. Su tarifa diaria
-                se dividirá automáticamente entre los hoteles seleccionados.
-              </p>
-            </div>
-            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-sm text-green-800 font-medium">✅ Ejemplo:</p>
-              <p className="text-sm text-green-700 mt-1">
-                Si Juan trabaja en "Monaco" y "Mallak" el mismo día, y su tarifa es $60,000, recibirá $30,000 por cada
-                hotel.
-              </p>
-            </div>
+            <p className="mt-4">
+              Las asignaciones guardadas aparecerán en el historial y en el calendario para su seguimiento.
+            </p>
           </div>
         </CardContent>
       </Card>

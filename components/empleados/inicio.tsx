@@ -4,11 +4,10 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useEmployeeDB } from "@/lib/employee-db"
-import { BarChart, Calendar, Users, Clock, Hotel, AlertTriangle } from "lucide-react"
+import { BarChart, Calendar, Users, Clock, Hotel, AlertTriangle, Plus, FileText, TrendingUp } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { DebugPanel } from "@/components/debug-panel"
 
 export default function EmpleadosInicio() {
   const { getEmployees, getAssignments } = useEmployeeDB()
@@ -19,6 +18,8 @@ export default function EmpleadosInicio() {
     activeEmployees: 0,
     totalAssignments: 0,
     uniqueHotels: 0,
+    thisWeekAssignments: 0,
+    thisMonthAssignments: 0,
   })
 
   useEffect(() => {
@@ -33,20 +34,40 @@ export default function EmpleadosInicio() {
         const thirtyDaysAgo = new Date()
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-        const assignments = await getAssignments({
-          start_date: thirtyDaysAgo.toISOString().split("T")[0],
-          end_date: new Date().toISOString().split("T")[0],
-        })
+        // Cargar asignaciones de esta semana
+        const startOfWeek = new Date()
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+
+        // Cargar asignaciones de este mes
+        const startOfMonth = new Date()
+        startOfMonth.setDate(1)
+
+        const [monthlyAssignments, weeklyAssignments, currentMonthAssignments] = await Promise.all([
+          getAssignments({
+            start_date: thirtyDaysAgo.toISOString().split("T")[0],
+            end_date: new Date().toISOString().split("T")[0],
+          }),
+          getAssignments({
+            start_date: startOfWeek.toISOString().split("T")[0],
+            end_date: new Date().toISOString().split("T")[0],
+          }),
+          getAssignments({
+            start_date: startOfMonth.toISOString().split("T")[0],
+            end_date: new Date().toISOString().split("T")[0],
+          }),
+        ])
 
         // Calcular estadísticas
-        const uniqueEmployeesWithAssignments = new Set(assignments.map((a) => a.employee_id))
-        const uniqueHotels = new Set(assignments.map((a) => a.hotel_name))
+        const uniqueEmployeesWithAssignments = new Set(monthlyAssignments.map((a) => a.employee_id))
+        const uniqueHotels = new Set(monthlyAssignments.map((a) => a.hotel_name))
 
         setStats({
           totalEmployees: employees.length,
           activeEmployees: uniqueEmployeesWithAssignments.size,
-          totalAssignments: assignments.length,
+          totalAssignments: monthlyAssignments.length,
           uniqueHotels: uniqueHotels.size,
+          thisWeekAssignments: weeklyAssignments.length,
+          thisMonthAssignments: currentMonthAssignments.length,
         })
       } catch (err) {
         console.error("Error al cargar datos:", err)
@@ -61,13 +82,16 @@ export default function EmpleadosInicio() {
 
   return (
     <div className="space-y-6">
-      {/* Panel de depuración */}
-      <DebugPanel />
+      {/* Header con saludo */}
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-bold text-gray-900">Sistema de Gestión de Empleados</h1>
+        <p className="text-lg text-gray-600">Bienvenido al panel de control</p>
+      </div>
 
       {error && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
+          <AlertTitle>Error de Conexión</AlertTitle>
           <AlertDescription>
             <div className="mb-2">{error}</div>
             <Button asChild size="sm" variant="outline">
@@ -77,124 +101,150 @@ export default function EmpleadosInicio() {
         </Alert>
       )}
 
+      {/* Estadísticas principales */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Empleados</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Users className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{loading ? "..." : stats.totalEmployees}</div>
-            <p className="text-xs text-muted-foreground">Empleados registrados en el sistema</p>
+            <div className="text-2xl font-bold text-blue-600">{loading ? "..." : stats.totalEmployees}</div>
+            <p className="text-xs text-muted-foreground">Empleados registrados</p>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Empleados Activos</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <Clock className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{loading ? "..." : stats.activeEmployees}</div>
-            <p className="text-xs text-muted-foreground">Con asignaciones en los últimos 30 días</p>
+            <div className="text-2xl font-bold text-green-600">{loading ? "..." : stats.activeEmployees}</div>
+            <p className="text-xs text-muted-foreground">Últimos 30 días</p>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Asignaciones</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Esta Semana</CardTitle>
+            <Calendar className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{loading ? "..." : stats.totalAssignments}</div>
-            <p className="text-xs text-muted-foreground">En los últimos 30 días</p>
+            <div className="text-2xl font-bold text-purple-600">{loading ? "..." : stats.thisWeekAssignments}</div>
+            <p className="text-xs text-muted-foreground">Asignaciones activas</p>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Hoteles</CardTitle>
-            <Hotel className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Hoteles Activos</CardTitle>
+            <Hotel className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{loading ? "..." : stats.uniqueHotels}</div>
-            <p className="text-xs text-muted-foreground">Con asignaciones recientes</p>
+            <div className="text-2xl font-bold text-orange-600">{loading ? "..." : stats.uniqueHotels}</div>
+            <p className="text-xs text-muted-foreground">Con asignaciones</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Acciones rápidas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            Acciones Rápidas
+          </CardTitle>
+          <CardDescription>Accede rápidamente a las funciones más utilizadas</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Button asChild className="h-20 flex-col gap-2" variant="outline">
+              <Link href="/empleados/agregar">
+                <Plus className="h-6 w-6" />
+                <span>Nueva Asignación</span>
+              </Link>
+            </Button>
+            <Button asChild className="h-20 flex-col gap-2" variant="outline">
+              <Link href="/empleados/resumen">
+                <TrendingUp className="h-6 w-6" />
+                <span>Resumen de Pagos</span>
+              </Link>
+            </Button>
+            <Button asChild className="h-20 flex-col gap-2" variant="outline">
+              <Link href="/empleados/calendario">
+                <Calendar className="h-6 w-6" />
+                <span>Ver Calendario</span>
+              </Link>
+            </Button>
+            <Button asChild className="h-20 flex-col gap-2" variant="outline">
+              <Link href="/empleados/historial">
+                <FileText className="h-6 w-6" />
+                <span>Ver Historial</span>
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="overview">Resumen</TabsTrigger>
           <TabsTrigger value="analytics">Análisis</TabsTrigger>
         </TabsList>
+
         <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Bienvenido al Sistema de Gestión de Empleados</CardTitle>
-              <CardDescription>Administre empleados, asignaciones y pagos de manera eficiente</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Acciones Rápidas</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-blue-500" />
-                        <Link href="/empleados/agregar" className="text-blue-500 hover:underline">
-                          Agregar nueva asignación
-                        </Link>
-                      </li>
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-green-500" />
-                        <Link href="/empleados/resumen" className="text-green-500 hover:underline">
-                          Ver resumen de pagos
-                        </Link>
-                      </li>
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-purple-500" />
-                        <Link href="/empleados/calendario" className="text-purple-500 hover:underline">
-                          Consultar calendario
-                        </Link>
-                      </li>
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-orange-500" />
-                        <Link href="/empleados/historial" className="text-orange-500 hover:underline">
-                          Ver historial de asignaciones
-                        </Link>
-                      </li>
-                    </ul>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Consejos</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-gray-500" />
-                        Puede seleccionar múltiples hoteles al crear asignaciones
-                      </li>
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-gray-500" />
-                        Las tarifas históricas se mantienen aunque actualice la tarifa del empleado
-                      </li>
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-gray-500" />
-                        Use el resumen para ver pagos pendientes y registrar nuevos pagos
-                      </li>
-                      <li className="flex items-center">
-                        <div className="mr-2 h-2 w-2 rounded-full bg-gray-500" />
-                        Si encuentra problemas, use la herramienta de diagnóstico
-                      </li>
-                    </ul>
-                  </CardContent>
-                </Card>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Actividad Reciente</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Asignaciones este mes</span>
+                    <span className="font-medium">{loading ? "..." : stats.thisMonthAssignments}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Asignaciones esta semana</span>
+                    <span className="font-medium">{loading ? "..." : stats.thisWeekAssignments}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Empleados activos</span>
+                    <span className="font-medium">{loading ? "..." : stats.activeEmployees}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Consejos y Ayuda</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                    <span>Puede seleccionar múltiples hoteles al crear asignaciones</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 mt-2 flex-shrink-0" />
+                    <span>Las tarifas históricas se mantienen automáticamente</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-purple-500 mt-2 flex-shrink-0" />
+                    <span>Use el resumen para gestionar pagos pendientes</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
+                    <span>El calendario muestra todas las asignaciones por color</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
+
         <TabsContent value="analytics">
           <Card>
             <CardHeader>
@@ -204,15 +254,36 @@ export default function EmpleadosInicio() {
             <CardContent className="pl-2">
               <div className="h-[200px] flex items-center justify-center">
                 {loading ? (
-                  <p>Cargando datos...</p>
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <p className="text-muted-foreground">Cargando datos...</p>
+                  </div>
                 ) : (
-                  <div className="w-full">
-                    <BarChart className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-center text-muted-foreground">
-                      {stats.totalAssignments > 0
-                        ? `${stats.totalAssignments} asignaciones en los últimos 30 días`
-                        : "No hay datos suficientes para mostrar análisis"}
-                    </p>
+                  <div className="w-full text-center">
+                    <BarChart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                    {stats.totalAssignments > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-lg font-medium">
+                          {stats.totalAssignments} asignaciones en los últimos 30 días
+                        </p>
+                        <div className="grid grid-cols-3 gap-4 mt-4">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-600">{stats.thisMonthAssignments}</div>
+                            <div className="text-xs text-muted-foreground">Este mes</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-green-600">{stats.thisWeekAssignments}</div>
+                            <div className="text-xs text-muted-foreground">Esta semana</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-purple-600">{stats.uniqueHotels}</div>
+                            <div className="text-xs text-muted-foreground">Hoteles</div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">No hay datos suficientes para mostrar análisis</p>
+                    )}
                   </div>
                 )}
               </div>

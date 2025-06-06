@@ -11,8 +11,8 @@ let supabaseClient: ReturnType<typeof createClient> | null = null
 export const getSupabaseClient = () => {
   if (supabaseClient) return supabaseClient
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || localStorage.getItem("supabaseUrl") || ""
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || localStorage.getItem("supabaseKey") || ""
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 
   if (!supabaseUrl || !supabaseKey) {
     console.error("Faltan credenciales de Supabase")
@@ -179,7 +179,7 @@ export const saveAssignment = async (
   if (!supabase) return null
 
   try {
-    // Si no se proporciona daily_rate_used, obtener la tarifa actual del empleado
+    // Obtener la tarifa diaria del empleado si no se proporciona
     let dailyRateUsed = assignment.daily_rate_used
     if (!dailyRateUsed && assignment.employee_id) {
       const { data: employeeData, error: employeeError } = await supabase
