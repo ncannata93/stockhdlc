@@ -2,44 +2,83 @@
 
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import Inicio from "@/components/empleados/inicio"
+import { Upload, Home, Users, Plus, Calendar, History, BarChart3 } from "lucide-react"
+import EmpleadosInicio from "@/components/empleados/inicio"
 import EmpleadosList from "@/components/empleados/empleados-list"
-import Agregar from "@/components/empleados/agregar"
-import Historial from "@/components/empleados/historial"
-import Resumen from "@/components/empleados/resumen"
-import CalendarioSimple from "@/components/empleados/calendario-simple"
+import EmpleadosAgregar from "@/components/empleados/agregar"
+import EmpleadosCalendario from "@/components/empleados/calendario"
+import EmpleadosHistorial from "@/components/empleados/historial"
+import EmpleadosResumen from "@/components/empleados/resumen"
+import ImportarAsignaciones from "@/components/empleados/importar-asignaciones"
 
-export default function EmpleadosClientPage() {
+export default function EmpleadosClient() {
   const [activeTab, setActiveTab] = useState("inicio")
 
   return (
-    <div className="container mx-auto py-6">
-      <Tabs defaultValue="inicio" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-6 mb-8">
-          <TabsTrigger value="inicio">Inicio</TabsTrigger>
-          <TabsTrigger value="empleados">Empleados</TabsTrigger>
-          <TabsTrigger value="agregar">Agregar</TabsTrigger>
-          <TabsTrigger value="calendario">Calendario</TabsTrigger>
-          <TabsTrigger value="historial">Historial</TabsTrigger>
-          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+    <div className="container mx-auto p-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Sistema de Gestión de Empleados</h1>
+        <p className="text-gray-600 mt-2">Gestiona empleados, asignaciones y pagos de manera eficiente</p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-7">
+          <TabsTrigger value="inicio" className="flex items-center gap-2">
+            <Home className="h-4 w-4" />
+            Inicio
+          </TabsTrigger>
+          <TabsTrigger value="empleados" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Empleados
+          </TabsTrigger>
+          <TabsTrigger value="agregar" className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            Agregar
+          </TabsTrigger>
+          <TabsTrigger value="importar" className="flex items-center gap-2">
+            <Upload className="h-4 w-4" />
+            Importar
+          </TabsTrigger>
+          <TabsTrigger value="calendario" className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Calendario
+          </TabsTrigger>
+          <TabsTrigger value="historial" className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Historial
+          </TabsTrigger>
+          <TabsTrigger value="resumen" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Resumen
+          </TabsTrigger>
         </TabsList>
+
         <TabsContent value="inicio">
-          <Inicio />
+          <EmpleadosInicio />
         </TabsContent>
+
         <TabsContent value="empleados">
           <EmpleadosList />
         </TabsContent>
+
         <TabsContent value="agregar">
-          <Agregar onSuccess={() => setActiveTab("empleados")} />
+          <EmpleadosAgregar />
         </TabsContent>
+
+        <TabsContent value="importar">
+          <ImportarAsignaciones />
+        </TabsContent>
+
         <TabsContent value="calendario">
-          <CalendarioSimple />
+          <EmpleadosCalendario />
         </TabsContent>
+
         <TabsContent value="historial">
-          <Historial />
+          <EmpleadosHistorial />
         </TabsContent>
+
         <TabsContent value="resumen">
-          <Resumen />
+          <EmpleadosResumen />
         </TabsContent>
       </Tabs>
     </div>
