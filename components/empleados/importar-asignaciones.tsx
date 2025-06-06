@@ -6,7 +6,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
 import { Upload, CheckCircle, AlertCircle, FileText, Users, Loader2 } from "lucide-react"
 import { getSupabaseClient } from "@/lib/supabase"
@@ -328,7 +327,7 @@ export default function ImportarAsignaciones() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
+            <div className="max-h-60 overflow-y-auto">
               {datosProcesados.slice(0, 10).map((asignacion, index) => (
                 <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                   <div className="flex items-center gap-4">
@@ -347,7 +346,7 @@ export default function ImportarAsignaciones() {
               )}
             </div>
 
-            <Separator className="my-4" />
+            <div className="border-b border-gray-200 my-4" />
 
             <Button onClick={importarAsignaciones} disabled={importando} className="w-full" size="lg">
               {importando ? (
