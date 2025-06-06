@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { endOfWeek, parseISO, startOfYear, endOfYear, isBefore } from "date-fns"
+import { endOfWeek, parseISO, startOfYear, endOfYear, isBefore, addWeeks, subWeeks, startOfWeek } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
@@ -18,6 +18,12 @@ import {
   BarChart3,
   AlertTriangle,
   Info,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  Banknote,
+  Users,
+  TriangleIcon as ExclamationTriangle,
 } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment, EmployeePayment } from "@/lib/employee-types"
@@ -82,10 +88,7 @@ export default function EmpleadosResumen() {
   const [selectedWeek, setSelectedWeek] = useState<string>(() => {
     // Obtener el lunes de la semana actual
     const today = new Date()
-    const day = today.getDay()
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1) // Ajustar para que el lunes sea el primer día
-    const monday = new Date(today)
-    monday.setDate(diff)
+    const monday = startOfWeek(today, { weekStartsOn: 1 })
     return monday.toISOString().split("T")[0] // Formato YYYY-MM-DD
   })
   const [showDebugInfo, setShowDebugInfo] = useState(false)
@@ -116,6 +119,23 @@ export default function EmpleadosResumen() {
   const currentYear = new Date().getFullYear()
   const yearStart = startOfYear(new Date(currentYear, 0, 1))
   const yearEnd = endOfYear(new Date(currentYear, 11, 31))
+
+  // Funciones para navegar entre semanas
+  const goToPreviousWeek = () => {
+    const previousWeek = subWeeks(startDate, 1)
+    setSelectedWeek(previousWeek.toISOString().split("T")[0])
+  }
+
+  const goToNextWeek = () => {
+    const nextWeek = addWeeks(startDate, 1)
+    setSelectedWeek(nextWeek.toISOString().split("T")[0])
+  }
+
+  const goToCurrentWeek = () => {
+    const today = new Date()
+    const monday = startOfWeek(today, { weekStartsOn: 1 })
+    setSelectedWeek(monday.toISOString().split("T")[0])
+  }
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -254,6 +274,10 @@ export default function EmpleadosResumen() {
     {} as Record<number, EmployeePayment[]>,
   )
 
+  // Calcular estadísticas generales
+  const totalPendingAmount = pendingPayments.reduce((sum, payment) => sum + payment.amount, 0)
+  const employeesWithPendingPayments = Object.keys(pendingPaymentsByEmployee).length
+
   // Calcular resumen por empleado con división de tarifas USANDO LA TARIFA GUARDADA
   const employeeSummary = employees
     .map((employee) => {
@@ -380,7 +404,7 @@ export default function EmpleadosResumen() {
 
       if (result) {
         toast({
-          title: "Pago registrado",
+          title: "✅ Pago registrado",
           description: "El pago ha sido registrado correctamente",
         })
 
@@ -389,7 +413,7 @@ export default function EmpleadosResumen() {
         setAllPayments([...allPayments, result])
       } else {
         toast({
-          title: "Error",
+          title: "❌ Error",
           description: "No se pudo registrar el pago",
           variant: "destructive",
         })
@@ -397,7 +421,7 @@ export default function EmpleadosResumen() {
     } catch (error) {
       console.error("Error al registrar pago:", error)
       toast({
-        title: "Error",
+        title: "❌ Error",
         description: "Ocurrió un error al registrar el pago",
         variant: "destructive",
       })
@@ -419,7 +443,7 @@ export default function EmpleadosResumen() {
 
       if (result) {
         toast({
-          title: "Pago actualizado",
+          title: "✅ Pago actualizado",
           description: "El pago ha sido marcado como pagado",
         })
 
@@ -428,7 +452,7 @@ export default function EmpleadosResumen() {
         setAllPayments(allPayments.map((p) => (p.id === paymentId ? result : p)))
       } else {
         toast({
-          title: "Error",
+          title: "❌ Error",
           description: "No se pudo actualizar el pago",
           variant: "destructive",
         })
@@ -436,7 +460,7 @@ export default function EmpleadosResumen() {
     } catch (error) {
       console.error("Error al actualizar pago:", error)
       toast({
-        title: "Error",
+        title: "❌ Error",
         description: "Ocurrió un error al actualizar el pago",
         variant: "destructive",
       })
@@ -456,7 +480,7 @@ export default function EmpleadosResumen() {
 
       if (success) {
         toast({
-          title: "Pago eliminado",
+          title: "🗑️ Pago eliminado",
           description: "El pago ha sido eliminado correctamente",
         })
 
@@ -465,7 +489,7 @@ export default function EmpleadosResumen() {
         setAllPayments(allPayments.filter((p) => p.id !== paymentId))
       } else {
         toast({
-          title: "Error",
+          title: "❌ Error",
           description: "No se pudo eliminar el pago",
           variant: "destructive",
         })
@@ -473,7 +497,7 @@ export default function EmpleadosResumen() {
     } catch (error) {
       console.error("Error al eliminar pago:", error)
       toast({
-        title: "Error",
+        title: "❌ Error",
         description: "Ocurrió un error al eliminar el pago",
         variant: "destructive",
       })
@@ -484,13 +508,57 @@ export default function EmpleadosResumen() {
 
   return (
     <div className="space-y-6">
+      {/* Panel de estadísticas generales */}
+      {pendingPayments.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <ExclamationTriangle className="h-8 w-8 text-red-600" />
+                <div>
+                  <p className="text-sm font-medium text-red-800">Semanas Impagas</p>
+                  <p className="text-2xl font-bold text-red-900">{pendingPayments.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-orange-200 bg-orange-50">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Users className="h-8 w-8 text-orange-600" />
+                <div>
+                  <p className="text-sm font-medium text-orange-800">Empleados Afectados</p>
+                  <p className="text-2xl font-bold text-orange-900">{employeesWithPendingPayments}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-yellow-200 bg-yellow-50">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Banknote className="h-8 w-8 text-yellow-600" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-800">Total Pendiente</p>
+                  <p className="text-2xl font-bold text-yellow-900">${totalPendingAmount.toLocaleString()}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
             <div>
-              <CardTitle>Resumen de Empleados</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-6 w-6" />
+                Resumen de Empleados
+              </CardTitle>
               <CardDescription>
-                Información detallada de trabajo y pagos por empleado con tarifas históricas
+                Gestión semanal de pagos y asignaciones con navegación fácil entre semanas
               </CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={() => setShowDebugInfo(!showDebugInfo)}>
@@ -499,31 +567,51 @@ export default function EmpleadosResumen() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Navegación de semanas mejorada */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="w-full md:w-1/2">
-              <Label htmlFor="week-select">Semana</Label>
-              <Input
-                id="week-select"
-                type="date"
-                value={selectedWeek}
-                onChange={(e) => setSelectedWeek(e.target.value)}
-              />
-              <div className="text-xs text-muted-foreground mt-1">
-                Semana del {safeFormatDate(startDate.toISOString())} al {safeFormatDate(endDate.toISOString())}
+              <Label htmlFor="week-select" className="text-base font-medium">
+                📅 Navegación de Semanas
+              </Label>
+              <div className="flex items-center gap-2 mt-2">
+                <Button variant="outline" size="sm" onClick={goToPreviousWeek}>
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <Input
+                  id="week-select"
+                  type="date"
+                  value={selectedWeek}
+                  onChange={(e) => setSelectedWeek(e.target.value)}
+                  className="flex-1"
+                />
+                <Button variant="outline" size="sm" onClick={goToNextWeek}>
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={goToCurrentWeek}>
+                  Hoy
+                </Button>
+              </div>
+              <div className="text-sm text-muted-foreground mt-2 p-2 bg-blue-50 rounded-md border border-blue-200">
+                📍 <strong>Semana seleccionada:</strong> {safeFormatDate(startDate.toISOString())} al{" "}
+                {safeFormatDate(endDate.toISOString())}
               </div>
             </div>
 
             <div className="w-full md:w-1/2">
-              <Label htmlFor="employee-select">Empleado</Label>
+              <Label htmlFor="employee-select" className="text-base font-medium">
+                👥 Filtrar por Empleado
+              </Label>
               <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                <SelectTrigger id="employee-select">
+                <SelectTrigger id="employee-select" className="mt-2">
                   <SelectValue placeholder="Todos los empleados" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos los empleados</SelectItem>
+                  <SelectItem value="todos">🏢 Todos los empleados</SelectItem>
                   {employees.map((employee) => (
                     <SelectItem key={employee.id} value={employee.id.toString()}>
-                      {employee.name}
+                      👤 {employee.name} - {employee.role}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -531,42 +619,43 @@ export default function EmpleadosResumen() {
             </div>
           </div>
 
-          {/* Alerta de pagos pendientes - Siempre visible si hay pagos pendientes */}
+          {/* Alerta de pagos pendientes mejorada */}
           {pendingPayments.length > 0 && (
-            <Alert className="mb-6 border-orange-200 bg-orange-50">
-              <AlertTriangle className="h-4 w-4 text-orange-600" />
-              <AlertTitle className="text-orange-800">Pagos pendientes de semanas anteriores</AlertTitle>
+            <Alert className="mb-6 border-red-300 bg-red-50">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <AlertTitle className="text-red-800 text-lg">🚨 ¡Atención! Hay semanas sin pagar</AlertTitle>
               <AlertDescription>
-                <div className="mt-2 text-orange-700">
-                  Hay <strong>{pendingPayments.length}</strong> pago(s) pendiente(s) de semanas anteriores que requieren
-                  atención.
+                <div className="mt-3 text-red-700">
+                  Se encontraron <strong>{pendingPayments.length}</strong> semana(s) impaga(s) que afectan a{" "}
+                  <strong>{employeesWithPendingPayments}</strong> empleado(s) por un total de{" "}
+                  <strong>${totalPendingAmount.toLocaleString()}</strong>.
                 </div>
-                <div className="mt-3 max-h-60 overflow-auto">
+                <div className="mt-4 max-h-60 overflow-auto bg-white rounded-md border">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-orange-800">Empleado</TableHead>
-                        <TableHead className="text-orange-800">Semana</TableHead>
-                        <TableHead className="text-orange-800">Monto</TableHead>
-                        <TableHead className="text-orange-800">Acciones</TableHead>
+                      <TableRow className="bg-red-100">
+                        <TableHead className="text-red-800 font-semibold">👤 Empleado</TableHead>
+                        <TableHead className="text-red-800 font-semibold">📅 Semana</TableHead>
+                        <TableHead className="text-red-800 font-semibold">💰 Monto</TableHead>
+                        <TableHead className="text-red-800 font-semibold">⚡ Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {pendingPayments.map((payment) => (
-                        <TableRow key={payment.id}>
+                        <TableRow key={payment.id} className="hover:bg-red-50">
                           <TableCell className="font-medium">{payment.employee_name}</TableCell>
                           <TableCell>
                             {safeFormatDate(payment.week_start)} - {safeFormatDate(payment.week_end)}
                           </TableCell>
-                          <TableCell className="font-bold">${payment.amount.toLocaleString()}</TableCell>
+                          <TableCell className="font-bold text-red-700">${payment.amount.toLocaleString()}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                              <Button size="sm" onClick={() => handleMarkAsPaid(payment.id)}>
+                              <Button size="sm" onClick={() => handleMarkAsPaid(payment.id)} className="bg-green-600">
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 Pagar
                               </Button>
                               <Button variant="outline" size="sm" onClick={() => handleDeletePayment(payment.id)}>
-                                Eliminar
+                                🗑️ Eliminar
                               </Button>
                             </div>
                           </TableCell>
@@ -580,37 +669,37 @@ export default function EmpleadosResumen() {
           )}
 
           {showDebugInfo && (
-            <Alert className="mb-6">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Información de depuración</AlertTitle>
+            <Alert className="mb-6 border-blue-200 bg-blue-50">
+              <AlertCircle className="h-4 w-4 text-blue-600" />
+              <AlertTitle className="text-blue-800">🔍 Información de depuración</AlertTitle>
               <AlertDescription>
-                <div className="mt-2 space-y-2">
+                <div className="mt-2 space-y-2 text-blue-700">
                   <div>
-                    <strong>Empleados:</strong> {employees.length}
+                    <strong>👥 Empleados:</strong> {employees.length}
                   </div>
                   <div>
-                    <strong>Asignaciones semanales:</strong> {assignments.length}
+                    <strong>📋 Asignaciones semanales:</strong> {assignments.length}
                   </div>
                   <div>
-                    <strong>Asignaciones anuales:</strong> {yearlyAssignments.length}
+                    <strong>📊 Asignaciones anuales:</strong> {yearlyAssignments.length}
                   </div>
                   <div>
-                    <strong>Pagos totales:</strong> {allPayments.length}
+                    <strong>💳 Pagos totales:</strong> {allPayments.length}
                   </div>
                   <div>
-                    <strong>Pagos pendientes:</strong> {pendingPayments.length}
+                    <strong>⏰ Pagos pendientes:</strong> {pendingPayments.length}
                   </div>
                   <div>
-                    <strong>Hoteles con datos:</strong> {Object.keys(hotelYearlyTotals).length}
+                    <strong>🏨 Hoteles con datos:</strong> {Object.keys(hotelYearlyTotals).length}
                   </div>
                   <div>
-                    <strong>Semana seleccionada:</strong> {selectedWeek}
+                    <strong>📅 Semana seleccionada:</strong> {selectedWeek}
                   </div>
                   <div>
-                    <strong>Fecha inicio:</strong> {startDate.toISOString().split("T")[0]}
+                    <strong>🗓️ Fecha inicio:</strong> {startDate.toISOString().split("T")[0]}
                   </div>
                   <div>
-                    <strong>Fecha fin:</strong> {endDate.toISOString().split("T")[0]}
+                    <strong>🗓️ Fecha fin:</strong> {endDate.toISOString().split("T")[0]}
                   </div>
                 </div>
               </AlertDescription>
@@ -619,76 +708,101 @@ export default function EmpleadosResumen() {
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="semanal">Resumen Semanal</TabsTrigger>
-              <TabsTrigger value="anual">Resumen Anual por Hotel</TabsTrigger>
+              <TabsTrigger value="semanal" className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Resumen Semanal
+              </TabsTrigger>
+              <TabsTrigger value="anual" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Resumen Anual
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="semanal">
               {loading ? (
-                <div className="flex justify-center items-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="flex justify-center items-center py-12">
+                  <div className="text-center">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+                    <p className="text-muted-foreground">Cargando información de la semana...</p>
+                  </div>
                 </div>
               ) : employeeSummary.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <div className="mb-2">No hay datos para mostrar con los filtros seleccionados</div>
-                  <div className="text-sm">
-                    Semana: {safeFormatDate(startDate.toISOString())} - {safeFormatDate(endDate.toISOString())}
-                  </div>
-                  <div className="text-sm">
-                    Empleado:{" "}
-                    {selectedEmployee === "todos"
-                      ? "Todos"
-                      : employees.find((e) => e.id.toString() === selectedEmployee)?.name}
-                  </div>
-                  <div className="text-sm">Asignaciones encontradas: {assignments.length}</div>
-                </div>
+                <Card className="border-yellow-200 bg-yellow-50">
+                  <CardContent className="text-center py-12">
+                    <CalendarDays className="h-16 w-16 text-yellow-600 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">No hay actividad en esta semana</h3>
+                    <div className="text-yellow-700 space-y-1">
+                      <div>
+                        📅 <strong>Semana:</strong> {safeFormatDate(startDate.toISOString())} -{" "}
+                        {safeFormatDate(endDate.toISOString())}
+                      </div>
+                      <div>
+                        👤 <strong>Empleado:</strong>{" "}
+                        {selectedEmployee === "todos"
+                          ? "Todos"
+                          : employees.find((e) => e.id.toString() === selectedEmployee)?.name}
+                      </div>
+                      <div>
+                        📊 <strong>Asignaciones encontradas:</strong> {assignments.length}
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <Button onClick={goToCurrentWeek} variant="outline">
+                        📍 Ir a la semana actual
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               ) : (
                 <div className="space-y-6">
                   {employeeSummary.map((summary) => (
-                    <Card key={summary.employee.id} className="overflow-hidden">
-                      <CardHeader className="bg-muted/50">
+                    <Card key={summary.employee.id} className="overflow-hidden shadow-lg">
+                      <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
                         <div className="flex justify-between items-start">
                           <div>
-                            <CardTitle className="flex items-center gap-2">
-                              {summary.employee.name}
+                            <CardTitle className="flex items-center gap-3 text-xl">
+                              👤 {summary.employee.name}
                               {summary.payment && (
                                 <Badge
                                   variant={summary.payment.status === "pagado" ? "default" : "outline"}
-                                  className="ml-2"
+                                  className={`ml-2 px-3 py-1 ${
+                                    summary.payment.status === "pagado"
+                                      ? "bg-green-100 text-green-800 border-green-300"
+                                      : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                  }`}
                                 >
                                   {summary.payment.status === "pagado" ? (
                                     <>
-                                      <CheckCircle className="w-3 h-3 mr-1" />
-                                      Semana Pagada
+                                      <CheckCircle className="w-4 h-4 mr-1" />✅ Semana Pagada
                                     </>
                                   ) : (
                                     <>
-                                      <Clock className="w-3 h-3 mr-1" />
-                                      Pago Pendiente
+                                      <Clock className="w-4 h-4 mr-1" />⏰ Pago Pendiente
                                     </>
                                   )}
                                 </Badge>
                               )}
                             </CardTitle>
-                            <CardDescription className="flex items-center gap-2">
-                              {summary.employee.role} - Tarifa actual: ${summary.employee.daily_rate.toLocaleString()}
+                            <CardDescription className="flex items-center gap-2 text-base">
+                              🏷️ {summary.employee.role} • 💰 Tarifa actual: $
+                              {summary.employee.daily_rate.toLocaleString()}
                             </CardDescription>
                           </div>
-                          <div className="text-right">
-                            <div className="text-sm text-muted-foreground">Total a pagar</div>
-                            <div className="text-2xl font-bold text-primary">
+                          <div className="text-right bg-white p-4 rounded-lg border shadow-sm">
+                            <div className="text-sm text-muted-foreground">💵 Total a pagar</div>
+                            <div className="text-3xl font-bold text-green-600">
                               ${summary.totalAmount.toLocaleString()}
                             </div>
                           </div>
                         </div>
 
                         {summary.previousPendingPayments.length > 0 && (
-                          <Alert variant="destructive" className="mt-4">
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle>Pagos pendientes anteriores</AlertTitle>
-                            <AlertDescription>
-                              Este empleado tiene <strong>{summary.previousPendingPayments.length}</strong> pago(s)
-                              pendiente(s) de semanas anteriores por un total de{" "}
+                          <Alert variant="destructive" className="mt-4 border-red-300 bg-red-50">
+                            <AlertTriangle className="h-5 w-5" />
+                            <AlertTitle className="text-red-800">🚨 Pagos pendientes anteriores</AlertTitle>
+                            <AlertDescription className="text-red-700">
+                              Este empleado tiene <strong>{summary.previousPendingPayments.length}</strong> semana(s)
+                              impaga(s) por un total de{" "}
                               <strong>
                                 $
                                 {summary.previousPendingPayments.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
@@ -699,126 +813,139 @@ export default function EmpleadosResumen() {
                         )}
                       </CardHeader>
                       <CardContent className="pt-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-5 w-5 text-muted-foreground" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                          <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <Calendar className="h-8 w-8 text-blue-600" />
                             <div>
-                              <div className="text-sm font-medium">Días trabajados</div>
-                              <div className="text-xl font-bold">{summary.daysWorked}</div>
+                              <div className="text-sm font-medium text-blue-800">📅 Días trabajados</div>
+                              <div className="text-2xl font-bold text-blue-900">{summary.daysWorked}</div>
                             </div>
                           </div>
 
-                          <div>
-                            <div className="text-sm font-medium mb-2">Hoteles visitados</div>
-                            <div className="flex flex-wrap gap-1">
+                          <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                            <div className="text-sm font-medium mb-3 text-purple-800">🏨 Hoteles visitados</div>
+                            <div className="flex flex-wrap gap-2">
                               {summary.hotels.map((hotel) => (
-                                <Badge key={hotel} className={getHotelColor(hotel)}>
-                                  {hotel}
+                                <Badge key={hotel} className={`${getHotelColor(hotel)} text-sm px-3 py-1`}>
+                                  🏨 {hotel}
                                 </Badge>
                               ))}
                             </div>
                           </div>
                         </div>
 
-                        <div>
-                          <div className="text-sm font-medium mb-3 flex items-center gap-2">
-                            <span>Detalle de asignaciones y tarifas</span>
-                            <Info className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">
-                              Se muestran las tarifas guardadas en cada asignación
-                            </span>
+                        <div className="bg-gray-50 rounded-lg p-4 border">
+                          <div className="text-base font-medium mb-4 flex items-center gap-2">
+                            <Info className="h-5 w-5 text-blue-600" />
+                            <span>📊 Detalle de asignaciones y tarifas por hotel</span>
                           </div>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Fecha</TableHead>
-                                <TableHead>Hoteles</TableHead>
-                                <TableHead>Tarifa por Hotel</TableHead>
-                                <TableHead>Total del Día</TableHead>
-                                <TableHead>Notas</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {summary.assignmentDetails.map((detail) => (
-                                <TableRow key={detail.date}>
-                                  <TableCell className="font-medium">{safeFormatDate(detail.date)}</TableCell>
-                                  <TableCell>
-                                    <div className="flex flex-wrap gap-1">
-                                      {detail.assignments.map((assignment, idx) => (
-                                        <Badge
-                                          key={idx}
-                                          className={getHotelColor(assignment.hotel_name)}
-                                          variant="outline"
-                                        >
-                                          {assignment.hotel_name}: ${assignment.daily_rate_used.toLocaleString()}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      {detail.assignments.length} hotel{detail.assignments.length > 1 ? "es" : ""}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    {detail.assignments.map((assignment, idx) => (
-                                      <div key={idx} className="text-sm">
-                                        {assignment.hotel_name}: ${assignment.daily_rate_used.toLocaleString()}
-                                      </div>
-                                    ))}
-                                  </TableCell>
-                                  <TableCell className="font-bold">${detail.totalForDay.toLocaleString()}</TableCell>
-                                  <TableCell>
-                                    {detail.assignments
-                                      .map((a) => a.notes)
-                                      .filter(Boolean)
-                                      .join(", ") || "-"}
-                                  </TableCell>
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="bg-white">
+                                  <TableHead className="font-semibold">📅 Fecha</TableHead>
+                                  <TableHead className="font-semibold">🏨 Hoteles y Tarifas</TableHead>
+                                  <TableHead className="font-semibold">💰 Total del Día</TableHead>
+                                  <TableHead className="font-semibold">📝 Notas</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
+                              </TableHeader>
+                              <TableBody>
+                                {summary.assignmentDetails.map((detail) => (
+                                  <TableRow key={detail.date} className="hover:bg-white">
+                                    <TableCell className="font-medium">📅 {safeFormatDate(detail.date)}</TableCell>
+                                    <TableCell>
+                                      <div className="space-y-2">
+                                        {detail.assignments.map((assignment, idx) => (
+                                          <div
+                                            key={idx}
+                                            className="flex items-center justify-between p-2 bg-white rounded border"
+                                          >
+                                            <Badge
+                                              className={`${getHotelColor(assignment.hotel_name)} font-medium`}
+                                              variant="outline"
+                                            >
+                                              🏨 {assignment.hotel_name}
+                                            </Badge>
+                                            <span className="font-bold text-green-600">
+                                              ${assignment.daily_rate_used.toLocaleString()}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        <div className="text-xs text-muted-foreground mt-2 p-2 bg-blue-50 rounded">
+                                          📊 {detail.assignments.length} hotel
+                                          {detail.assignments.length > 1 ? "es" : ""} visitado
+                                          {detail.assignments.length > 1 ? "s" : ""} este día
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="text-xl font-bold text-green-600 bg-green-50 p-2 rounded text-center">
+                                        ${detail.totalForDay.toLocaleString()}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="text-sm">
+                                        {detail.assignments
+                                          .map((a) => a.notes)
+                                          .filter(Boolean)
+                                          .join(", ") || "📝 Sin notas"}
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
                         </div>
                       </CardContent>
-                      <CardFooter className="bg-muted/30 flex justify-between items-center">
+                      <CardFooter className="bg-gray-50 flex justify-between items-center border-t">
                         <div className="text-sm text-muted-foreground">
-                          Semana: {safeFormatDate(startDate.toISOString())} - {safeFormatDate(endDate.toISOString())}
+                          📅 <strong>Semana:</strong> {safeFormatDate(startDate.toISOString())} -{" "}
+                          {safeFormatDate(endDate.toISOString())}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                           {!summary.payment ? (
                             <Button
                               onClick={() => handleCreatePayment(summary.employee.id, summary.totalAmount)}
                               disabled={loading || summary.daysWorked === 0}
+                              className="bg-green-600 hover:bg-green-700"
+                              size="lg"
                             >
                               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                              <DollarSign className="mr-2 h-4 w-4" />
-                              Registrar Pago
+                              <DollarSign className="mr-2 h-5 w-5" />💰 Registrar Pago
                             </Button>
                           ) : summary.payment.status === "pendiente" ? (
-                            <div className="flex gap-2">
-                              <Button onClick={() => handleMarkAsPaid(summary.payment!.id)} disabled={loading}>
+                            <div className="flex gap-3">
+                              <Button
+                                onClick={() => handleMarkAsPaid(summary.payment!.id)}
+                                disabled={loading}
+                                className="bg-green-600 hover:bg-green-700"
+                                size="lg"
+                              >
                                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Marcar como Pagado
+                                <CheckCircle className="mr-2 h-5 w-5" />✅ Marcar como Pagado
                               </Button>
                               <Button
                                 variant="outline"
                                 onClick={() => handleDeletePayment(summary.payment!.id)}
                                 disabled={loading}
+                                size="lg"
                               >
-                                Eliminar Pago
+                                🗑️ Eliminar Pago
                               </Button>
                             </div>
                           ) : (
-                            <div className="flex gap-2">
-                              <Badge variant="default" className="px-4 py-2">
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Semana Pagada
+                            <div className="flex gap-3">
+                              <Badge variant="default" className="px-6 py-3 text-base bg-green-100 text-green-800">
+                                <CheckCircle className="mr-2 h-5 w-5" />✅ Semana Pagada
                               </Badge>
                               <Button
                                 variant="outline"
                                 onClick={() => handleDeletePayment(summary.payment!.id)}
                                 disabled={loading}
+                                size="lg"
                               >
-                                Eliminar Pago
+                                🗑️ Eliminar Pago
                               </Button>
                             </div>
                           )}
@@ -833,49 +960,72 @@ export default function EmpleadosResumen() {
             <TabsContent value="anual">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    Gastos por Hotel en {currentYear} (con tarifas históricas)
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <BarChart3 className="h-6 w-6" />📊 Gastos por Hotel en {currentYear}
                   </CardTitle>
-                  <CardDescription>
-                    Distribución de gastos por hotel durante el año actual usando las tarifas aplicadas en cada momento
+                  <CardDescription className="text-base">
+                    💰 Distribución de gastos por hotel durante el año actual usando las tarifas aplicadas en cada
+                    momento
                     {selectedEmployee !== "todos" &&
                       ` para ${employees.find((e) => e.id.toString() === selectedEmployee)?.name}`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {loadingYearly ? (
-                    <div className="flex justify-center items-center py-8">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <div className="flex justify-center items-center py-12">
+                      <div className="text-center">
+                        <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+                        <p className="text-muted-foreground">Cargando datos anuales...</p>
+                      </div>
                     </div>
                   ) : sortedHotels.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <div className="mb-2">No hay datos para mostrar en el año {currentYear}</div>
+                    <div className="text-center py-12 text-muted-foreground">
+                      <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                      <div className="mb-2 text-lg font-semibold">
+                        No hay datos para mostrar en el año {currentYear}
+                      </div>
                       <div className="text-sm">
                         {yearlyAssignments.length === 0
-                          ? "No se encontraron asignaciones para este período"
-                          : "No hay asignaciones que coincidan con los filtros seleccionados"}
+                          ? "📊 No se encontraron asignaciones para este período"
+                          : "🔍 No hay asignaciones que coincidan con los filtros seleccionados"}
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      <div className="space-y-3">
-                        {sortedHotels.map((hotel) => (
-                          <div key={hotel.name} className="space-y-2">
+                      <div className="space-y-4">
+                        {sortedHotels.map((hotel, index) => (
+                          <div key={hotel.name} className="space-y-3 p-4 bg-gray-50 rounded-lg border">
                             <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-3">
-                                <Badge className={getHotelColor(hotel.name)} variant="outline">
-                                  {hotel.name}
-                                </Badge>
-                                <span className="text-sm text-muted-foreground">
-                                  {hotel.count} asignaciones • {hotel.employeeCount} empleados
-                                </span>
+                              <div className="flex items-center gap-4">
+                                <div className="text-2xl font-bold text-gray-500">#{index + 1}</div>
+                                <div>
+                                  <Badge
+                                    className={`${getHotelColor(hotel.name)} text-base px-4 py-2`}
+                                    variant="outline"
+                                  >
+                                    🏨 {hotel.name}
+                                  </Badge>
+                                  <div className="text-sm text-muted-foreground mt-1">
+                                    📊 {hotel.count} asignaciones • 👥 {hotel.employeeCount} empleados
+                                  </div>
+                                </div>
                               </div>
-                              <span className="font-bold text-lg">${hotel.amount.toLocaleString()}</span>
+                              <div className="text-right">
+                                <div className="text-2xl font-bold text-green-600">
+                                  ${hotel.amount.toLocaleString()}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  💰{" "}
+                                  {((hotel.amount / sortedHotels.reduce((sum, h) => sum + h.amount, 0)) * 100).toFixed(
+                                    1,
+                                  )}
+                                  % del total
+                                </div>
+                              </div>
                             </div>
-                            <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
+                            <div className="h-4 w-full bg-gray-200 rounded-full overflow-hidden">
                               <div
-                                className={`h-full ${getHotelSolidColor(hotel.name)} rounded-full transition-all duration-300`}
+                                className={`h-full ${getHotelSolidColor(hotel.name)} rounded-full transition-all duration-500`}
                                 style={{ width: `${maxAmount > 0 ? (hotel.amount / maxAmount) * 100 : 0}%` }}
                               ></div>
                             </div>
@@ -883,16 +1033,18 @@ export default function EmpleadosResumen() {
                         ))}
                       </div>
 
-                      <div className="pt-4 border-t">
+                      <div className="pt-6 border-t bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg">
                         <div className="flex justify-between items-center">
-                          <span className="font-medium text-lg">Total Anual {currentYear}</span>
-                          <span className="text-2xl font-bold text-primary">
+                          <div>
+                            <span className="font-medium text-xl">📊 Total Anual {currentYear}</span>
+                            <div className="text-sm text-muted-foreground mt-1">
+                              📈 {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales con
+                              tarifas históricas
+                            </div>
+                          </div>
+                          <span className="text-4xl font-bold text-green-600">
                             ${sortedHotels.reduce((sum, hotel) => sum + hotel.amount, 0).toLocaleString()}
                           </span>
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales con tarifas
-                          históricas
                         </div>
                       </div>
                     </div>
