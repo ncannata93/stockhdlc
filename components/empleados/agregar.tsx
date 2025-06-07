@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +14,7 @@ import { useEmployeeDB } from "@/lib/employee-db"
 import { HOTELS } from "@/lib/employee-types"
 import { Loader2, Plus, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Checkbox } from "@/components/ui/checkbox"
 
 export default function EmpleadosAgregar() {
   const { getEmployees, saveAssignment } = useEmployeeDB()
@@ -22,9 +24,10 @@ export default function EmpleadosAgregar() {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
 
+  // Estado del formulario
   const [formData, setFormData] = useState({
     employee_id: "",
-    hotel_names: [] as string[],
+    hotel_names: [] as string[], // Array de hoteles seleccionados
     assignment_date: format(new Date(), "yyyy-MM-dd"),
     notes: "",
   })
@@ -88,6 +91,7 @@ export default function EmpleadosAgregar() {
     setSubmitting(true)
 
     try {
+      // Validar datos
       if (!formData.employee_id || formData.hotel_names.length === 0 || !formData.assignment_date) {
         toast({
           title: "Error",
@@ -107,8 +111,12 @@ export default function EmpleadosAgregar() {
         return
       }
 
+      // Calcular la tarifa dividida entre los hoteles
       const dividedRate = employee.daily_rate / formData.hotel_names.length
+
+      // Asegurar que la fecha se maneje correctamente sin problemas de zona horaria
       const assignmentDate = formData.assignment_date
+      console.log(`Fecha seleccionada: ${assignmentDate}`)
 
       console.log(`Empleado: ${employee.name}`)
       console.log(`Tarifa diaria original: ${employee.daily_rate}`)
@@ -116,13 +124,14 @@ export default function EmpleadosAgregar() {
       console.log(`Tarifa dividida: ${dividedRate}`)
       console.log(`Hoteles seleccionados: ${formData.hotel_names.join(", ")}`)
 
+      // Crear una asignación por cada hotel seleccionado
       const promises = formData.hotel_names.map((hotelName, index) => {
         console.log(`Creando asignación ${index + 1} para hotel: ${hotelName} con tarifa: ${dividedRate}`)
         return saveAssignment({
           employee_id: Number.parseInt(formData.employee_id),
           hotel_name: hotelName,
           assignment_date: assignmentDate,
-          daily_rate_used: dividedRate,
+          daily_rate_used: dividedRate, // Usar la tarifa dividida calculada
           notes: formData.notes,
         })
       })
@@ -135,6 +144,7 @@ export default function EmpleadosAgregar() {
           description: `${formData.hotel_names.length} asignación(es) guardada(s) correctamente`,
         })
 
+        // Resetear formulario pero mantener la fecha
         setFormData({
           employee_id: "",
           hotel_names: [],
@@ -196,12 +206,10 @@ export default function EmpleadosAgregar() {
                 <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
                   {HOTELS.map((hotel) => (
                     <div key={hotel} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         id={`hotel-${hotel}`}
                         checked={formData.hotel_names.includes(hotel)}
-                        onChange={(e) => handleHotelChange(hotel, e.target.checked)}
-                        className="rounded border-gray-300"
+                        onCheckedChange={(checked) => handleHotelChange(hotel, checked as boolean)}
                       />
                       <Label htmlFor={`hotel-${hotel}`} className="text-sm font-normal cursor-pointer">
                         {hotel}

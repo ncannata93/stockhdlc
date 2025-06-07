@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Loader2, CalendarIcon, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { EmployeeAssignment } from "@/lib/employee-types"
 import { HOTELS } from "@/lib/employee-types"
@@ -39,9 +40,11 @@ const hotelColors: Record<string, string> = {
   Tiburones: "bg-emerald-100 border-emerald-200 text-emerald-800",
   Barlovento: "bg-violet-100 border-violet-200 text-violet-800",
   Carama: "bg-rose-100 border-rose-200 text-rose-800",
+  // Color por defecto para otros hoteles
   default: "bg-gray-100 border-gray-200 text-gray-800",
 }
 
+// Función para obtener el color de un hotel
 const getHotelColor = (hotelName: string) => {
   return hotelColors[hotelName] || hotelColors.default
 }
@@ -88,13 +91,16 @@ export default function EmpleadosCalendario() {
     loadCalendarData()
   }, [currentDate])
 
+  // Calcular fechas del mes (mover después del useEffect)
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
   const calendarStartDate = startOfWeek(monthStart, { weekStartsOn: 1 })
   const calendarEndDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
 
+  // Crear array de días para mostrar
   const daysToDisplay = eachDayOfInterval({ start: calendarStartDate, end: calendarEndDate })
 
+  // Agrupar días por semanas
   const weeks: Date[][] = []
   let currentWeek: Date[] = []
 
@@ -106,27 +112,33 @@ export default function EmpleadosCalendario() {
     }
   })
 
+  // Navegar al mes anterior
   const prevMonth = () => {
     setCurrentDate(subMonths(currentDate, 1))
   }
 
+  // Navegar al mes siguiente
   const nextMonth = () => {
     setCurrentDate(addMonths(currentDate, 1))
   }
 
+  // Navegar al mes actual
   const currentMonth = () => {
     setCurrentDate(new Date())
   }
 
+  // Obtener asignaciones para un día específico
   const getAssignmentsForDay = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd")
     return assignments.filter((a) => {
+      // Asegurar que la comparación de fechas sea correcta
       const assignmentDate = new Date(a.assignment_date + "T00:00:00")
       const assignmentDateStr = format(assignmentDate, "yyyy-MM-dd")
       return assignmentDateStr === dateStr
     })
   }
 
+  // Agrupar asignaciones por hotel para un día específico
   const getHotelGroups = (date: Date) => {
     const dayAssignments = getAssignmentsForDay(date)
     const hotelGroups: Record<string, EmployeeAssignment[]> = {}
@@ -175,6 +187,7 @@ export default function EmpleadosCalendario() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Leyenda de hoteles */}
             <div className="flex flex-wrap gap-2 mb-4">
               {HOTELS.slice(0, 8).map((hotel) => (
                 <Badge key={hotel} className={`${getHotelColor(hotel)} border text-xs`}>
@@ -183,6 +196,7 @@ export default function EmpleadosCalendario() {
               ))}
             </div>
 
+            {/* Días de la semana */}
             <div className="grid grid-cols-7 gap-1 mb-1">
               {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day, i) => (
                 <div key={i} className="text-center font-medium p-2 bg-muted rounded-md">
@@ -191,6 +205,7 @@ export default function EmpleadosCalendario() {
               ))}
             </div>
 
+            {/* Calendario */}
             <div className="space-y-1">
               {weeks.map((week, weekIndex) => (
                 <div key={weekIndex} className="grid grid-cols-7 gap-1">
@@ -214,16 +229,32 @@ export default function EmpleadosCalendario() {
                         {hasAssignments ? (
                           <div className="space-y-1">
                             {Object.entries(hotelGroups).map(([hotel, hotelAssignments]) => (
-                              <div
-                                key={hotel}
-                                className={`
-                                  text-xs p-1 rounded border truncate cursor-pointer
-                                  ${getHotelColor(hotel)}
-                                `}
-                                title={`${hotel}: ${hotelAssignments.map((a) => a.employee_name || `Empleado #${a.employee_id}`).join(", ")}`}
-                              >
-                                {hotel}: {hotelAssignments.length}
-                              </div>
+                              <TooltipProvider key={hotel}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className={`
+                                        text-xs p-1 rounded border truncate cursor-pointer
+                                        ${getHotelColor(hotel)}
+                                      `}
+                                    >
+                                      {hotel}: {hotelAssignments.length}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="text-sm">
+                                      <div className="font-medium mb-1">{hotel}</div>
+                                      <ul className="space-y-1">
+                                        {hotelAssignments.map((assignment) => (
+                                          <li key={assignment.id}>
+                                            {assignment.employee_name || `Empleado #${assignment.employee_id}`}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             ))}
                           </div>
                         ) : (
@@ -238,6 +269,7 @@ export default function EmpleadosCalendario() {
               ))}
             </div>
 
+            {/* Información adicional */}
             {assignments.length === 0 && !loading && (
               <div className="text-center py-8 text-muted-foreground">
                 <CalendarIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
