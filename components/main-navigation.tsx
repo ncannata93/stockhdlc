@@ -31,6 +31,7 @@ export function MainNavigation() {
   const handleLogout = async () => {
     try {
       await signOut()
+      // La redirección se maneja en el AuthContext o ProtectedRoute
     } catch (error) {
       console.error("Error al cerrar sesión:", error)
     }

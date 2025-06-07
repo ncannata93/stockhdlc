@@ -3,7 +3,6 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/lib/auth-context"
-import { ToastProvider } from "@/components/simple-toast"
 import PWARegister from "@/components/pwa-register"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -56,10 +55,8 @@ export default function RootLayout({
         <meta name="msapplication-tap-highlight" content="no" />
       </head>
       <body className={inter.className}>
-        <ToastProvider>
-          <AuthProvider>{children}</AuthProvider>
-          <PWARegister />
-        </ToastProvider>
+        <AuthProvider>{children}</AuthProvider>
+        <PWARegister />
       </body>
     </html>
   )
