@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Inicio from "@/components/empleados/inicio"
 import EmpleadosList from "@/components/empleados/empleados-list"
 import Agregar from "@/components/empleados/agregar"
@@ -11,62 +11,54 @@ import Resumen from "@/components/empleados/resumen"
 import CalendarioSimple from "@/components/empleados/calendario-simple"
 import ImportarAsignaciones from "@/components/empleados/importar-asignaciones"
 
+const tabs = [
+  { value: "inicio", label: "Inicio" },
+  { value: "empleados", label: "Empleados" },
+  { value: "agregar", label: "Agregar" },
+  { value: "importar", label: "Importar" },
+  { value: "calendario", label: "Calendario" },
+  { value: "historial", label: "Historial" },
+  { value: "resumen", label: "Resumen" },
+]
+
 export default function EmpleadosClientPage() {
   const [activeTab, setActiveTab] = useState("inicio")
+
+  const currentTabLabel = tabs.find((tab) => tab.value === activeTab)?.label || "Inicio"
 
   return (
     <div className="container mx-auto py-4 px-2 sm:py-6 sm:px-4">
       <Tabs defaultValue="inicio" value={activeTab} onValueChange={setActiveTab}>
-        {/* Pestañas responsivas */}
-        <div className="mb-6 sm:mb-8">
-          <ScrollArea className="w-full whitespace-nowrap">
-            <TabsList className="inline-flex h-auto p-1 bg-muted rounded-lg w-full sm:w-auto">
-              <div className="flex space-x-1 sm:space-x-2 min-w-max">
-                <TabsTrigger
-                  value="inicio"
-                  className="px-2 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  Inicio
-                </TabsTrigger>
-                <TabsTrigger
-                  value="empleados"
-                  className="px-2 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  Empleados
-                </TabsTrigger>
-                <TabsTrigger
-                  value="agregar"
-                  className="px-2 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  Agregar
-                </TabsTrigger>
-                <TabsTrigger
-                  value="importar"
-                  className="px-2 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  Importar
-                </TabsTrigger>
-                <TabsTrigger
-                  value="calendario"
-                  className="px-2 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  Calendario
-                </TabsTrigger>
-                <TabsTrigger
-                  value="historial"
-                  className="px-2 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  Historial
-                </TabsTrigger>
-                <TabsTrigger
-                  value="resumen"
-                  className="px-2 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  Resumen
-                </TabsTrigger>
-              </div>
-            </TabsList>
-          </ScrollArea>
+        {/* Navegación Desktop - Pestañas normales */}
+        <div className="hidden sm:block mb-8">
+          <TabsList className="grid grid-cols-7 w-full">
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-sm">
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        {/* Navegación Mobile - Dropdown */}
+        <div className="block sm:hidden mb-6">
+          <div className="bg-white rounded-lg border shadow-sm p-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Sección Actual</label>
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  <span className="font-medium">{currentTabLabel}</span>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {tabs.map((tab) => (
+                  <SelectItem key={tab.value} value={tab.value}>
+                    {tab.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <TabsContent value="inicio" className="mt-0">
