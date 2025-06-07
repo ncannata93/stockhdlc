@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Home, Users, Plus, Upload, Calendar, History, BarChart3 } from "lucide-react"
 
-// Importar componentes
+// Importar componentes limpios
 import EmpleadosInicio from "@/components/empleados/inicio"
 import EmpleadosList from "@/components/empleados/empleados-list"
 import EmpleadosAgregar from "@/components/empleados/agregar"

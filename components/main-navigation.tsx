@@ -2,172 +2,138 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, Home, Package, Users, Menu, X, Wrench, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useState, useRef, useEffect } from "react"
+import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth-context"
+import { Home, Package, Users, Settings, LogOut, Hotel, Menu, X } from "lucide-react"
+import { useState } from "react"
+
+const navigation = [
+  { name: "Inicio", href: "/", icon: Home },
+  { name: "Stock", href: "/stock", icon: Package },
+  { name: "Servicios", href: "/servicios", icon: Hotel },
+  { name: "Empleados", href: "/empleados", icon: Users },
+  { name: "Admin", href: "/admin", icon: Settings },
+]
 
 export function MainNavigation() {
   const pathname = usePathname()
+  const { user, logout } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const { signOut, session } = useAuth()
 
-  // Cerrar menú al hacer clic fuera
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMobileMenuOpen(false)
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [])
-
-  // Función para cerrar sesión
   const handleLogout = async () => {
     try {
-      await signOut()
-      // La redirección se maneja en el AuthContext o ProtectedRoute
+      await logout()
     } catch (error) {
       console.error("Error al cerrar sesión:", error)
     }
   }
 
-  // Determinar qué enlaces mostrar según el usuario
-  const showServiciosLink = !session || session.username === "admin" || session.username === "ncannata"
-
   return (
-    <div className="bg-white border-b border-gray-200 py-2 px-3 md:py-3 md:px-4">
-      <div className="flex items-center justify-between md:hidden">
-        <Button variant="ghost" size="icon" onClick={() => window.history.back()} title="Volver atrás">
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
+    <nav className="bg-white shadow-sm border-b border-gray-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16">
+          {/* Logo y navegación principal */}
+          <div className="flex">
+            <div className="flex-shrink-0 flex items-center">
+              <Link href="/" className="text-xl font-bold text-gray-900">
+                Hotel Manager
+              </Link>
+            </div>
 
-        <div className="flex items-center">
-          {session && <span className="text-sm font-medium text-gray-700 mr-2">{session.username}</span>}
-          <Button variant="ghost" size="icon" onClick={handleLogout} title="Cerrar sesión" className="mr-2">
-            <LogOut className="h-5 w-5 text-gray-600" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </Button>
+            {/* Navegación desktop */}
+            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+              {navigation.map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`
+                      inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium
+                      ${
+                        isActive
+                          ? "border-blue-500 text-gray-900"
+                          : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                      }
+                    `}
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {item.name}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Usuario y acciones */}
+          <div className="hidden sm:ml-6 sm:flex sm:items-center sm:space-x-4">
+            {user && (
+              <div className="flex items-center space-x-3">
+                <Badge variant="outline" className="text-xs">
+                  {user.email}
+                </Badge>
+                <Button variant="outline" size="sm" onClick={handleLogout}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Salir
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Botón menú móvil */}
+          <div className="sm:hidden flex items-center">
+            <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Menú móvil */}
       {mobileMenuOpen && (
-        <div ref={menuRef} className="mt-2 md:hidden">
-          <div className="flex flex-col space-y-1">
-            <Link href="/">
-              <Button variant={pathname === "/" ? "default" : "ghost"} size="sm" className="w-full justify-start">
-                <Home className="h-4 w-4 mr-2" />
-                <span>Inicio</span>
-              </Button>
-            </Link>
+        <div className="sm:hidden">
+          <div className="pt-2 pb-3 space-y-1">
+            {navigation.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
 
-            <Link href="/stock">
-              <Button
-                variant={pathname.startsWith("/stock") ? "default" : "ghost"}
-                size="sm"
-                className="w-full justify-start"
-              >
-                <Package className="h-4 w-4 mr-2" />
-                <span>Stock</span>
-              </Button>
-            </Link>
-
-            <Link href="/empleados">
-              <Button
-                variant={pathname.startsWith("/empleados") ? "default" : "ghost"}
-                size="sm"
-                className="w-full justify-start"
-              >
-                <Users className="h-4 w-4 mr-2" />
-                <span>Empleados</span>
-              </Button>
-            </Link>
-
-            {showServiciosLink && (
-              <Link href="/servicios">
-                <Button
-                  variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
-                  size="sm"
-                  className="w-full justify-start"
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`
+                    flex items-center px-3 py-2 text-base font-medium
+                    ${
+                      isActive
+                        ? "bg-blue-50 border-blue-500 text-blue-700 border-l-4"
+                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    }
+                  `}
+                  onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Wrench className="h-4 w-4 mr-2" />
-                  <span>Servicios</span>
-                </Button>
-              </Link>
-            )}
+                  <Icon className="h-5 w-5 mr-3" />
+                  {item.name}
+                </Link>
+              )
+            })}
           </div>
+
+          {user && (
+            <div className="pt-4 pb-3 border-t border-gray-200">
+              <div className="px-3 space-y-3">
+                <div className="text-sm text-gray-500">{user.email}</div>
+                <Button variant="outline" size="sm" onClick={handleLogout} className="w-full">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Cerrar Sesión
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
-
-      {/* Menú desktop */}
-      <div className="hidden md:flex items-center justify-between w-full">
-        <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="icon" onClick={() => window.history.back()} title="Volver atrás">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-
-          <div className="flex space-x-2">
-            <Link href="/">
-              <Button variant={pathname === "/" ? "default" : "ghost"} size="sm" className="flex items-center gap-1">
-                <Home className="h-4 w-4" />
-                <span>Inicio</span>
-              </Button>
-            </Link>
-
-            <Link href="/stock">
-              <Button
-                variant={pathname.startsWith("/stock") ? "default" : "ghost"}
-                size="sm"
-                className="flex items-center gap-1"
-              >
-                <Package className="h-4 w-4" />
-                <span>Stock</span>
-              </Button>
-            </Link>
-
-            <Link href="/empleados">
-              <Button
-                variant={pathname.startsWith("/empleados") ? "default" : "ghost"}
-                size="sm"
-                className="flex items-center gap-1"
-              >
-                <Users className="h-4 w-4" />
-                <span>Empleados</span>
-              </Button>
-            </Link>
-
-            {showServiciosLink && (
-              <Link href="/servicios">
-                <Button
-                  variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
-                  size="sm"
-                  className="flex items-center gap-1"
-                >
-                  <Wrench className="h-4 w-4" />
-                  <span>Servicios</span>
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
-
-        {/* Información de usuario y botón de cerrar sesión */}
-        <div className="flex items-center space-x-3">
-          {session && <span className="text-sm font-medium text-gray-700">{session.username}</span>}
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="flex items-center gap-1">
-            <LogOut className="h-4 w-4" />
-            <span>Cerrar sesión</span>
-          </Button>
-        </div>
-      </div>
-    </div>
+    </nav>
   )
 }
