@@ -1,77 +1,32 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useEmployeeDB } from "@/lib/employee-db"
-import { BarChart, Calendar, Users, Clock, Hotel, AlertTriangle, Plus, FileText, TrendingUp } from "lucide-react"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
+import { useEmployeeDB } from "@/lib/employee-db"
+import type { Employee, EmployeeAssignment } from "@/lib/employee-types"
+import { Users, Calendar, DollarSign, TrendingUp, Plus, Upload } from "lucide-react"
 
 export default function EmpleadosInicio() {
-  const { getEmployees, getAssignments } = useEmployeeDB()
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState({
-    totalEmployees: 0,
-    activeEmployees: 0,
-    totalAssignments: 0,
-    uniqueHotels: 0,
-    thisWeekAssignments: 0,
-    thisMonthAssignments: 0,
-  })
+
+  const { getEmployees, getAssignments } = useEmployeeDB()
 
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true)
-      setError(null)
       try {
-        // Cargar empleados
-        const employees = await getEmployees()
+        setLoading(true)
+        const [employeesData, assignmentsData] = await Promise.all([getEmployees(), getAssignments()])
 
-        // Cargar asignaciones del último mes
-        const thirtyDaysAgo = new Date()
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-        // Cargar asignaciones de esta semana
-        const startOfWeek = new Date()
-        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
-
-        // Cargar asignaciones de este mes
-        const startOfMonth = new Date()
-        startOfMonth.setDate(1)
-
-        const [monthlyAssignments, weeklyAssignments, currentMonthAssignments] = await Promise.all([
-          getAssignments({
-            start_date: thirtyDaysAgo.toISOString().split("T")[0],
-            end_date: new Date().toISOString().split("T")[0],
-          }),
-          getAssignments({
-            start_date: startOfWeek.toISOString().split("T")[0],
-            end_date: new Date().toISOString().split("T")[0],
-          }),
-          getAssignments({
-            start_date: startOfMonth.toISOString().split("T")[0],
-            end_date: new Date().toISOString().split("T")[0],
-          }),
-        ])
-
-        // Calcular estadísticas
-        const uniqueEmployeesWithAssignments = new Set(monthlyAssignments.map((a) => a.employee_id))
-        const uniqueHotels = new Set(monthlyAssignments.map((a) => a.hotel_name))
-
-        setStats({
-          totalEmployees: employees.length,
-          activeEmployees: uniqueEmployeesWithAssignments.size,
-          totalAssignments: monthlyAssignments.length,
-          uniqueHotels: uniqueHotels.size,
-          thisWeekAssignments: weeklyAssignments.length,
-          thisMonthAssignments: currentMonthAssignments.length,
-        })
-      } catch (err) {
-        console.error("Error al cargar datos:", err)
-        setError(`Error al cargar datos: ${err instanceof Error ? err.message : String(err)}`)
+        setEmployees(employeesData || [])
+        setAssignments(assignmentsData || [])
+      } catch (error) {
+        console.error("Error al cargar datos:", error)
+        setEmployees([])
+        setAssignments([])
       } finally {
         setLoading(false)
       }
@@ -80,70 +35,104 @@ export default function EmpleadosInicio() {
     loadData()
   }, [])
 
+  // Calcular estadísticas
+  const totalEmployees = employees.length
+  const activeEmployees = employees.filter((emp) => emp.active).length
+  const totalAssignments = assignments.length
+  const totalEarnings = assignments.reduce((sum, assignment) => sum + (assignment.daily_rate_used || 0), 0)
+
+  // Asignaciones recientes (últimos 7 días)
+  const recentAssignments = assignments.filter((assignment) => {
+    const assignmentDate = new Date(assignment.assignment_date)
+    const today = new Date()
+    const diffTime = Math.abs(today.getTime() - assignmentDate.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays <= 7
+  })
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-6">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header con saludo */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">Sistema de Gestión de Empleados</h1>
-        <p className="text-lg text-gray-600">Bienvenido al panel de control</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Panel de Control</h1>
+          <p className="text-gray-600">Gestión de empleados y asignaciones</p>
+        </div>
+        <Badge variant="outline" className="text-sm">
+          {new Date().toLocaleDateString()}
+        </Badge>
       </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error de Conexión</AlertTitle>
-          <AlertDescription>
-            <div className="mb-2">{error}</div>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/empleados/diagnostico">Ir a Diagnóstico</Link>
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Estadísticas principales */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Empleados</CardTitle>
-            <Users className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{loading ? "..." : stats.totalEmployees}</div>
-            <p className="text-xs text-muted-foreground">Empleados registrados</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Empleados</p>
+                <p className="text-2xl font-bold">{totalEmployees}</p>
+                <p className="text-xs text-gray-500">{activeEmployees} activos</p>
+              </div>
+              <Users className="h-8 w-8 text-blue-600" />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Empleados Activos</CardTitle>
-            <Clock className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{loading ? "..." : stats.activeEmployees}</div>
-            <p className="text-xs text-muted-foreground">Últimos 30 días</p>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Asignaciones</p>
+                <p className="text-2xl font-bold">{totalAssignments}</p>
+                <p className="text-xs text-gray-500">{recentAssignments.length} esta semana</p>
+              </div>
+              <Calendar className="h-8 w-8 text-green-600" />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Esta Semana</CardTitle>
-            <Calendar className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{loading ? "..." : stats.thisWeekAssignments}</div>
-            <p className="text-xs text-muted-foreground">Asignaciones activas</p>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Ingresos Totales</p>
+                <p className="text-2xl font-bold">${totalEarnings.toLocaleString()}</p>
+                <p className="text-xs text-gray-500">Todas las asignaciones</p>
+              </div>
+              <DollarSign className="h-8 w-8 text-yellow-600" />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Hoteles Activos</CardTitle>
-            <Hotel className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{loading ? "..." : stats.uniqueHotels}</div>
-            <p className="text-xs text-muted-foreground">Con asignaciones</p>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Promedio por Día</p>
+                <p className="text-2xl font-bold">
+                  ${totalAssignments > 0 ? Math.round(totalEarnings / totalAssignments).toLocaleString() : "0"}
+                </p>
+                <p className="text-xs text-gray-500">Por asignación</p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-purple-600" />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -151,146 +140,95 @@ export default function EmpleadosInicio() {
       {/* Acciones rápidas */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Acciones Rápidas
-          </CardTitle>
-          <CardDescription>Accede rápidamente a las funciones más utilizadas</CardDescription>
+          <CardTitle>Acciones Rápidas</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/agregar">
-                <Plus className="h-6 w-6" />
-                <span>Nueva Asignación</span>
-              </Link>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Button className="h-20 flex flex-col items-center justify-center space-y-2">
+              <Plus className="h-6 w-6" />
+              <span>Agregar Empleado</span>
             </Button>
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/resumen">
-                <TrendingUp className="h-6 w-6" />
-                <span>Resumen de Pagos</span>
-              </Link>
+            <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2">
+              <Calendar className="h-6 w-6" />
+              <span>Nueva Asignación</span>
             </Button>
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/calendario">
-                <Calendar className="h-6 w-6" />
-                <span>Ver Calendario</span>
-              </Link>
-            </Button>
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/historial">
-                <FileText className="h-6 w-6" />
-                <span>Ver Historial</span>
-              </Link>
+            <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2">
+              <Upload className="h-6 w-6" />
+              <span>Importar Datos</span>
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="overview">Resumen</TabsTrigger>
-          <TabsTrigger value="analytics">Análisis</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Actividad Reciente</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Asignaciones este mes</span>
-                    <span className="font-medium">{loading ? "..." : stats.thisMonthAssignments}</span>
+      {/* Asignaciones recientes */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Actividad Reciente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {recentAssignments.length > 0 ? (
+            <div className="space-y-3">
+              {recentAssignments.slice(0, 5).map((assignment) => (
+                <div key={assignment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{assignment.employee_name || `Empleado #${assignment.employee_id}`}</p>
+                    <p className="text-sm text-gray-600">{assignment.hotel_name}</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Asignaciones esta semana</span>
-                    <span className="font-medium">{loading ? "..." : stats.thisWeekAssignments}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Empleados activos</span>
-                    <span className="font-medium">{loading ? "..." : stats.activeEmployees}</span>
+                  <div className="text-right">
+                    <p className="font-medium">${assignment.daily_rate_used?.toLocaleString() || "0"}</p>
+                    <p className="text-sm text-gray-600">{new Date(assignment.assignment_date).toLocaleDateString()}</p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Calendar className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No hay actividad reciente</h3>
+              <p className="mt-1 text-sm text-gray-500">Las asignaciones de la última semana aparecerán aquí.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Consejos y Ayuda</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-start gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
-                    <span>Puede seleccionar múltiples hoteles al crear asignaciones</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 mt-2 flex-shrink-0" />
-                    <span>Las tarifas históricas se mantienen automáticamente</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-purple-500 mt-2 flex-shrink-0" />
-                    <span>Use el resumen para gestionar pagos pendientes</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
-                    <span>El calendario muestra todas las asignaciones por color</span>
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
+      {/* Empleados destacados */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Empleados Activos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {employees.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {employees.slice(0, 6).map((employee) => {
+                const employeeAssignments = assignments.filter((a) => a.employee_id === employee.id)
+                const totalEarned = employeeAssignments.reduce((sum, a) => sum + (a.daily_rate_used || 0), 0)
 
-        <TabsContent value="analytics">
-          <Card>
-            <CardHeader>
-              <CardTitle>Análisis de Actividad</CardTitle>
-              <CardDescription>Visualización de la actividad reciente en el sistema</CardDescription>
-            </CardHeader>
-            <CardContent className="pl-2">
-              <div className="h-[200px] flex items-center justify-center">
-                {loading ? (
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <p className="text-muted-foreground">Cargando datos...</p>
+                return (
+                  <div key={employee.id} className="p-4 border rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium">{employee.name}</h4>
+                      <Badge variant={employee.active ? "default" : "secondary"}>
+                        {employee.active ? "Activo" : "Inactivo"}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-gray-600">{employee.role || "Sin rol asignado"}</p>
+                    <div className="mt-2 text-sm">
+                      <p>Asignaciones: {employeeAssignments.length}</p>
+                      <p>Total ganado: ${totalEarned.toLocaleString()}</p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="w-full text-center">
-                    <BarChart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                    {stats.totalAssignments > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-lg font-medium">
-                          {stats.totalAssignments} asignaciones en los últimos 30 días
-                        </p>
-                        <div className="grid grid-cols-3 gap-4 mt-4">
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-blue-600">{stats.thisMonthAssignments}</div>
-                            <div className="text-xs text-muted-foreground">Este mes</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-green-600">{stats.thisWeekAssignments}</div>
-                            <div className="text-xs text-muted-foreground">Esta semana</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-purple-600">{stats.uniqueHotels}</div>
-                            <div className="text-xs text-muted-foreground">Hoteles</div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">No hay datos suficientes para mostrar análisis</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Users className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No hay empleados registrados</h3>
+              <p className="mt-1 text-sm text-gray-500">Comienza agregando empleados al sistema.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
