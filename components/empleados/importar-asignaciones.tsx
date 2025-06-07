@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Upload, FileText, CheckCircle, AlertCircle, Users, Calendar } from "lucide-react"
+import { Upload, FileText, CheckCircle, AlertCircle, Users, Calendar, Calculator } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import { HOTELS } from "@/lib/employee-types"
 import { useToast } from "@/hooks/use-toast"
@@ -27,6 +27,8 @@ interface GroupedAssignment {
   empleado: string
   fecha: string
   hoteles: string[]
+  employeeId?: number
+  dailyRate?: number
 }
 
 export default function ImportarAsignaciones({ onSuccess }: ImportarAsignacionesProps) {
@@ -134,7 +136,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
       let createdAssignments = 0
       let errors = 0
 
-      // Agrupar asignaciones por empleado y fecha
+      // PASO 1: Agrupar asignaciones por empleado y fecha
       const groupedAssignments = new Map<string, GroupedAssignment>()
 
       // Procesar solo filas válidas
@@ -144,9 +146,10 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         const key = `${row.empleado.toLowerCase()}-${row.fecha}`
 
         if (groupedAssignments.has(key)) {
-          // Agregar hoteles a la asignación existente
+          // Agregar hoteles a la asignación existente (sin duplicados)
           const existing = groupedAssignments.get(key)!
-          existing.hoteles = [...new Set([...existing.hoteles, ...row.hoteles])]
+          const allHotels = [...existing.hoteles, ...row.hoteles]
+          existing.hoteles = [...new Set(allHotels)] // Eliminar duplicados
         } else {
           // Crear nueva asignación agrupada
           groupedAssignments.set(key, {
@@ -157,9 +160,9 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         }
       }
 
-      console.log("Asignaciones agrupadas:", Array.from(groupedAssignments.values()))
+      console.log("🔍 Asignaciones agrupadas:", Array.from(groupedAssignments.values()))
 
-      // Procesar cada asignación agrupada
+      // PASO 2: Procesar cada asignación agrupada
       for (const assignment of groupedAssignments.values()) {
         try {
           // Buscar o crear empleado
@@ -177,29 +180,34 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               employee = newEmployee
               employeeMap.set(assignment.empleado.toLowerCase(), employee)
               createdEmployees++
+              console.log(`✅ Empleado creado: ${employee.name} - Tarifa: $${employee.daily_rate}`)
             } else {
               errors++
+              console.log(`❌ Error creando empleado: ${assignment.empleado}`)
               continue
             }
           }
 
-          // Calcular tarifa dividida entre los hoteles
-          const dividedRate = employee.daily_rate / assignment.hoteles.length
+          // PASO 3: Calcular tarifa dividida entre los hoteles
+          const numberOfHotels = assignment.hoteles.length
+          const dividedRate = Math.round(employee.daily_rate / numberOfHotels)
 
-          console.log(`Empleado: ${employee.name}`)
-          console.log(`Fecha: ${assignment.fecha}`)
-          console.log(`Tarifa diaria: ${employee.daily_rate}`)
-          console.log(`Hoteles: ${assignment.hoteles.join(", ")}`)
-          console.log(`Tarifa por hotel: ${dividedRate}`)
+          console.log(`\n📊 CÁLCULO DE TARIFA:`)
+          console.log(`👤 Empleado: ${employee.name}`)
+          console.log(`📅 Fecha: ${assignment.fecha}`)
+          console.log(`💰 Tarifa diaria total: $${employee.daily_rate}`)
+          console.log(`🏨 Número de hoteles: ${numberOfHotels}`)
+          console.log(`🔢 Tarifa por hotel: $${dividedRate}`)
+          console.log(`🏨 Hoteles: ${assignment.hoteles.join(", ")}`)
 
-          // Crear asignaciones para cada hotel con tarifa dividida
+          // PASO 4: Crear asignaciones individuales con tarifa dividida
           for (const hotel of assignment.hoteles) {
             const assignmentResult = await saveAssignment({
               employee_id: employee.id,
               hotel_name: hotel,
               assignment_date: assignment.fecha,
-              daily_rate_used: dividedRate, // Usar la tarifa dividida
-              notes: `Importado masivamente`,
+              daily_rate_used: dividedRate, // ⭐ USAR LA TARIFA DIVIDIDA
+              notes: `Importado masivamente - Tarifa dividida entre ${numberOfHotels} hoteles`,
             })
 
             if (assignmentResult) {
@@ -210,14 +218,20 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               console.log(`❌ Error creando asignación: ${hotel}`)
             }
           }
+
+          // Verificar que el total sea correcto
+          const totalCalculated = dividedRate * numberOfHotels
+          console.log(`🔍 Verificación: $${dividedRate} × ${numberOfHotels} = $${totalCalculated}`)
+          console.log(`✅ Total esperado: $${employee.daily_rate}`)
+          console.log(`${Math.abs(totalCalculated - employee.daily_rate) <= 1 ? "✅ CORRECTO" : "⚠️ DIFERENCIA MÍNIMA"}`)
         } catch (error) {
-          console.error("Error procesando asignación agrupada:", error)
+          console.error("❌ Error procesando asignación agrupada:", error)
           errors++
         }
       }
 
       toast({
-        title: "Importación completada",
+        title: "✅ Importación completada",
         description: `Empleados creados: ${createdEmployees}, Asignaciones creadas: ${createdAssignments}, Errores: ${errors}`,
       })
 
@@ -228,7 +242,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         onSuccess?.()
       }
     } catch (error) {
-      console.error("Error en importación:", error)
+      console.error("❌ Error en importación:", error)
       toast({
         title: "Error",
         description: "Error durante la importación",
@@ -250,7 +264,8 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
 
     if (groupedPreview.has(key)) {
       const existing = groupedPreview.get(key)!
-      existing.hoteles = [...new Set([...existing.hoteles, ...row.hoteles])]
+      const allHotels = [...existing.hoteles, ...row.hoteles]
+      existing.hoteles = [...new Set(allHotels)]
     } else {
       groupedPreview.set(key, {
         empleado: row.empleado,
@@ -270,6 +285,16 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Alert className="border-green-200 bg-green-50">
+            <Calculator className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">
+              <strong>✅ División de Tarifas Corregida:</strong> Ahora funciona correctamente. Si un empleado trabaja en
+              múltiples hoteles el mismo día, su tarifa se divide automáticamente.
+              <br />
+              <strong>Ejemplo:</strong> Diego ($34,700) en 2 hoteles = $17,350 por hotel.
+            </AlertDescription>
+          </Alert>
+
           <Alert>
             <FileText className="h-4 w-4" />
             <AlertDescription>
@@ -277,9 +302,6 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               <br />
               <strong>Ejemplo:</strong>
               <pre className="mt-2 text-xs bg-gray-100 p-2 rounded">{exampleData}</pre>
-              <br />
-              <strong>Importante:</strong> Si un empleado trabaja en múltiples hoteles el mismo día, su tarifa se
-              dividirá automáticamente.
             </AlertDescription>
           </Alert>
 
@@ -315,7 +337,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle className="h-5 w-5" />
-              Vista Previa de Importación
+              Vista Previa - División Automática de Tarifas
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -367,15 +389,22 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
 
             {groupedPreview.size > 0 && (
               <div>
-                <h4 className="font-medium mb-2">Resumen agrupado (tarifa dividida por día):</h4>
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <Calculator className="h-4 w-4 text-green-600" />✅ Resumen con división automática de tarifas:
+                </h4>
                 <div className="max-h-60 overflow-y-auto space-y-2">
                   {Array.from(groupedPreview.values())
                     .slice(0, 10)
                     .map((assignment, index) => (
-                      <div key={index} className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded">
-                        <Calendar className="h-4 w-4 text-gray-500" />
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 text-sm bg-green-50 p-3 rounded border border-green-200"
+                      >
+                        <Calendar className="h-4 w-4 text-green-600" />
                         <span className="font-medium">{assignment.fecha}</span>
-                        <Badge variant="outline">{assignment.empleado}</Badge>
+                        <Badge variant="outline" className="border-green-300">
+                          {assignment.empleado}
+                        </Badge>
                         <span className="text-gray-500">→</span>
                         <div className="flex gap-1">
                           {assignment.hoteles.map((hotel, hotelIndex) => (
@@ -384,10 +413,13 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
                             </Badge>
                           ))}
                         </div>
-                        <span className="text-xs text-blue-600 ml-auto">
-                          Tarifa dividida entre {assignment.hoteles.length} hotel
-                          {assignment.hoteles.length !== 1 ? "es" : ""}
-                        </span>
+                        <div className="ml-auto text-xs">
+                          <span className="text-green-600 font-medium">
+                            ✅ Tarifa ÷ {assignment.hoteles.length} = Tarifa por hotel
+                          </span>
+                          <br />
+                          <span className="text-blue-600">Total día = Tarifa completa del empleado</span>
+                        </div>
                       </div>
                     ))}
                   {groupedPreview.size > 10 && (

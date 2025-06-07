@@ -426,3 +426,6 @@ export const subscribeToRecords = (callback: (records: SupabaseRecord[]) => void
     )
     .subscribe()
 }
+
+// Exportación nombrada del cliente de Supabase para compatibilidad
+export const supabase = getSupabaseClient()

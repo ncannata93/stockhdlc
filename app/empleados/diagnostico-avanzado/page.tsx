@@ -1,9 +1,8 @@
-"use client"
-
-import { DeepDiagnosis } from "@/components/deep-diagnosis"
+import DiagnosticoTarifas from "@/components/empleados/diagnostico-tarifas"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import DeepDiagnosis from "@/components/empleados/deep-diagnosis"
 
 export default function DiagnosticoAvanzadoPage() {
   return (
@@ -17,6 +16,9 @@ export default function DiagnosticoAvanzadoPage() {
           </Link>
         </Button>
       </div>
+
+      <DiagnosticoTarifas />
+
       <DeepDiagnosis />
     </div>
   )
