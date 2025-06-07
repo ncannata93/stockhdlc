@@ -23,6 +23,12 @@ interface ParsedRow {
   errors: string[]
 }
 
+interface GroupedAssignment {
+  empleado: string
+  fecha: string
+  hoteles: string[]
+}
+
 export default function ImportarAsignaciones({ onSuccess }: ImportarAsignacionesProps) {
   const [textData, setTextData] = useState("")
   const [parsedData, setParsedData] = useState<ParsedRow[]>([])
@@ -128,27 +134,48 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
       let createdAssignments = 0
       let errors = 0
 
-      for (const row of parsedData) {
-        if (!row.valid) {
-          errors++
-          continue
-        }
+      // Agrupar asignaciones por empleado y fecha
+      const groupedAssignments = new Map<string, GroupedAssignment>()
 
+      // Procesar solo filas válidas
+      const validRows = parsedData.filter((row) => row.valid)
+
+      for (const row of validRows) {
+        const key = `${row.empleado.toLowerCase()}-${row.fecha}`
+
+        if (groupedAssignments.has(key)) {
+          // Agregar hoteles a la asignación existente
+          const existing = groupedAssignments.get(key)!
+          existing.hoteles = [...new Set([...existing.hoteles, ...row.hoteles])]
+        } else {
+          // Crear nueva asignación agrupada
+          groupedAssignments.set(key, {
+            empleado: row.empleado,
+            fecha: row.fecha,
+            hoteles: [...row.hoteles],
+          })
+        }
+      }
+
+      console.log("Asignaciones agrupadas:", Array.from(groupedAssignments.values()))
+
+      // Procesar cada asignación agrupada
+      for (const assignment of groupedAssignments.values()) {
         try {
           // Buscar o crear empleado
-          let employee = employeeMap.get(row.empleado.toLowerCase())
+          let employee = employeeMap.get(assignment.empleado.toLowerCase())
 
           if (!employee) {
             // Crear nuevo empleado
             const newEmployee = await saveEmployee({
-              name: row.empleado,
+              name: assignment.empleado,
               role: "Mantenimiento",
               daily_rate: 15000, // Tarifa por defecto
             })
 
             if (newEmployee) {
               employee = newEmployee
-              employeeMap.set(row.empleado.toLowerCase(), employee)
+              employeeMap.set(assignment.empleado.toLowerCase(), employee)
               createdEmployees++
             } else {
               errors++
@@ -156,24 +183,35 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             }
           }
 
-          // Crear asignaciones para cada hotel
-          for (const hotel of row.hoteles) {
-            const assignment = await saveAssignment({
+          // Calcular tarifa dividida entre los hoteles
+          const dividedRate = employee.daily_rate / assignment.hoteles.length
+
+          console.log(`Empleado: ${employee.name}`)
+          console.log(`Fecha: ${assignment.fecha}`)
+          console.log(`Tarifa diaria: ${employee.daily_rate}`)
+          console.log(`Hoteles: ${assignment.hoteles.join(", ")}`)
+          console.log(`Tarifa por hotel: ${dividedRate}`)
+
+          // Crear asignaciones para cada hotel con tarifa dividida
+          for (const hotel of assignment.hoteles) {
+            const assignmentResult = await saveAssignment({
               employee_id: employee.id,
               hotel_name: hotel,
-              assignment_date: row.fecha,
-              daily_rate_used: employee.daily_rate,
+              assignment_date: assignment.fecha,
+              daily_rate_used: dividedRate, // Usar la tarifa dividida
               notes: `Importado masivamente`,
             })
 
-            if (assignment) {
+            if (assignmentResult) {
               createdAssignments++
+              console.log(`✅ Asignación creada: ${hotel} - $${dividedRate}`)
             } else {
               errors++
+              console.log(`❌ Error creando asignación: ${hotel}`)
             }
           }
         } catch (error) {
-          console.error("Error procesando fila:", error)
+          console.error("Error procesando asignación agrupada:", error)
           errors++
         }
       }
@@ -205,6 +243,23 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
   const invalidRows = parsedData.filter((row) => !row.valid)
   const totalAssignments = validRows.reduce((sum, row) => sum + row.hoteles.length, 0)
 
+  // Calcular vista previa con agrupación
+  const groupedPreview = new Map<string, GroupedAssignment>()
+  for (const row of validRows) {
+    const key = `${row.empleado.toLowerCase()}-${row.fecha}`
+
+    if (groupedPreview.has(key)) {
+      const existing = groupedPreview.get(key)!
+      existing.hoteles = [...new Set([...existing.hoteles, ...row.hoteles])]
+    } else {
+      groupedPreview.set(key, {
+        empleado: row.empleado,
+        fecha: row.fecha,
+        hoteles: [...row.hoteles],
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -222,6 +277,9 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               <br />
               <strong>Ejemplo:</strong>
               <pre className="mt-2 text-xs bg-gray-100 p-2 rounded">{exampleData}</pre>
+              <br />
+              <strong>Importante:</strong> Si un empleado trabaja en múltiples hoteles el mismo día, su tarifa se
+              dividirá automáticamente.
             </AlertDescription>
           </Alert>
 
@@ -265,10 +323,10 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               <div className="bg-green-50 p-4 rounded-lg">
                 <div className="flex items-center gap-2 text-green-700">
                   <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">Válidas</span>
+                  <span className="font-medium">Días de trabajo</span>
                 </div>
-                <div className="text-2xl font-bold text-green-800">{validRows.length}</div>
-                <div className="text-sm text-green-600">{totalAssignments} asignaciones</div>
+                <div className="text-2xl font-bold text-green-800">{groupedPreview.size}</div>
+                <div className="text-sm text-green-600">{totalAssignments} asignaciones totales</div>
               </div>
 
               <div className="bg-red-50 p-4 rounded-lg">
@@ -307,27 +365,33 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               </Alert>
             )}
 
-            {validRows.length > 0 && (
+            {groupedPreview.size > 0 && (
               <div>
-                <h4 className="font-medium mb-2">Resumen de datos válidos:</h4>
+                <h4 className="font-medium mb-2">Resumen agrupado (tarifa dividida por día):</h4>
                 <div className="max-h-60 overflow-y-auto space-y-2">
-                  {validRows.slice(0, 10).map((row, index) => (
-                    <div key={index} className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded">
-                      <Calendar className="h-4 w-4 text-gray-500" />
-                      <span className="font-medium">{row.fecha}</span>
-                      <Badge variant="outline">{row.empleado}</Badge>
-                      <span className="text-gray-500">→</span>
-                      <div className="flex gap-1">
-                        {row.hoteles.map((hotel, hotelIndex) => (
-                          <Badge key={hotelIndex} variant="secondary" className="text-xs">
-                            {hotel}
-                          </Badge>
-                        ))}
+                  {Array.from(groupedPreview.values())
+                    .slice(0, 10)
+                    .map((assignment, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded">
+                        <Calendar className="h-4 w-4 text-gray-500" />
+                        <span className="font-medium">{assignment.fecha}</span>
+                        <Badge variant="outline">{assignment.empleado}</Badge>
+                        <span className="text-gray-500">→</span>
+                        <div className="flex gap-1">
+                          {assignment.hoteles.map((hotel, hotelIndex) => (
+                            <Badge key={hotelIndex} variant="secondary" className="text-xs">
+                              {hotel}
+                            </Badge>
+                          ))}
+                        </div>
+                        <span className="text-xs text-blue-600 ml-auto">
+                          Tarifa dividida entre {assignment.hoteles.length} hotel
+                          {assignment.hoteles.length !== 1 ? "es" : ""}
+                        </span>
                       </div>
-                    </div>
-                  ))}
-                  {validRows.length > 10 && (
-                    <div className="text-sm text-gray-500 text-center">... y {validRows.length - 10} filas más</div>
+                    ))}
+                  {groupedPreview.size > 10 && (
+                    <div className="text-sm text-gray-500 text-center">... y {groupedPreview.size - 10} días más</div>
                   )}
                 </div>
               </div>
