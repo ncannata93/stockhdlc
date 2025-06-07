@@ -8,6 +8,7 @@ import Agregar from "@/components/empleados/agregar"
 import Historial from "@/components/empleados/historial"
 import Resumen from "@/components/empleados/resumen"
 import CalendarioSimple from "@/components/empleados/calendario-simple"
+import ImportarAsignaciones from "@/components/empleados/importar-asignaciones"
 
 export default function EmpleadosClientPage() {
   const [activeTab, setActiveTab] = useState("inicio")
@@ -15,10 +16,11 @@ export default function EmpleadosClientPage() {
   return (
     <div className="container mx-auto py-6">
       <Tabs defaultValue="inicio" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-6 mb-8">
+        <TabsList className="grid grid-cols-7 mb-8">
           <TabsTrigger value="inicio">Inicio</TabsTrigger>
           <TabsTrigger value="empleados">Empleados</TabsTrigger>
           <TabsTrigger value="agregar">Agregar</TabsTrigger>
+          <TabsTrigger value="importar">Importar</TabsTrigger>
           <TabsTrigger value="calendario">Calendario</TabsTrigger>
           <TabsTrigger value="historial">Historial</TabsTrigger>
           <TabsTrigger value="resumen">Resumen</TabsTrigger>
@@ -31,6 +33,9 @@ export default function EmpleadosClientPage() {
         </TabsContent>
         <TabsContent value="agregar">
           <Agregar onSuccess={() => setActiveTab("empleados")} />
+        </TabsContent>
+        <TabsContent value="importar">
+          <ImportarAsignaciones onSuccess={() => setActiveTab("historial")} />
         </TabsContent>
         <TabsContent value="calendario">
           <CalendarioSimple />
