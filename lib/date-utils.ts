@@ -158,3 +158,59 @@ export const getWeekEnd = (date: string | Date | null | undefined): string => {
     return ""
   }
 }
+
+/**
+ * Verifica si una fecha está dentro de un rango específico (inclusivo)
+ * @param date - Fecha a verificar en formato YYYY-MM-DD
+ * @param startDate - Fecha de inicio del rango en formato YYYY-MM-DD
+ * @param endDate - Fecha de fin del rango en formato YYYY-MM-DD
+ * @returns true si la fecha está dentro del rango, false si no
+ */
+export const isDateInRange = (
+  date: string | null | undefined,
+  startDate: string | null | undefined,
+  endDate: string | null | undefined,
+): boolean => {
+  if (!date || !startDate || !endDate) return false
+
+  try {
+    // Comparación directa de strings en formato YYYY-MM-DD
+    return date >= startDate && date <= endDate
+  } catch (error) {
+    console.error("Error checking date range:", { date, startDate, endDate }, error)
+    return false
+  }
+}
+
+/**
+ * Obtiene el rango de fechas de una semana específica
+ * @param weekStart - Fecha de inicio de semana en formato YYYY-MM-DD
+ * @returns Objeto con fechas de inicio y fin de la semana
+ */
+export const getWeekRange = (weekStart: string): { start: string; end: string } => {
+  try {
+    const start = parseDate(weekStart)
+    if (!start) throw new Error("Invalid week start date")
+
+    const end = new Date(start)
+    end.setDate(start.getDate() + 6)
+
+    return {
+      start: format(start, "yyyy-MM-dd"),
+      end: format(end, "yyyy-MM-dd"),
+    }
+  } catch (error) {
+    console.error("Error getting week range:", weekStart, error)
+    return { start: "", end: "" }
+  }
+}
+
+/**
+ * Valida que una fecha esté en formato YYYY-MM-DD
+ * @param dateString - Fecha a validar
+ * @returns true si el formato es válido, false si no
+ */
+export const isValidDateFormat = (dateString: string | null | undefined): boolean => {
+  if (!dateString) return false
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+}

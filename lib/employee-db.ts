@@ -137,6 +137,8 @@ export const getAssignments = async (filters?: {
   if (!supabase) return []
 
   try {
+    console.log("🔍 getAssignments llamada con filtros:", filters)
+
     let query = supabase
       .from("employee_assignments")
       .select(`
@@ -147,26 +149,59 @@ export const getAssignments = async (filters?: {
 
     if (filters?.employee_id) {
       query = query.eq("employee_id", filters.employee_id)
+      console.log("👤 Filtro por empleado:", filters.employee_id)
     }
 
+    // FILTRADO ESTRICTO POR FECHAS
     if (filters?.start_date && filters?.end_date) {
+      console.log("📅 Aplicando filtro de fechas:", filters.start_date, "a", filters.end_date)
+
+      // Usar filtros SQL estrictos
       query = query.gte("assignment_date", filters.start_date).lte("assignment_date", filters.end_date)
     }
 
     const { data, error } = await query
 
     if (error) {
-      console.error("Error al obtener asignaciones:", error)
+      console.error("❌ Error al obtener asignaciones:", error)
       return []
     }
 
+    console.log("📊 Asignaciones obtenidas de BD:", data?.length || 0)
+
+    // FILTRADO ADICIONAL EN JAVASCRIPT PARA ASEGURAR
+    let filteredData = data || []
+
+    if (filters?.start_date && filters?.end_date) {
+      const originalCount = filteredData.length
+
+      filteredData = filteredData.filter((assignment) => {
+        const assignmentDate = assignment.assignment_date
+        const isInRange = assignmentDate >= filters.start_date! && assignmentDate <= filters.end_date!
+
+        if (!isInRange) {
+          console.log(
+            `❌ FILTRADO JS: Excluyendo ${assignmentDate} (fuera de ${filters.start_date} - ${filters.end_date})`,
+          )
+        }
+
+        return isInRange
+      })
+
+      console.log(`🔧 Filtrado JS: ${originalCount} → ${filteredData.length} asignaciones`)
+    }
+
+    // Mostrar fechas finales
+    const finalDates = [...new Set(filteredData.map((a) => a.assignment_date))].sort()
+    console.log("📅 Fechas finales después de todos los filtros:", finalDates)
+
     // Formatear los datos para incluir el nombre del empleado
-    return (data || []).map((item: any) => ({
+    return filteredData.map((item: any) => ({
       ...item,
       employee_name: item.employees?.name,
     }))
   } catch (err) {
-    console.error("Error inesperado al obtener asignaciones:", err)
+    console.error("❌ Error inesperado al obtener asignaciones:", err)
     return []
   }
 }
