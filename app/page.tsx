@@ -3,23 +3,11 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Package2,
-  Users,
-  Settings,
-  LogIn,
-  Wrench,
-  ArrowRight,
-  BarChart3,
-  Calendar,
-  Shield,
-  Clock,
-  CheckCircle,
-} from "lucide-react"
+import { Package2, Users, Settings, LogIn, Wrench, ArrowRight, BarChart3, Calendar, Shield, Clock, CheckCircle, User, LogOut } from 'lucide-react'
 import Image from "next/image"
 
 export default function Home() {
-  const { isAuthenticated, isAdmin } = useAuth()
+  const { isAuthenticated, isAdmin, session, signOut } = useAuth()
   const router = useRouter()
 
   const handleNavigation = (path: string) => {
@@ -30,8 +18,37 @@ export default function Home() {
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+      {/* Header con logout para usuarios autenticados */}
+      {isAuthenticated && (
+        <div className="absolute top-4 right-4 z-50">
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center bg-white/80 backdrop-blur-sm rounded-full px-3 py-2 shadow-lg border border-gray-200">
+              <User className="h-4 w-4 text-gray-600 mr-2" />
+              <span className="text-sm font-medium text-gray-700">{session?.username || "Usuario"}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="bg-white/80 backdrop-blur-sm border-red-200 text-red-600 hover:bg-red-50 shadow-lg"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              <span>Cerrar Sesión</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-purple-600/5" />

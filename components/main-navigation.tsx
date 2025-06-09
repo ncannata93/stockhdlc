@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, Home, Package, Users, Menu, X, Wrench, LogOut } from "lucide-react"
+import { ArrowLeft, Home, Package, Users, Menu, X, Wrench, LogOut, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useRef, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
@@ -31,7 +31,7 @@ export function MainNavigation() {
   const handleLogout = async () => {
     try {
       await signOut()
-      // La redirección se maneja en el AuthContext o ProtectedRoute
+      setMobileMenuOpen(false)
     } catch (error) {
       console.error("Error al cerrar sesión:", error)
     }
@@ -41,17 +41,30 @@ export function MainNavigation() {
   const showServiciosLink = !session || session.username === "admin" || session.username === "ncannata"
 
   return (
-    <div className="bg-white border-b border-gray-200 py-2 px-3 md:py-3 md:px-4">
+    <div className="bg-white border-b border-gray-200 py-2 px-3 md:py-3 md:px-4 shadow-sm">
       <div className="flex items-center justify-between md:hidden">
         <Button variant="ghost" size="icon" onClick={() => window.history.back()} title="Volver atrás">
           <ArrowLeft className="h-5 w-5" />
         </Button>
 
-        <div className="flex items-center">
-          {session && <span className="text-sm font-medium text-gray-700 mr-2">{session.username}</span>}
-          <Button variant="ghost" size="icon" onClick={handleLogout} title="Cerrar sesión" className="mr-2">
-            <LogOut className="h-5 w-5 text-gray-600" />
+        <div className="flex items-center space-x-2">
+          {/* Usuario visible en móvil */}
+          <div className="flex items-center bg-gray-100 rounded-full px-3 py-1">
+            <User className="h-4 w-4 text-gray-600 mr-1" />
+            <span className="text-sm font-medium text-gray-700">{session?.username || "Usuario"}</span>
+          </div>
+
+          {/* Botón de logout prominente */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="text-red-600 border-red-200 hover:bg-red-50"
+          >
+            <LogOut className="h-4 w-4 mr-1" />
+            <span className="text-xs">Salir</span>
           </Button>
+
           <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
@@ -60,53 +73,67 @@ export function MainNavigation() {
 
       {/* Menú móvil */}
       {mobileMenuOpen && (
-        <div ref={menuRef} className="mt-2 md:hidden">
+        <div ref={menuRef} className="mt-3 md:hidden bg-white rounded-lg border shadow-lg p-2">
           <div className="flex flex-col space-y-1">
-            <Link href="/">
+            <Link href="/" onClick={() => setMobileMenuOpen(false)}>
               <Button
                 variant={pathname === "/" ? "default" : "ghost"}
                 size="sm"
-                className="w-full justify-start text-xs"
+                className="w-full justify-start text-sm"
               >
-                <Home className="h-3 w-3 mr-1" />
+                <Home className="h-4 w-4 mr-2" />
                 <span>Inicio</span>
               </Button>
             </Link>
 
-            <Link href="/stock">
+            <Link href="/stock" onClick={() => setMobileMenuOpen(false)}>
               <Button
                 variant={pathname.startsWith("/stock") ? "default" : "ghost"}
                 size="sm"
-                className="w-full justify-start text-xs"
+                className="w-full justify-start text-sm"
               >
-                <Package className="h-3 w-3 mr-1" />
+                <Package className="h-4 w-4 mr-2" />
                 <span>Stock</span>
               </Button>
             </Link>
 
-            <Link href="/empleados">
+            <Link href="/empleados" onClick={() => setMobileMenuOpen(false)}>
               <Button
                 variant={pathname.startsWith("/empleados") ? "default" : "ghost"}
                 size="sm"
-                className="w-full justify-start text-xs"
+                className="w-full justify-start text-sm"
               >
-                <Users className="h-3 w-3 mr-1" />
+                <Users className="h-4 w-4 mr-2" />
                 <span>Empleados</span>
               </Button>
             </Link>
 
             {showServiciosLink && (
-              <Link href="/servicios">
+              <Link href="/servicios" onClick={() => setMobileMenuOpen(false)}>
                 <Button
                   variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
                   size="sm"
-                  className="w-full justify-start text-xs"
+                  className="w-full justify-start text-sm"
                 >
-                  <Wrench className="h-3 w-3 mr-1" />
+                  <Wrench className="h-4 w-4 mr-2" />
                   <span>Servicios</span>
                 </Button>
               </Link>
             )}
+
+            {/* Separador */}
+            <div className="border-t my-2"></div>
+
+            {/* Logout en el menú también */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="w-full justify-start text-red-600 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              <span>Cerrar Sesión</span>
+            </Button>
           </div>
         </div>
       )}
@@ -120,7 +147,7 @@ export function MainNavigation() {
 
           <div className="flex space-x-2">
             <Link href="/">
-              <Button variant={pathname === "/" ? "default" : "ghost"} size="sm" className="flex items-center gap-1">
+              <Button variant={pathname === "/" ? "default" : "ghost"} size="sm" className="flex items-center gap-2">
                 <Home className="h-4 w-4" />
                 <span>Inicio</span>
               </Button>
@@ -130,7 +157,7 @@ export function MainNavigation() {
               <Button
                 variant={pathname.startsWith("/stock") ? "default" : "ghost"}
                 size="sm"
-                className="flex items-center gap-1"
+                className="flex items-center gap-2"
               >
                 <Package className="h-4 w-4" />
                 <span>Stock</span>
@@ -141,7 +168,7 @@ export function MainNavigation() {
               <Button
                 variant={pathname.startsWith("/empleados") ? "default" : "ghost"}
                 size="sm"
-                className="flex items-center gap-1"
+                className="flex items-center gap-2"
               >
                 <Users className="h-4 w-4" />
                 <span>Empleados</span>
@@ -153,7 +180,7 @@ export function MainNavigation() {
                 <Button
                   variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
                   size="sm"
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-2"
                 >
                   <Wrench className="h-4 w-4" />
                   <span>Servicios</span>
@@ -163,12 +190,20 @@ export function MainNavigation() {
           </div>
         </div>
 
-        {/* Información de usuario y botón de cerrar sesión */}
+        {/* Información de usuario y botón de cerrar sesión en desktop */}
         <div className="flex items-center space-x-3">
-          {session && <span className="text-sm font-medium text-gray-700">{session.username}</span>}
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="flex items-center gap-1">
+          <div className="flex items-center bg-gray-100 rounded-full px-4 py-2">
+            <User className="h-4 w-4 text-gray-600 mr-2" />
+            <span className="text-sm font-medium text-gray-700">{session?.username || "Usuario"}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="flex items-center gap-2 text-red-600 border-red-200 hover:bg-red-50"
+          >
             <LogOut className="h-4 w-4" />
-            <span>Cerrar sesión</span>
+            <span>Cerrar Sesión</span>
           </Button>
         </div>
       </div>

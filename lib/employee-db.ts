@@ -464,6 +464,34 @@ export const deletePayment = async (id: number): Promise<boolean> => {
   }
 }
 
+// Función para obtener la lista de hoteles únicos
+export const getHotels = async (): Promise<string[]> => {
+  const supabase = getSupabaseClient()
+  if (!supabase) return []
+
+  try {
+    const { data, error } = await supabase
+      .from("employee_assignments")
+      .select("hotel_name")
+      .not("hotel_name", "is", null)
+
+    if (error) {
+      console.error("Error al obtener hoteles:", error)
+      return []
+    }
+
+    // Obtener hoteles únicos y ordenarlos
+    const uniqueHotels = [...new Set(data?.map((item) => item.hotel_name) || [])]
+    return uniqueHotels.sort()
+  } catch (err) {
+    console.error("Error inesperado al obtener hoteles:", err)
+    return []
+  }
+}
+
+// Alias para saveAssignment para compatibilidad
+export const addEmployeeAssignment = saveAssignment
+
 // Hook personalizado para usar las funciones de base de datos con el usuario actual
 export const useEmployeeDB = () => {
   const { session } = useAuth()
@@ -475,9 +503,11 @@ export const useEmployeeDB = () => {
     deleteEmployee,
     getAssignments,
     saveAssignment: (assignment: Partial<EmployeeAssignment>) => saveAssignment(assignment, username),
+    addEmployeeAssignment: (assignment: Partial<EmployeeAssignment>) => saveAssignment(assignment, username),
     deleteAssignment,
     getPayments,
     savePayment: (payment: Partial<EmployeePayment>) => savePayment(payment, username),
     deletePayment,
+    getHotels,
   }
 }
