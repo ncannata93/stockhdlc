@@ -13,7 +13,7 @@ import type { Employee, Hotel } from "@/lib/employee-types"
 type Step = "date" | "employee" | "hotels" | "confirm" | "success"
 
 export default function AsignacionSimpleApp() {
-  const { user, logout } = useAuth()
+  const { session, signOut } = useAuth()
   const router = useRouter()
   const [step, setStep] = useState<Step>("date")
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0])
@@ -82,8 +82,12 @@ export default function AsignacionSimpleApp() {
   }
 
   const handleLogout = async () => {
-    await logout()
-    router.push("/login")
+    try {
+      await signOut()
+      router.push("/login")
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error)
+    }
   }
 
   const getStepTitle = () => {
@@ -117,10 +121,10 @@ export default function AsignacionSimpleApp() {
           </div>
 
           <div className="flex items-center gap-2">
-            {user && (
+            {session && (
               <Badge variant="secondary" className="hidden sm:flex">
                 <User className="h-3 w-3 mr-1" />
-                {user.email?.split("@")[0]}
+                {session.username}
               </Badge>
             )}
             <Button
@@ -258,20 +262,24 @@ export default function AsignacionSimpleApp() {
                 )}
 
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {hotels.map((hotel) => {
-                    const isSelected = selectedHotels.find((h) => h.id === hotel.id)
-                    return (
-                      <Button
-                        key={hotel.id}
-                        variant={isSelected ? "default" : "outline"}
-                        className="w-full justify-between p-4 h-auto"
-                        onClick={() => handleHotelToggle(hotel)}
-                      >
-                        <span>{hotel.name}</span>
-                        {isSelected && <Check className="h-4 w-4" />}
-                      </Button>
-                    )
-                  })}
+                  {hotels.length === 0 ? (
+                    <p className="text-center text-gray-500 py-4">Cargando hoteles...</p>
+                  ) : (
+                    hotels.map((hotel) => {
+                      const isSelected = selectedHotels.find((h) => h.id === hotel.id)
+                      return (
+                        <Button
+                          key={hotel.id}
+                          variant={isSelected ? "default" : "outline"}
+                          className="w-full justify-between p-4 h-auto"
+                          onClick={() => handleHotelToggle(hotel)}
+                        >
+                          <span>{hotel.name}</span>
+                          {isSelected && <Check className="h-4 w-4" />}
+                        </Button>
+                      )
+                    })
+                  )}
                 </div>
 
                 <Button

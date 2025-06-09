@@ -1,7 +1,8 @@
 "use client"
 
 import { createClient } from "@supabase/supabase-js"
-import type { Employee, EmployeeAssignment, EmployeePayment } from "./employee-types"
+import type { Employee, EmployeeAssignment, EmployeePayment, Hotel } from "./employee-types"
+import { HOTELS } from "./employee-types"
 import { useAuth } from "./auth-context"
 
 // Singleton para el cliente de Supabase
@@ -464,33 +465,56 @@ export const deletePayment = async (id: number): Promise<boolean> => {
   }
 }
 
-// Función para obtener la lista de hoteles únicos
-export const getHotels = async (): Promise<string[]> => {
-  const supabase = getSupabaseClient()
-  if (!supabase) return []
+// Función para obtener TODOS los hoteles disponibles (no solo los que tienen asignaciones)
+export const getHotels = async (): Promise<Hotel[]> => {
+  console.log("🏨 Obteniendo lista completa de hoteles...")
 
   try {
-    const { data, error } = await supabase
-      .from("employee_assignments")
-      .select("hotel_name")
-      .not("hotel_name", "is", null)
+    // Usar la lista predefinida de hoteles y convertirla a objetos
+    const hotels: Hotel[] = HOTELS.map((name, index) => ({
+      id: index + 1,
+      name: name,
+    }))
 
-    if (error) {
-      console.error("Error al obtener hoteles:", error)
-      return []
-    }
+    console.log("🏨 Hoteles disponibles:", hotels.length)
+    console.log(
+      "📋 Lista de hoteles:",
+      hotels.map((h) => h.name),
+    )
 
-    // Obtener hoteles únicos y ordenarlos
-    const uniqueHotels = [...new Set(data?.map((item) => item.hotel_name) || [])]
-    return uniqueHotels.sort()
+    return hotels
   } catch (err) {
-    console.error("Error inesperado al obtener hoteles:", err)
+    console.error("❌ Error inesperado al obtener hoteles:", err)
     return []
   }
 }
 
 // Alias para saveAssignment para compatibilidad
-export const addEmployeeAssignment = saveAssignment
+export const addEmployeeAssignment = async (assignmentData: {
+  employee_id: number
+  hotel_id?: number
+  hotel_name?: string
+  date: string
+  daily_rate: number
+  notes?: string
+}): Promise<EmployeeAssignment | null> => {
+  // Si viene hotel_id, necesitamos obtener el nombre del hotel
+  let hotelName = assignmentData.hotel_name
+
+  if (assignmentData.hotel_id && !hotelName) {
+    const hotels = await getHotels()
+    const hotel = hotels.find((h) => h.id === assignmentData.hotel_id)
+    hotelName = hotel?.name
+  }
+
+  return saveAssignment({
+    employee_id: assignmentData.employee_id,
+    hotel_name: hotelName,
+    assignment_date: assignmentData.date,
+    daily_rate_used: assignmentData.daily_rate,
+    notes: assignmentData.notes,
+  })
+}
 
 // Hook personalizado para usar las funciones de base de datos con el usuario actual
 export const useEmployeeDB = () => {
@@ -503,7 +527,7 @@ export const useEmployeeDB = () => {
     deleteEmployee,
     getAssignments,
     saveAssignment: (assignment: Partial<EmployeeAssignment>) => saveAssignment(assignment, username),
-    addEmployeeAssignment: (assignment: Partial<EmployeeAssignment>) => saveAssignment(assignment, username),
+    addEmployeeAssignment,
     deleteAssignment,
     getPayments,
     savePayment: (payment: Partial<EmployeePayment>) => savePayment(payment, username),
