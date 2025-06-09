@@ -190,7 +190,7 @@ export default function EmpleadosHistorial() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
@@ -204,12 +204,14 @@ export default function EmpleadosHistorial() {
               <TableBody>
                 {filteredAssignments.map((assignment) => (
                   <TableRow key={assignment.id}>
-                    <TableCell>
+                    <TableCell className="py-2 px-2 text-xs">
                       {format(new Date(assignment.assignment_date + "T00:00:00"), "dd/MM/yyyy", { locale: es })}
                     </TableCell>
                     <TableCell>{assignment.employee_name}</TableCell>
                     <TableCell>{assignment.hotel_name}</TableCell>
-                    <TableCell>{assignment.notes || "-"}</TableCell>
+                    <TableCell className="max-w-[120px] truncate text-sm" title={assignment.notes || "-"}>
+                      {assignment.notes || "-"}
+                    </TableCell>
                     <TableCell>{assignment.created_by || "Sistema"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

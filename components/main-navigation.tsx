@@ -63,8 +63,12 @@ export function MainNavigation() {
         <div ref={menuRef} className="mt-2 md:hidden">
           <div className="flex flex-col space-y-1">
             <Link href="/">
-              <Button variant={pathname === "/" ? "default" : "ghost"} size="sm" className="w-full justify-start">
-                <Home className="h-4 w-4 mr-2" />
+              <Button
+                variant={pathname === "/" ? "default" : "ghost"}
+                size="sm"
+                className="w-full justify-start text-xs"
+              >
+                <Home className="h-3 w-3 mr-1" />
                 <span>Inicio</span>
               </Button>
             </Link>
@@ -73,9 +77,9 @@ export function MainNavigation() {
               <Button
                 variant={pathname.startsWith("/stock") ? "default" : "ghost"}
                 size="sm"
-                className="w-full justify-start"
+                className="w-full justify-start text-xs"
               >
-                <Package className="h-4 w-4 mr-2" />
+                <Package className="h-3 w-3 mr-1" />
                 <span>Stock</span>
               </Button>
             </Link>
@@ -84,9 +88,9 @@ export function MainNavigation() {
               <Button
                 variant={pathname.startsWith("/empleados") ? "default" : "ghost"}
                 size="sm"
-                className="w-full justify-start"
+                className="w-full justify-start text-xs"
               >
-                <Users className="h-4 w-4 mr-2" />
+                <Users className="h-3 w-3 mr-1" />
                 <span>Empleados</span>
               </Button>
             </Link>
@@ -96,9 +100,9 @@ export function MainNavigation() {
                 <Button
                   variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
                   size="sm"
-                  className="w-full justify-start"
+                  className="w-full justify-start text-xs"
                 >
-                  <Wrench className="h-4 w-4 mr-2" />
+                  <Wrench className="h-3 w-3 mr-1" />
                   <span>Servicios</span>
                 </Button>
               </Link>

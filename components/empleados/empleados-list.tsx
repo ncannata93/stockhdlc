@@ -185,14 +185,14 @@ export default function EmpleadosList() {
               </TableHeader>
               <TableBody>
                 {filteredEmployees.map((employee) => (
-                  <TableRow key={employee.id}>
-                    <TableCell className="font-medium">{employee.name}</TableCell>
-                    <TableCell>{employee.role}</TableCell>
-                    <TableCell className="text-right">${employee.daily_rate.toLocaleString()}</TableCell>
+                  <TableRow key={employee.id} className="border-b">
+                    <TableCell className="font-medium text-sm py-3">{employee.name}</TableCell>
+                    <TableCell className="text-sm py-3">{employee.role}</TableCell>
+                    <TableCell className="text-right text-sm py-3">${employee.daily_rate.toLocaleString()}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="icon" onClick={() => handleEditEmployee(employee)}>
-                          <Pencil className="h-4 w-4" />
+                        <Button variant="outline" size="sm" onClick={() => handleEditEmployee(employee)}>
+                          <Pencil className="h-3 w-3" />
                         </Button>
                         <Button variant="outline" size="icon" onClick={() => handleDeleteEmployee(employee.id)}>
                           <Trash2 className="h-4 w-4" />
