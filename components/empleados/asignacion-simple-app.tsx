@@ -4,11 +4,18 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, User, Building2, Check, ArrowLeft, LogOut, X } from "lucide-react"
+import { Calendar, User, Building2, Check, ArrowLeft, LogOut, X, AlertCircle } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { addEmployeeAssignment, getEmployees, getHotels } from "@/lib/employee-db"
-import type { Employee, Hotel } from "@/lib/employee-types"
+import type { Employee } from "@/lib/employee-types"
+import { HOTELS } from "@/lib/employee-types"
+
+// Tipo Hotel para la interfaz
+interface Hotel {
+  id: number
+  name: string
+}
 
 type Step = "date" | "employee" | "hotels" | "confirm" | "success"
 
@@ -22,6 +29,7 @@ export default function AsignacionSimpleApp() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingHotels, setLoadingHotels] = useState(true)
 
   useEffect(() => {
     loadData()
@@ -29,11 +37,24 @@ export default function AsignacionSimpleApp() {
 
   const loadData = async () => {
     try {
+      setLoadingHotels(true)
       const [employeesData, hotelsData] = await Promise.all([getEmployees(), getHotels()])
       setEmployees(employeesData)
       setHotels(hotelsData)
+
+      // Verificar que todos los hoteles estén cargados
+      console.log(`🏨 Hoteles cargados: ${hotelsData.length} de ${HOTELS.length} esperados`)
+
+      // Verificar si falta algún hotel
+      const hotelNames = hotelsData.map((h) => h.name)
+      const missingHotels = HOTELS.filter((h) => !hotelNames.includes(h))
+      if (missingHotels.length > 0) {
+        console.warn("⚠️ Hoteles faltantes:", missingHotels)
+      }
     } catch (error) {
       console.error("Error loading data:", error)
+    } finally {
+      setLoadingHotels(false)
     }
   }
 
@@ -201,20 +222,24 @@ export default function AsignacionSimpleApp() {
                 </div>
 
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {employees.map((employee) => (
-                    <Button
-                      key={employee.id}
-                      variant={selectedEmployee?.id === employee.id ? "default" : "outline"}
-                      className="w-full justify-start p-4 h-auto"
-                      onClick={() => setSelectedEmployee(employee)}
-                    >
-                      <div className="text-left">
-                        <div className="font-medium">{employee.name}</div>
-                        <div className="text-sm opacity-70">{employee.role}</div>
-                        <div className="text-sm opacity-70">${employee.daily_rate?.toLocaleString()}/día</div>
-                      </div>
-                    </Button>
-                  ))}
+                  {employees.length === 0 ? (
+                    <p className="text-center text-gray-500 py-4">Cargando empleados...</p>
+                  ) : (
+                    employees.map((employee) => (
+                      <Button
+                        key={employee.id}
+                        variant={selectedEmployee?.id === employee.id ? "default" : "outline"}
+                        className="w-full justify-start p-4 h-auto"
+                        onClick={() => setSelectedEmployee(employee)}
+                      >
+                        <div className="text-left">
+                          <div className="font-medium">{employee.name}</div>
+                          <div className="text-sm opacity-70">{employee.role}</div>
+                          <div className="text-sm opacity-70">${employee.daily_rate?.toLocaleString()}/día</div>
+                        </div>
+                      </Button>
+                    ))
+                  )}
                 </div>
 
                 <Button
@@ -262,8 +287,38 @@ export default function AsignacionSimpleApp() {
                 )}
 
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {hotels.length === 0 ? (
+                  {loadingHotels ? (
                     <p className="text-center text-gray-500 py-4">Cargando hoteles...</p>
+                  ) : hotels.length === 0 ? (
+                    <div className="bg-yellow-50 p-4 rounded-lg flex items-center gap-3">
+                      <AlertCircle className="h-5 w-5 text-yellow-500" />
+                      <p className="text-sm text-yellow-700">
+                        No se encontraron hoteles. Por favor, contacta al administrador.
+                      </p>
+                    </div>
+                  ) : hotels.length < HOTELS.length ? (
+                    <>
+                      <div className="bg-yellow-50 p-3 rounded-lg mb-3">
+                        <p className="text-xs text-yellow-700 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          Solo se cargaron {hotels.length} de {HOTELS.length} hoteles
+                        </p>
+                      </div>
+                      {hotels.map((hotel) => {
+                        const isSelected = selectedHotels.find((h) => h.id === hotel.id)
+                        return (
+                          <Button
+                            key={hotel.id}
+                            variant={isSelected ? "default" : "outline"}
+                            className="w-full justify-between p-4 h-auto"
+                            onClick={() => handleHotelToggle(hotel)}
+                          >
+                            <span>{hotel.name}</span>
+                            {isSelected && <Check className="h-4 w-4" />}
+                          </Button>
+                        )
+                      })}
+                    </>
                   ) : (
                     hotels.map((hotel) => {
                       const isSelected = selectedHotels.find((h) => h.id === hotel.id)

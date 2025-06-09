@@ -3,8 +3,25 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Package2, Users, Settings, LogIn, Wrench, ArrowRight, BarChart3, Calendar, Shield, Clock, CheckCircle, User, LogOut } from 'lucide-react'
+import {
+  Package2,
+  Users,
+  Settings,
+  LogIn,
+  Wrench,
+  ArrowRight,
+  BarChart3,
+  Calendar,
+  Shield,
+  Clock,
+  CheckCircle,
+  User,
+  LogOut,
+  UserPlus,
+} from "lucide-react"
 import Image from "next/image"
+import { MainNavigation } from "@/components/main-navigation"
+import Link from "next/link"
 
 export default function Home() {
   const { isAuthenticated, isAdmin, session, signOut } = useAuth()
@@ -28,6 +45,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+      <MainNavigation />
+
       {/* Header con logout para usuarios autenticados */}
       {isAuthenticated && (
         <div className="absolute top-4 right-4 z-50">
@@ -81,6 +100,20 @@ export default function Home() {
             <p className="text-base sm:text-lg text-gray-500 mb-6 sm:mb-8 max-w-2xl mx-auto px-4">
               Control completo de stock, servicios y recursos humanos
             </p>
+
+            {/* Botón de Asignación Rápida - Fijo en el hero */}
+            <div className="mb-6 sm:mb-8">
+              <Link href="/asignar">
+                <Button
+                  size="lg"
+                  className="bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200 rounded-lg px-8 py-3"
+                  title="Asignación Rápida"
+                >
+                  <UserPlus className="h-5 w-5 mr-2" />
+                  <span className="font-medium">Asignación Rápida</span>
+                </Button>
+              </Link>
+            </div>
 
             {/* Version Info - Responsive */}
             <div className="inline-flex flex-col sm:flex-row items-center gap-2 sm:gap-4 bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 shadow-lg border border-gray-200 mb-8 sm:mb-12 mx-4">
