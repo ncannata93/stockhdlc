@@ -16,9 +16,10 @@ import {
 import { es } from "date-fns/locale"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Loader2, CalendarIcon, AlertCircle } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2, CalendarIcon, AlertCircle, Eye } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { getSupabaseClient } from "@/lib/supabase"
 import { HOTELS } from "@/lib/employee-types"
 
@@ -41,8 +42,30 @@ const hotelColors: Record<string, string> = {
   default: "bg-gray-100 border-gray-200 text-gray-800",
 }
 
+// Abreviaciones para móvil
+const hotelAbbreviations: Record<string, string> = {
+  Jaguel: "JAG",
+  Monaco: "MON",
+  Mallak: "MAL",
+  Argentina: "ARG",
+  Falkner: "FAL",
+  Stromboli: "STR",
+  "San Miguel": "SMG",
+  Colores: "COL",
+  Puntarenas: "PUN",
+  Tupe: "TUP",
+  Munich: "MUN",
+  Tiburones: "TIB",
+  Barlovento: "BAR",
+  Carama: "CAR",
+}
+
 const getHotelColor = (hotelName: string) => {
   return hotelColors[hotelName] || hotelColors.default
+}
+
+const getHotelAbbreviation = (hotelName: string) => {
+  return hotelAbbreviations[hotelName] || hotelName.substring(0, 3).toUpperCase()
 }
 
 interface Assignment {
@@ -58,6 +81,19 @@ export default function CalendarioSimple() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Detectar si es móvil
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+
+    checkMobile()
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [])
 
   // Función para cargar asignaciones
   const loadAssignments = async (date: Date) => {
@@ -147,11 +183,39 @@ export default function CalendarioSimple() {
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1))
   const currentMonth = () => setCurrentDate(new Date())
 
+  // Componente para mostrar detalles del día
+  const DayDetailsDialog = ({ day, assignments }: { day: Date; assignments: Assignment[] }) => (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+          <Eye className="h-3 w-3" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Asignaciones - {format(day, "d 'de' MMMM", { locale: es })}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {assignments.length > 0 ? (
+            assignments.map((assignment) => (
+              <div key={assignment.id} className={`p-3 rounded-lg border ${getHotelColor(assignment.hotel_name)}`}>
+                <div className="font-medium">{assignment.employee_name}</div>
+                <div className="text-sm opacity-75">{assignment.hotel_name}</div>
+              </div>
+            ))
+          ) : (
+            <p className="text-muted-foreground text-center py-4">No hay asignaciones para este día</p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+
   return (
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>Calendario de Asignaciones</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Calendario de Asignaciones</CardTitle>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={prevMonth} disabled={loading}>
               <ChevronLeft className="h-4 w-4" />
@@ -183,21 +247,39 @@ export default function CalendarioSimple() {
 
         {!loading && (
           <div className="space-y-4">
-            {/* Leyenda completa de hoteles */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">Leyenda de Hoteles:</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                {HOTELS.map((hotel) => (
-                  <Badge
-                    key={hotel}
-                    variant="outline"
-                    className={`${getHotelColor(hotel)} border text-xs justify-center`}
-                  >
-                    {hotel}
-                  </Badge>
-                ))}
+            {/* Leyenda completa de hoteles - Solo en desktop */}
+            {!isMobile && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Leyenda de Hoteles:</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                  {HOTELS.map((hotel) => (
+                    <Badge
+                      key={hotel}
+                      variant="outline"
+                      className={`${getHotelColor(hotel)} border text-xs justify-center`}
+                    >
+                      {hotel}
+                    </Badge>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Leyenda móvil con abreviaciones */}
+            {isMobile && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Hoteles (Abreviaciones):</h4>
+                <div className="grid grid-cols-3 gap-1 text-xs">
+                  {HOTELS.map((hotel) => (
+                    <div key={hotel} className="flex items-center gap-1">
+                      <div className={`w-3 h-3 rounded border ${getHotelColor(hotel)}`}></div>
+                      <span className="font-medium">{getHotelAbbreviation(hotel)}</span>
+                      <span className="text-muted-foreground truncate">{hotel}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Días de la semana */}
             <div className="grid grid-cols-7 gap-1 mb-2">
@@ -223,31 +305,60 @@ export default function CalendarioSimple() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[80px] sm:min-h-[100px] border rounded-md p-1
+                          min-h-[100px] sm:min-h-[120px] border rounded-md p-1 relative
                           ${isToday ? "border-blue-500 bg-blue-50" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                         `}
                       >
-                        <div className="text-right text-xs font-medium mb-1">{format(day, "d")}</div>
+                        <div className="flex justify-between items-start mb-1">
+                          <div className="text-xs font-medium">{format(day, "d")}</div>
+                          {hasAssignments && isMobile && <DayDetailsDialog day={day} assignments={dayAssignments} />}
+                        </div>
 
                         {hasAssignments ? (
                           <div className="space-y-1">
-                            {dayAssignments.map((assignment) => (
-                              <div
-                                key={assignment.id}
-                                className={`
-                                  text-xs p-1 rounded border truncate
-                                  ${getHotelColor(assignment.hotel_name)}
-                                `}
-                                title={`${assignment.hotel_name}: ${assignment.employee_name}`}
-                              >
-                                <div className="font-medium truncate text-xs">{assignment.employee_name}</div>
-                                <div className="text-xs opacity-75 truncate">{assignment.hotel_name}</div>
+                            {isMobile
+                              ? // Vista móvil: mostrar solo abreviaciones con colores
+                                dayAssignments
+                                  .slice(0, 2)
+                                  .map((assignment) => (
+                                    <div
+                                      key={assignment.id}
+                                      className={`
+                                    text-xs p-1 rounded border text-center font-medium
+                                    ${getHotelColor(assignment.hotel_name)}
+                                  `}
+                                      title={`${assignment.hotel_name}: ${assignment.employee_name}`}
+                                    >
+                                      {getHotelAbbreviation(assignment.hotel_name)}
+                                    </div>
+                                  ))
+                              : // Vista desktop: mostrar información completa
+                                dayAssignments.map((assignment) => (
+                                  <div
+                                    key={assignment.id}
+                                    className={`
+                                    text-xs p-1 rounded border truncate
+                                    ${getHotelColor(assignment.hotel_name)}
+                                  `}
+                                    title={`${assignment.hotel_name}: ${assignment.employee_name}`}
+                                  >
+                                    <div className="font-medium truncate text-xs">{assignment.employee_name}</div>
+                                    <div className="text-xs opacity-75 truncate">{assignment.hotel_name}</div>
+                                  </div>
+                                ))}
+                            {isMobile && dayAssignments.length > 2 && (
+                              <div className="text-xs text-center text-muted-foreground">
+                                +{dayAssignments.length - 2} más
                               </div>
-                            ))}
+                            )}
                           </div>
                         ) : (
-                          isCurrentMonth && <div className="text-center text-xs text-muted-foreground py-1">-</div>
+                          isCurrentMonth && (
+                            <div className="text-center text-xs text-muted-foreground py-1">
+                              {isMobile ? "-" : "Sin asignaciones"}
+                            </div>
+                          )
                         )}
                       </div>
                     )
