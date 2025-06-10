@@ -2,85 +2,115 @@
 
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Inicio from "@/components/empleados/inicio"
-import EmpleadosList from "@/components/empleados/empleados-list"
-import Agregar from "@/components/empleados/agregar"
-import Historial from "@/components/empleados/historial"
-import Resumen from "@/components/empleados/resumen"
-import CalendarioSimple from "@/components/empleados/calendario-simple"
-import ImportarAsignaciones from "@/components/empleados/importar-asignaciones"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Users, Calendar, BarChart3, UserPlus, Clock } from "lucide-react"
 
-const tabs = [
-  { value: "inicio", label: "Inicio" },
-  { value: "empleados", label: "Empleados" },
-  { value: "agregar", label: "Agregar" },
-  { value: "importar", label: "Importar" },
-  { value: "calendario", label: "Calendario" },
-  { value: "historial", label: "Historial" },
-  { value: "resumen", label: "Resumen" },
-]
+// Importar componentes existentes
+import EmpleadosInicio from "@/components/empleados/inicio"
+import EmpleadosAgregar from "@/components/empleados/agregar"
+import EmpleadosCalendario from "@/components/empleados/calendario"
+import EmpleadosResumen from "@/components/empleados/resumen"
+import EmpleadosHistorial from "@/components/empleados/historial"
 
-export default function EmpleadosClientPage() {
+export default function EmpleadosClient() {
   const [activeTab, setActiveTab] = useState("inicio")
 
-  const currentTabLabel = tabs.find((tab) => tab.value === activeTab)?.label || "Inicio"
+  // Función para cambiar pestañas desde componentes hijos
+  const handleTabChange = (tabValue: string) => {
+    setActiveTab(tabValue)
+  }
 
   return (
-    <div className="container mx-auto py-4 px-2 sm:py-6 sm:px-4">
-      <Tabs defaultValue="inicio" value={activeTab} onValueChange={setActiveTab}>
-        {/* Navegación Desktop - Pestañas normales */}
-        <div className="hidden sm:block mb-8">
-          <TabsList className="grid grid-cols-7 w-full">
-            {tabs.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value} className="text-sm">
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">👥 Gestión de Empleados</h1>
+          <p className="text-muted-foreground">Sistema completo para gestionar empleados, asignaciones y pagos</p>
         </div>
+      </div>
 
-        {/* Navegación Mobile - Dropdown */}
-        <div className="block sm:hidden mb-6">
-          <div className="bg-white rounded-lg border shadow-sm p-4">
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Sección Actual</label>
-            <Select value={activeTab} onValueChange={setActiveTab}>
-              <SelectTrigger className="w-full">
-                <SelectValue>
-                  <span className="font-medium">{currentTabLabel}</span>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {tabs.map((tab) => (
-                  <SelectItem key={tab.value} value={tab.value}>
-                    {tab.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="inicio" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Inicio</span>
+          </TabsTrigger>
+          <TabsTrigger value="agregar" className="flex items-center gap-2">
+            <UserPlus className="h-4 w-4" />
+            <span className="hidden sm:inline">Agregar</span>
+          </TabsTrigger>
+          <TabsTrigger value="calendario" className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            <span className="hidden sm:inline">Calendario</span>
+          </TabsTrigger>
+          <TabsTrigger value="resumen" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            <span className="hidden sm:inline">Resumen</span>
+          </TabsTrigger>
+          <TabsTrigger value="historial" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            <span className="hidden sm:inline">Historial</span>
+          </TabsTrigger>
+        </TabsList>
 
-        <TabsContent value="inicio" className="mt-0">
-          <Inicio />
+        <TabsContent value="inicio" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-6 w-6" />
+                Panel Principal de Empleados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EmpleadosInicio onTabChange={handleTabChange} />
+            </CardContent>
+          </Card>
         </TabsContent>
-        <TabsContent value="empleados" className="mt-0">
-          <EmpleadosList />
+
+        <TabsContent value="agregar" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserPlus className="h-6 w-6" />
+                Agregar Nueva Asignación
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EmpleadosAgregar onSuccess={() => handleTabChange("historial")} />
+            </CardContent>
+          </Card>
         </TabsContent>
-        <TabsContent value="agregar" className="mt-0">
-          <Agregar onSuccess={() => setActiveTab("empleados")} />
+
+        <TabsContent value="calendario" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-6 w-6" />
+                Calendario de Asignaciones
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EmpleadosCalendario />
+            </CardContent>
+          </Card>
         </TabsContent>
-        <TabsContent value="importar" className="mt-0">
-          <ImportarAsignaciones onSuccess={() => setActiveTab("historial")} />
+
+        <TabsContent value="resumen" className="space-y-6">
+          <EmpleadosResumen />
         </TabsContent>
-        <TabsContent value="calendario" className="mt-0">
-          <CalendarioSimple />
-        </TabsContent>
-        <TabsContent value="historial" className="mt-0">
-          <Historial />
-        </TabsContent>
-        <TabsContent value="resumen" className="mt-0">
-          <Resumen />
+
+        <TabsContent value="historial" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-6 w-6" />
+                Historial de Asignaciones
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EmpleadosHistorial />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

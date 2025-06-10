@@ -7,9 +7,12 @@ import { useEmployeeDB } from "@/lib/employee-db"
 import { BarChart, Calendar, Users, Clock, Hotel, AlertTriangle, Plus, FileText, TrendingUp } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
 
-export default function EmpleadosInicio() {
+interface EmpleadosInicioProps {
+  onTabChange?: (tabValue: string) => void
+}
+
+export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
   const { getEmployees, getAssignments } = useEmployeeDB()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -80,6 +83,12 @@ export default function EmpleadosInicio() {
     loadData()
   }, [])
 
+  const handleQuickAction = (action: string) => {
+    if (onTabChange) {
+      onTabChange(action)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header con saludo */}
@@ -95,7 +104,7 @@ export default function EmpleadosInicio() {
           <AlertDescription>
             <div className="mb-2">{error}</div>
             <Button asChild size="sm" variant="outline">
-              <Link href="/empleados/diagnostico">Ir a Diagnóstico</Link>
+              <a href="/empleados/diagnostico">Ir a Diagnóstico</a>
             </Button>
           </AlertDescription>
         </Alert>
@@ -159,29 +168,21 @@ export default function EmpleadosInicio() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/agregar">
-                <Plus className="h-6 w-6" />
-                <span>Nueva Asignación</span>
-              </Link>
+            <Button onClick={() => handleQuickAction("agregar")} className="h-20 flex-col gap-2" variant="outline">
+              <Plus className="h-6 w-6" />
+              <span>Nueva Asignación</span>
             </Button>
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/resumen">
-                <TrendingUp className="h-6 w-6" />
-                <span>Resumen de Pagos</span>
-              </Link>
+            <Button onClick={() => handleQuickAction("resumen")} className="h-20 flex-col gap-2" variant="outline">
+              <TrendingUp className="h-6 w-6" />
+              <span>Resumen de Pagos</span>
             </Button>
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/calendario">
-                <Calendar className="h-6 w-6" />
-                <span>Ver Calendario</span>
-              </Link>
+            <Button onClick={() => handleQuickAction("calendario")} className="h-20 flex-col gap-2" variant="outline">
+              <Calendar className="h-6 w-6" />
+              <span>Ver Calendario</span>
             </Button>
-            <Button asChild className="h-20 flex-col gap-2" variant="outline">
-              <Link href="/empleados/historial">
-                <FileText className="h-6 w-6" />
-                <span>Ver Historial</span>
-              </Link>
+            <Button onClick={() => handleQuickAction("historial")} className="h-20 flex-col gap-2" variant="outline">
+              <FileText className="h-6 w-6" />
+              <span>Ver Historial</span>
             </Button>
           </div>
         </CardContent>

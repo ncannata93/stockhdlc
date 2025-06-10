@@ -11,7 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   Loader2,
   Calendar,
-  DollarSign,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -32,6 +31,7 @@ import { toast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateForDisplay } from "@/lib/date-utils"
+import AccionesRapidas from "./acciones-rapidas"
 
 // Función para obtener color del hotel
 const getHotelColor = (hotelName: string) => {
@@ -153,6 +153,42 @@ export default function EmpleadosResumen() {
     const today = new Date()
     const monday = startOfWeek(today, { weekStartsOn: 1 })
     setSelectedWeek(monday.toISOString().split("T")[0])
+  }
+
+  const handleMarkAsPaid = async (paymentId: number) => {
+    try {
+      await savePayment(paymentId, { status: "pagado" })
+      toast({
+        title: "Pago Marcado",
+        description: "El pago ha sido marcado como pagado exitosamente.",
+      })
+      await reloadData() // Recargar datos después de marcar como pagado
+    } catch (error) {
+      console.error("Error al marcar como pagado:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo marcar el pago como pagado. Intenta nuevamente.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: number) => {
+    try {
+      await deletePayment(paymentId)
+      toast({
+        title: "Pago Eliminado",
+        description: "El pago ha sido eliminado exitosamente.",
+      })
+      await reloadData() // Recargar datos después de eliminar
+    } catch (error) {
+      console.error("Error al eliminar el pago:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar el pago. Intenta nuevamente.",
+        variant: "destructive",
+      })
+    }
   }
 
   // Cargar datos iniciales
@@ -448,119 +484,22 @@ export default function EmpleadosResumen() {
   // Calcular el monto máximo para la escala del gráfico
   const maxAmount = sortedHotels.length > 0 ? sortedHotels[0].amount : 0
 
-  const handleCreatePayment = async (employeeId: number, amount: number) => {
-    setLoading(true)
+  const reloadData = async () => {
     try {
-      const result = await savePayment({
-        employee_id: employeeId,
-        amount: amount,
-        payment_date: new Date().toISOString().split("T")[0],
-        week_start: startDateStr,
-        week_end: endDateStr,
-        status: "pendiente",
+      // Recargar pagos semanales
+      const paymentsData = await getPayments({
+        start_date: startDateStr,
+        end_date: endDateStr,
       })
+      setPayments(paymentsData)
 
-      if (result) {
-        toast({
-          title: "✅ Pago registrado",
-          description: "El pago ha sido registrado correctamente",
-        })
+      // Recargar todos los pagos
+      const allPaymentsData = await getPayments({})
+      setAllPayments(allPaymentsData)
 
-        // Actualizar la lista de pagos
-        setPayments([...payments, result])
-        setAllPayments([...allPayments, result])
-      } else {
-        toast({
-          title: "❌ Error",
-          description: "No se pudo registrar el pago",
-          variant: "destructive",
-        })
-      }
+      console.log("🔄 Datos recargados exitosamente")
     } catch (error) {
-      console.error("❌ Error al registrar pago:", error)
-      toast({
-        title: "❌ Error",
-        description: "Ocurrió un error al registrar el pago",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleMarkAsPaid = async (paymentId: number) => {
-    setLoading(true)
-    try {
-      const paymentToUpdate = allPayments.find((p) => p.id === paymentId)
-      if (!paymentToUpdate) return
-
-      const result = await savePayment({
-        ...paymentToUpdate,
-        status: "pagado",
-      })
-
-      if (result) {
-        toast({
-          title: "✅ Pago actualizado",
-          description: "El pago ha sido marcado como pagado",
-        })
-
-        // Actualizar la lista de pagos
-        setPayments(payments.map((p) => (p.id === paymentId ? result : p)))
-        setAllPayments(allPayments.map((p) => (p.id === paymentId ? result : p)))
-      } else {
-        toast({
-          title: "❌ Error",
-          description: "No se pudo actualizar el pago",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("❌ Error al actualizar pago:", error)
-      toast({
-        title: "❌ Error",
-        description: "Ocurrió un error al actualizar el pago",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDeletePayment = async (paymentId: number) => {
-    if (!confirm("¿Estás seguro de eliminar este pago? Esta acción no se puede deshacer.")) {
-      return
-    }
-
-    setLoading(true)
-    try {
-      const success = await deletePayment(paymentId)
-
-      if (success) {
-        toast({
-          title: "🗑️ Pago eliminado",
-          description: "El pago ha sido eliminado correctamente",
-        })
-
-        // Actualizar la lista de pagos
-        setPayments(payments.filter((p) => p.id !== paymentId))
-        setAllPayments(allPayments.filter((p) => p.id !== paymentId))
-      } else {
-        toast({
-          title: "❌ Error",
-          description: "No se pudo eliminar el pago",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("❌ Error al eliminar pago:", error)
-      toast({
-        title: "❌ Error",
-        description: "Ocurrió un error al eliminar el pago",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
+      console.error("❌ Error al recargar datos:", error)
     }
   }
 
@@ -626,42 +565,47 @@ export default function EmpleadosResumen() {
         </CardHeader>
         <CardContent>
           {/* Navegación de semanas mejorada */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="w-full md:w-1/2">
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="w-full">
               <Label htmlFor="week-select" className="text-base font-medium">
                 📅 Navegación de Semanas
               </Label>
-              <div className="flex items-center gap-2 mt-2">
-                <Button variant="outline" size="sm" onClick={goToPreviousWeek}>
+              <div className="flex items-center gap-1 mt-2">
+                <Button variant="outline" size="sm" onClick={goToPreviousWeek} className="px-2">
                   <ChevronLeft className="h-4 w-4" />
-                  Anterior
+                  <span className="hidden sm:inline">Anterior</span>
                 </Button>
                 <Input
                   id="week-select"
                   type="date"
                   value={selectedWeek}
                   onChange={(e) => setSelectedWeek(e.target.value)}
-                  className="flex-1"
+                  className="flex-1 text-sm"
                 />
-                <Button variant="outline" size="sm" onClick={goToNextWeek}>
-                  Siguiente
+                <Button variant="outline" size="sm" onClick={goToNextWeek} className="px-2">
+                  <span className="hidden sm:inline">Siguiente</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="sm" onClick={goToCurrentWeek}>
-                  Hoy
+                <Button variant="outline" size="sm" onClick={goToCurrentWeek} className="px-2">
+                  <span className="hidden sm:inline">Hoy</span>
+                  <CalendarDays className="h-4 w-4 sm:hidden" />
                 </Button>
               </div>
-              <div className="text-sm text-muted-foreground mt-2 p-2 bg-blue-50 rounded-md border border-blue-200">
-                📍 <strong>Semana seleccionada:</strong> {safeFormatDate(startDateStr)} al {safeFormatDate(endDateStr)}
+              <div className="text-xs text-muted-foreground mt-2 p-2 bg-blue-50 rounded-md border border-blue-200">
+                {" "}
+                {/* Reducir texto */}📍 <strong>Semana:</strong> {safeFormatDate(startDateStr)} al{" "}
+                {safeFormatDate(endDateStr)}
               </div>
             </div>
 
-            <div className="w-full md:w-1/2">
+            <div className="w-full">
               <Label htmlFor="employee-select" className="text-base font-medium">
                 👥 Filtrar por Empleado
               </Label>
               <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                <SelectTrigger id="employee-select" className="mt-2">
+                <SelectTrigger id="employee-select" className="mt-2 text-sm">
+                  {" "}
+                  {/* Reducir tamaño de texto */}
                   <SelectValue placeholder="Todos los empleados" />
                 </SelectTrigger>
                 <SelectContent>
@@ -954,56 +898,17 @@ export default function EmpleadosResumen() {
                           </div>
                         </div>
                       </CardContent>
-                      <CardFooter className="bg-gray-50 flex justify-between items-center border-t">
-                        <div className="text-sm text-muted-foreground">
-                          📅 <strong>Semana:</strong> {safeFormatDate(startDateStr)} - {safeFormatDate(endDateStr)}
-                        </div>
-                        <div className="flex gap-3">
-                          {!summary.payment ? (
-                            <Button
-                              onClick={() => handleCreatePayment(summary.employee.id, summary.totalAmount)}
-                              disabled={loading || summary.daysWorked === 0}
-                              className="bg-green-600 hover:bg-green-700"
-                              size="lg"
-                            >
-                              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                              <DollarSign className="mr-2 h-5 w-5" />💰 Registrar Pago
-                            </Button>
-                          ) : summary.payment.status === "pendiente" ? (
-                            <div className="flex gap-3">
-                              <Button
-                                onClick={() => handleMarkAsPaid(summary.payment!.id)}
-                                disabled={loading}
-                                className="bg-green-600 hover:bg-green-700"
-                                size="lg"
-                              >
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                <CheckCircle className="mr-2 h-5 w-5" />✅ Marcar como Pagado
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => handleDeletePayment(summary.payment!.id)}
-                                disabled={loading}
-                                size="lg"
-                              >
-                                🗑️ Eliminar Pago
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex gap-3">
-                              <Badge variant="default" className="px-6 py-3 text-base bg-green-100 text-green-800">
-                                <CheckCircle className="mr-2 h-5 w-5" />✅ Semana Pagada
-                              </Badge>
-                              <Button
-                                variant="outline"
-                                onClick={() => handleDeletePayment(summary.payment!.id)}
-                                disabled={loading}
-                                size="lg"
-                              >
-                                🗑️ Eliminar Pago
-                              </Button>
-                            </div>
-                          )}
+                      <CardFooter className="bg-gray-50 border-t p-6">
+                        <div className="w-full">
+                          <AccionesRapidas
+                            employee={summary.employee}
+                            totalAmount={summary.totalAmount}
+                            daysWorked={summary.daysWorked}
+                            payment={summary.payment}
+                            weekStart={startDateStr}
+                            weekEnd={endDateStr}
+                            onPaymentChange={reloadData}
+                          />
                         </div>
                       </CardFooter>
                     </Card>

@@ -201,9 +201,10 @@ export default function CalendarioSimple() {
 
             {/* Días de la semana */}
             <div className="grid grid-cols-7 gap-1 mb-2">
-              {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day, i) => (
-                <div key={i} className="text-center font-medium p-2 bg-muted rounded-md text-sm">
-                  {day}
+              {["L", "M", "X", "J", "V", "S", "D"].map((day, i) => (
+                <div key={i} className="text-center font-medium p-1 bg-muted rounded-md text-xs sm:text-sm">
+                  <span className="hidden sm:inline">{["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][i]}</span>
+                  <span className="sm:hidden">{day}</span>
                 </div>
               ))}
             </div>
@@ -222,12 +223,12 @@ export default function CalendarioSimple() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[100px] border rounded-md p-1 
+                          min-h-[80px] sm:min-h-[100px] border rounded-md p-1
                           ${isToday ? "border-blue-500 bg-blue-50" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                         `}
                       >
-                        <div className="text-right text-sm font-medium mb-1">{format(day, "d")}</div>
+                        <div className="text-right text-xs font-medium mb-1">{format(day, "d")}</div>
 
                         {hasAssignments ? (
                           <div className="space-y-1">
@@ -240,13 +241,13 @@ export default function CalendarioSimple() {
                                 `}
                                 title={`${assignment.hotel_name}: ${assignment.employee_name}`}
                               >
-                                <div className="font-medium truncate">{assignment.employee_name}</div>
+                                <div className="font-medium truncate text-xs">{assignment.employee_name}</div>
                                 <div className="text-xs opacity-75 truncate">{assignment.hotel_name}</div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          isCurrentMonth && <div className="text-center text-xs text-muted-foreground py-2">-</div>
+                          isCurrentMonth && <div className="text-center text-xs text-muted-foreground py-1">-</div>
                         )}
                       </div>
                     )
