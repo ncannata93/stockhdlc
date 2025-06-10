@@ -2,115 +2,40 @@
 
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, Calendar, BarChart3, UserPlus, Clock } from "lucide-react"
+import Inicio from "@/components/empleados/inicio"
+import Agregar from "@/components/empleados/agregar"
+import CalendarioSimple from "@/components/empleados/calendario-simple"
+import CalendarioMobile from "@/components/empleados/calendario-mobile"
+import Resumen from "@/components/empleados/resumen"
+import Historial from "@/components/empleados/historial"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
-// Importar componentes existentes
-import EmpleadosInicio from "@/components/empleados/inicio"
-import EmpleadosAgregar from "@/components/empleados/agregar"
-import EmpleadosCalendario from "@/components/empleados/calendario"
-import EmpleadosResumen from "@/components/empleados/resumen"
-import EmpleadosHistorial from "@/components/empleados/historial"
-
-export default function EmpleadosClient() {
+export default function EmpleadosClientPage() {
   const [activeTab, setActiveTab] = useState("inicio")
-
-  // Función para cambiar pestañas desde componentes hijos
-  const handleTabChange = (tabValue: string) => {
-    setActiveTab(tabValue)
-  }
+  const isMobile = useMediaQuery("(max-width: 768px)")
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">👥 Gestión de Empleados</h1>
-          <p className="text-muted-foreground">Sistema completo para gestionar empleados, asignaciones y pagos</p>
-        </div>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="inicio" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">Inicio</span>
-          </TabsTrigger>
-          <TabsTrigger value="agregar" className="flex items-center gap-2">
-            <UserPlus className="h-4 w-4" />
-            <span className="hidden sm:inline">Agregar</span>
-          </TabsTrigger>
-          <TabsTrigger value="calendario" className="flex items-center gap-2">
-            <Calendar className="h-4 w-4" />
-            <span className="hidden sm:inline">Calendario</span>
-          </TabsTrigger>
-          <TabsTrigger value="resumen" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            <span className="hidden sm:inline">Resumen</span>
-          </TabsTrigger>
-          <TabsTrigger value="historial" className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            <span className="hidden sm:inline">Historial</span>
-          </TabsTrigger>
+    <div className="container mx-auto py-4 px-2 sm:px-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid grid-cols-5 mb-4">
+          <TabsTrigger value="inicio">Inicio</TabsTrigger>
+          <TabsTrigger value="agregar">Agregar</TabsTrigger>
+          <TabsTrigger value="calendario">Calendario</TabsTrigger>
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="historial">Historial</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="inicio" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-6 w-6" />
-                Panel Principal de Empleados
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <EmpleadosInicio onTabChange={handleTabChange} />
-            </CardContent>
-          </Card>
+        <TabsContent value="inicio">
+          <Inicio onTabChange={setActiveTab} />
         </TabsContent>
-
-        <TabsContent value="agregar" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserPlus className="h-6 w-6" />
-                Agregar Nueva Asignación
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <EmpleadosAgregar onSuccess={() => handleTabChange("historial")} />
-            </CardContent>
-          </Card>
+        <TabsContent value="agregar">
+          <Agregar />
         </TabsContent>
-
-        <TabsContent value="calendario" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-6 w-6" />
-                Calendario de Asignaciones
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <EmpleadosCalendario />
-            </CardContent>
-          </Card>
+        <TabsContent value="calendario">{isMobile ? <CalendarioMobile /> : <CalendarioSimple />}</TabsContent>
+        <TabsContent value="resumen">
+          <Resumen />
         </TabsContent>
-
-        <TabsContent value="resumen" className="space-y-6">
-          <EmpleadosResumen />
-        </TabsContent>
-
-        <TabsContent value="historial" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-6 w-6" />
-                Historial de Asignaciones
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <EmpleadosHistorial />
-            </CardContent>
-          </Card>
+        <TabsContent value="historial">
+          <Historial />
         </TabsContent>
       </Tabs>
     </div>
