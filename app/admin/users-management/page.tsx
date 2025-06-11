@@ -7,37 +7,60 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
-import { UserRole, getAllUserRoles, updateUserRole, createUserRole, refreshRolesCache } from "@/lib/user-permissions"
-import { Users, UserPlus, Edit, Shield, Key, CheckCircle, RefreshCw, Cloud } from "lucide-react"
+import {
+  UserRole,
+  type ModuleName,
+  getAllUserRoles,
+  updateUserRole,
+  updateUserPermissions,
+  createUserRole,
+  refreshRolesCache,
+} from "@/lib/user-permissions"
+import { Users, UserPlus, Edit, Shield, Key, CheckCircle, RefreshCw, Cloud, Settings } from "lucide-react"
 import ProtectedRoute from "@/components/protected-route"
 
 interface UserRoleData {
   username: string
   role: UserRole
-  createdAt: string
-  updatedAt: string
-  updatedBy: string
+  permissions: ModuleName[]
+  createdAt?: string
+  updatedAt?: string
+  updatedBy?: string
+}
+
+const MODULE_LABELS: Record<ModuleName, string> = {
+  stock: "Stock",
+  empleados: "Empleados",
+  servicios: "Servicios",
+  admin: "Administración",
 }
 
 export default function UsersManagementPage() {
   const [users, setUsers] = useState<UserRoleData[]>([])
   const [selectedUser, setSelectedUser] = useState<UserRoleData | null>(null)
+  const [editingUser, setEditingUser] = useState<{
+    username: string
+    role: UserRole
+    permissions: ModuleName[]
+  } | null>(null)
   const [newUser, setNewUser] = useState({ username: "", role: UserRole.EMPLOYEE })
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const { toast } = useToast()
   const { session } = useAuth()
 
@@ -98,7 +121,7 @@ export default function UsersManagementPage() {
       if (result.success) {
         toast({
           title: "Usuario creado",
-          description: `Usuario ${newUser.username} creado exitosamente en la nube`,
+          description: `Usuario ${newUser.username} creado exitosamente`,
         })
         setNewUser({ username: "", role: UserRole.EMPLOYEE })
         await loadUsers()
@@ -120,29 +143,99 @@ export default function UsersManagementPage() {
     }
   }
 
-  const handleUpdateUserRole = async (username: string, newRole: UserRole) => {
+  const handleEditUser = (user: UserRoleData) => {
+    setEditingUser({
+      username: user.username,
+      role: user.role,
+      permissions: [...user.permissions],
+    })
+    setDialogOpen(true)
+  }
+
+  const handleSaveUser = async () => {
+    if (!editingUser) return
+
+    setIsLoading(true)
     try {
-      const result = await updateUserRole(username, newRole, session?.username || "admin")
+      let result
+
+      if (editingUser.role === UserRole.CUSTOM) {
+        // Guardar permisos personalizados
+        result = await updateUserPermissions(
+          editingUser.username,
+          editingUser.permissions,
+          session?.username || "admin",
+        )
+      } else {
+        // Guardar rol predefinido
+        result = await updateUserRole(editingUser.username, editingUser.role, session?.username || "admin")
+      }
 
       if (result.success) {
         toast({
-          title: "Rol actualizado",
-          description: `Rol de ${username} actualizado a ${getRoleDisplayName(newRole)} en la nube`,
+          title: "Usuario actualizado",
+          description: `Cambios guardados para ${editingUser.username}`,
         })
+        setDialogOpen(false)
+        setEditingUser(null)
         await loadUsers()
       } else {
         toast({
           title: "Error",
-          description: result.error || "Error al actualizar el rol",
+          description: result.error || "Error al actualizar usuario",
           variant: "destructive",
         })
       }
     } catch (error) {
       toast({
         title: "Error",
-        description: "Error al actualizar el rol",
+        description: "Error al actualizar usuario",
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setDialogOpen(false)
+    setEditingUser(null)
+  }
+
+  const handleRoleChange = (newRole: UserRole) => {
+    if (!editingUser) return
+
+    setEditingUser({
+      ...editingUser,
+      role: newRole,
+      permissions: newRole === UserRole.CUSTOM ? editingUser.permissions : getDefaultPermissions(newRole),
+    })
+  }
+
+  const handlePermissionToggle = (module: ModuleName, checked: boolean) => {
+    if (!editingUser) return
+
+    const newPermissions = checked
+      ? [...editingUser.permissions, module]
+      : editingUser.permissions.filter((p) => p !== module)
+
+    setEditingUser({
+      ...editingUser,
+      permissions: newPermissions,
+      role: UserRole.CUSTOM, // Cambiar a CUSTOM cuando se modifican permisos manualmente
+    })
+  }
+
+  const getDefaultPermissions = (role: UserRole): ModuleName[] => {
+    switch (role) {
+      case UserRole.SUPER_ADMIN:
+        return ["stock", "empleados", "servicios", "admin"]
+      case UserRole.MANAGER:
+        return ["stock", "empleados", "servicios"]
+      case UserRole.EMPLOYEE:
+        return ["stock", "empleados"]
+      default:
+        return []
     }
   }
 
@@ -154,6 +247,8 @@ export default function UsersManagementPage() {
         return "Gerente"
       case UserRole.EMPLOYEE:
         return "Empleado"
+      case UserRole.CUSTOM:
+        return "Personalizado"
       default:
         return "Desconocido"
     }
@@ -167,21 +262,10 @@ export default function UsersManagementPage() {
         return "default"
       case UserRole.EMPLOYEE:
         return "secondary"
+      case UserRole.CUSTOM:
+        return "outline"
       default:
         return "outline"
-    }
-  }
-
-  const getModuleAccess = (role: UserRole) => {
-    switch (role) {
-      case UserRole.SUPER_ADMIN:
-        return ["Stock", "Empleados", "Servicios", "Admin"]
-      case UserRole.MANAGER:
-        return ["Stock", "Empleados", "Servicios"]
-      case UserRole.EMPLOYEE:
-        return ["Stock", "Empleados"]
-      default:
-        return []
     }
   }
 
@@ -248,88 +332,44 @@ export default function UsersManagementPage() {
                       <TableRow>
                         <TableHead>Usuario</TableHead>
                         <TableHead>Rol</TableHead>
-                        <TableHead>Accesos</TableHead>
+                        <TableHead>Permisos</TableHead>
                         <TableHead>Última Actualización</TableHead>
                         <TableHead>Actualizado Por</TableHead>
                         <TableHead>Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((user) => {
-                        const access = getModuleAccess(user.role)
-
-                        return (
-                          <TableRow key={user.username}>
-                            <TableCell className="font-medium">{user.username}</TableCell>
-                            <TableCell>
-                              <Badge variant={getRoleBadgeVariant(user.role)}>{getRoleDisplayName(user.role)}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-1 flex-wrap">
-                                {access.map((module) => (
-                                  <Badge
-                                    key={module}
-                                    variant={module === "Admin" ? "destructive" : "outline"}
-                                    className="text-xs"
-                                  >
-                                    {module}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-sm text-gray-500">
-                              {new Date(user.updatedAt).toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-sm text-gray-500">{user.updatedBy}</TableCell>
-                            <TableCell>
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button variant="outline" size="sm" onClick={() => setSelectedUser(user)}>
-                                    <Edit className="h-4 w-4 mr-1" />
-                                    Editar
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Editar Usuario: {user.username}</DialogTitle>
-                                    <DialogDescription>
-                                      Modifica el rol y permisos del usuario. Los cambios se guardarán en la nube.
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <div className="space-y-4">
-                                    <div>
-                                      <Label htmlFor="role">Rol del Usuario</Label>
-                                      <Select
-                                        value={user.role}
-                                        onValueChange={(value) =>
-                                          handleUpdateUserRole(user.username, value as UserRole)
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value={UserRole.SUPER_ADMIN}>Super Administrador</SelectItem>
-                                          <SelectItem value={UserRole.MANAGER}>Gerente</SelectItem>
-                                          <SelectItem value={UserRole.EMPLOYEE}>Empleado</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-
-                                    <Alert>
-                                      <Cloud className="h-4 w-4" />
-                                      <AlertDescription>
-                                        Los cambios se guardarán en la nube y se sincronizarán automáticamente en todos
-                                        los dispositivos.
-                                      </AlertDescription>
-                                    </Alert>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
+                      {users.map((user) => (
+                        <TableRow key={user.username}>
+                          <TableCell className="font-medium">{user.username}</TableCell>
+                          <TableCell>
+                            <Badge variant={getRoleBadgeVariant(user.role)}>{getRoleDisplayName(user.role)}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 flex-wrap">
+                              {user.permissions.map((permission) => (
+                                <Badge
+                                  key={permission}
+                                  variant={permission === "admin" ? "destructive" : "outline"}
+                                  className="text-xs"
+                                >
+                                  {MODULE_LABELS[permission]}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-500">
+                            {user.updatedAt ? new Date(user.updatedAt).toLocaleString() : "N/A"}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-500">{user.updatedBy || "N/A"}</TableCell>
+                          <TableCell>
+                            <Button variant="outline" size="sm" onClick={() => handleEditUser(user)}>
+                              <Edit className="h-4 w-4 mr-1" />
+                              Editar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 )}
@@ -384,6 +424,7 @@ export default function UsersManagementPage() {
                     <br />• Super Administrador: Acceso total al sistema
                     <br />• Gerente: Acceso a Stock, Empleados y Servicios
                     <br />• Empleado: Acceso solo a Stock y Empleados
+                    <br />• Personalizado: Permisos específicos (se configura después de crear)
                   </AlertDescription>
                 </Alert>
 
@@ -477,6 +518,23 @@ export default function UsersManagementPage() {
                         <span className="text-red-500">✗</span>
                       </TableCell>
                     </TableRow>
+                    <TableRow>
+                      <TableCell>
+                        <Badge variant="outline">Personalizado</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Settings className="h-4 w-4 text-blue-500" />
+                      </TableCell>
+                      <TableCell>
+                        <Settings className="h-4 w-4 text-blue-500" />
+                      </TableCell>
+                      <TableCell>
+                        <Settings className="h-4 w-4 text-blue-500" />
+                      </TableCell>
+                      <TableCell>
+                        <Settings className="h-4 w-4 text-blue-500" />
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
 
@@ -484,13 +542,98 @@ export default function UsersManagementPage() {
                   <Cloud className="h-4 w-4" />
                   <AlertDescription>
                     <strong>Sistema en la Nube:</strong> Todos los permisos se sincronizan automáticamente entre
-                    dispositivos. Los cambios pueden tardar hasta 2 minutos en aplicarse completamente.
+                    dispositivos. Los roles personalizados permiten configurar permisos específicos por usuario.
                   </AlertDescription>
                 </Alert>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Dialog para editar usuario */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Editar Usuario: {editingUser?.username}</DialogTitle>
+              <DialogDescription>
+                Modifica el rol y permisos del usuario. Los cambios se guardarán en la nube.
+              </DialogDescription>
+            </DialogHeader>
+
+            {editingUser && (
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-role">Rol del Usuario</Label>
+                  <Select value={editingUser.role} onValueChange={handleRoleChange}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UserRole.SUPER_ADMIN}>Super Administrador</SelectItem>
+                      <SelectItem value={UserRole.MANAGER}>Gerente</SelectItem>
+                      <SelectItem value={UserRole.EMPLOYEE}>Empleado</SelectItem>
+                      <SelectItem value={UserRole.CUSTOM}>Personalizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Permisos de Acceso</Label>
+                  <div className="space-y-2 mt-2">
+                    {(Object.keys(MODULE_LABELS) as ModuleName[]).map((module) => (
+                      <div key={module} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`permission-${module}`}
+                          checked={editingUser.permissions.includes(module)}
+                          onCheckedChange={(checked) => handlePermissionToggle(module, checked as boolean)}
+                        />
+                        <Label htmlFor={`permission-${module}`} className="text-sm">
+                          {MODULE_LABELS[module]}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {editingUser.role === UserRole.CUSTOM && (
+                  <Alert>
+                    <Settings className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Rol Personalizado:</strong> Los permisos se configuran individualmente. Puedes seleccionar
+                      exactamente qué módulos puede acceder este usuario.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <Alert>
+                  <Cloud className="h-4 w-4" />
+                  <AlertDescription>
+                    Los cambios se guardarán en la nube y se sincronizarán automáticamente en todos los dispositivos.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCancelEdit} disabled={isLoading}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveUser} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Guardar Cambios
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </ProtectedRoute>
   )
