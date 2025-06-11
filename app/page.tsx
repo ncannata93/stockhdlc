@@ -18,14 +18,69 @@ import {
   User,
   LogOut,
   UserPlus,
+  Loader2,
 } from "lucide-react"
 import Image from "next/image"
 import { MainNavigation } from "@/components/main-navigation"
 import Link from "next/link"
+import { useState, useEffect } from "react"
+import { canAccessServices, isUserAdmin, initPermissionsMode } from "@/lib/user-permissions"
 
 export default function Home() {
-  const { isAuthenticated, isAdmin, session, signOut } = useAuth()
+  const { isAuthenticated, session, signOut } = useAuth()
+  const [canAccessServicesModule, setCanAccessServicesModule] = useState<boolean | null>(null)
+  const [isAdminUser, setIsAdminUser] = useState<boolean | null>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(true)
   const router = useRouter()
+
+  // Verificar permisos del usuario actual
+  useEffect(() => {
+    async function checkPermissions() {
+      if (session?.username) {
+        setPermissionsLoading(true)
+        try {
+          // Inicializar sistema de permisos primero
+          await initPermissionsMode()
+
+          // Luego verificar permisos específicos
+          const [servicesAccess, adminAccess] = await Promise.all([
+            canAccessServices(session.username),
+            isUserAdmin(session.username),
+          ])
+
+          console.log(`Permisos para ${session.username}:`, {
+            servicios: servicesAccess,
+            admin: adminAccess,
+          })
+
+          setCanAccessServicesModule(servicesAccess)
+          setIsAdminUser(adminAccess)
+        } catch (error) {
+          console.error("Error al verificar permisos:", error)
+          // Fallback basado en usuarios conocidos
+          const username = session.username.toLowerCase()
+          const isKnownAdmin = username === "admin" || username === "ncannata"
+          const isKnownManager = username === "dpili" || isKnownAdmin
+
+          setCanAccessServicesModule(isKnownManager)
+          setIsAdminUser(isKnownAdmin)
+        } finally {
+          setPermissionsLoading(false)
+        }
+      } else {
+        // Si no hay sesión, resetear estados
+        setCanAccessServicesModule(null)
+        setIsAdminUser(null)
+        setPermissionsLoading(false)
+      }
+    }
+
+    if (isAuthenticated) {
+      checkPermissions()
+    } else {
+      setPermissionsLoading(false)
+    }
+  }, [session?.username, isAuthenticated])
 
   const handleNavigation = (path: string) => {
     if (isAuthenticated) {
@@ -54,6 +109,7 @@ export default function Home() {
             <div className="flex items-center bg-white/80 backdrop-blur-sm rounded-full px-3 py-2 shadow-lg border border-gray-200">
               <User className="h-4 w-4 text-gray-600 mr-2" />
               <span className="text-sm font-medium text-gray-700">{session?.username || "Usuario"}</span>
+              {permissionsLoading && <Loader2 className="h-3 w-3 ml-2 animate-spin text-blue-500" />}
             </div>
             <Button
               variant="outline"
@@ -119,12 +175,12 @@ export default function Home() {
             <div className="inline-flex flex-col sm:flex-row items-center gap-2 sm:gap-4 bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 shadow-lg border border-gray-200 mb-8 sm:mb-12 mx-4">
               <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
                 <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-500" />
-                <span className="font-medium">Versión 1.2.3</span>
+                <span className="font-medium">Versión 1.3.1 - Permisos Mejorados</span>
               </div>
               <div className="hidden sm:block w-px h-4 bg-gray-300" />
               <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
                 <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-blue-500" />
-                <span>Actualizado: 08/06/2025</span>
+                <span>Actualizado: 11/06/2025</span>
               </div>
             </div>
 
@@ -143,8 +199,8 @@ export default function Home() {
                 <div className="text-xs sm:text-sm text-gray-600">Seguro</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-orange-600 mb-1">∞</div>
-                <div className="text-xs sm:text-sm text-gray-600">Escalable</div>
+                <div className="text-2xl sm:text-3xl font-bold text-orange-600 mb-1">☁️</div>
+                <div className="text-xs sm:text-sm text-gray-600">En la Nube</div>
               </div>
             </div>
           </div>
@@ -153,6 +209,16 @@ export default function Home() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 sm:pb-24">
+        {/* Loading state para permisos */}
+        {isAuthenticated && permissionsLoading && (
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center px-4 py-2 bg-blue-50 rounded-lg">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500 mr-2" />
+              <span className="text-blue-700 text-sm">Verificando permisos...</span>
+            </div>
+          </div>
+        )}
+
         {/* Module Cards - Mobile Optimized */}
         <div className="grid gap-6 sm:gap-8 md:grid-cols-2 lg:grid-cols-3 mb-12 sm:mb-16">
           {/* Stock Module */}
@@ -223,43 +289,68 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Services Module */}
-          <Card className="group hover:shadow-2xl transition-all duration-300 border-0 shadow-lg bg-gradient-to-br from-white to-purple-50/30 hover:scale-[1.02] cursor-pointer md:col-span-2 lg:col-span-1">
-            <CardHeader className="pb-3 sm:pb-4">
-              <div className="flex items-center justify-between mb-3 sm:mb-4">
-                <div className="p-2 sm:p-3 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg sm:rounded-xl shadow-lg group-hover:shadow-purple-500/25 transition-shadow">
-                  <Wrench className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+          {/* Services Module - Mostrar siempre si está autenticado, con estado de carga */}
+          {isAuthenticated && (
+            <Card
+              className={`group hover:shadow-2xl transition-all duration-300 border-0 shadow-lg bg-gradient-to-br from-white to-purple-50/30 hover:scale-[1.02] cursor-pointer md:col-span-2 lg:col-span-1 ${
+                permissionsLoading ? "opacity-50" : canAccessServicesModule === false ? "opacity-30" : ""
+              }`}
+            >
+              <CardHeader className="pb-3 sm:pb-4">
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <div className="p-2 sm:p-3 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg sm:rounded-xl shadow-lg group-hover:shadow-purple-500/25 transition-shadow">
+                    <Wrench className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+                  </div>
+                  {permissionsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+                  ) : (
+                    <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
+                  )}
                 </div>
-                <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <CardTitle className="text-xl sm:text-2xl font-bold text-gray-900">Gestión de Servicios</CardTitle>
-              <CardDescription className="text-gray-600 text-sm sm:text-base">
-                Control de servicios, reservaciones y administración de pagos
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
-                <div className="flex items-center text-xs sm:text-sm text-gray-600">
-                  <Calendar className="h-3 w-3 sm:h-4 sm:w-4 mr-2 text-purple-500" />
-                  Reservaciones online
+                <CardTitle className="text-xl sm:text-2xl font-bold text-gray-900">
+                  Gestión de Servicios
+                  {canAccessServicesModule === false && !permissionsLoading && (
+                    <span className="text-sm text-red-500 ml-2">(Sin acceso)</span>
+                  )}
+                </CardTitle>
+                <CardDescription className="text-gray-600 text-sm sm:text-base">
+                  Control de servicios, reservaciones y administración de pagos
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
+                  <div className="flex items-center text-xs sm:text-sm text-gray-600">
+                    <Calendar className="h-3 w-3 sm:h-4 sm:w-4 mr-2 text-purple-500" />
+                    Reservaciones online
+                  </div>
+                  <div className="flex items-center text-xs sm:text-sm text-gray-600">
+                    <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-2 text-purple-500" />
+                    Pagos seguros
+                  </div>
                 </div>
-                <div className="flex items-center text-xs sm:text-sm text-gray-600">
-                  <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-2 text-purple-500" />
-                  Pagos seguros
-                </div>
-              </div>
-              <Button
-                className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all text-sm sm:text-base"
-                onClick={() => handleNavigation("/servicios")}
-              >
-                Acceder al Módulo
-              </Button>
-            </CardContent>
-          </Card>
+                <Button
+                  className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all text-sm sm:text-base"
+                  onClick={() => handleNavigation("/servicios")}
+                  disabled={permissionsLoading || canAccessServicesModule === false}
+                >
+                  {permissionsLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Verificando...
+                    </>
+                  ) : canAccessServicesModule === false ? (
+                    "Sin Permisos"
+                  ) : (
+                    "Acceder al Módulo"
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
-        {/* Admin Section */}
-        {isAdmin && (
+        {/* Admin Section - Solo si es admin */}
+        {isAuthenticated && isAdminUser && (
           <div className="max-w-2xl mx-auto">
             <Card className="border-0 shadow-xl bg-gradient-to-r from-gray-900 to-gray-800 text-white hover:scale-[1.02] transition-all duration-300 cursor-pointer">
               <CardHeader className="text-center pb-3 sm:pb-4">
@@ -303,6 +394,26 @@ export default function Home() {
                   <LogIn className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                   Iniciar Sesión
                 </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Debug info para desarrollo */}
+        {isAuthenticated && session?.username === "admin" && (
+          <div className="mt-8 max-w-md mx-auto">
+            <Card className="bg-gray-50 border-gray-200">
+              <CardHeader>
+                <CardTitle className="text-sm">Debug - Permisos</CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs space-y-1">
+                <div>Usuario: {session.username}</div>
+                <div>
+                  Servicios:{" "}
+                  {canAccessServicesModule === null ? "Cargando..." : canAccessServicesModule ? "✅ Sí" : "❌ No"}
+                </div>
+                <div>Admin: {isAdminUser === null ? "Cargando..." : isAdminUser ? "✅ Sí" : "❌ No"}</div>
+                <div>Cargando: {permissionsLoading ? "Sí" : "No"}</div>
               </CardContent>
             </Card>
           </div>

@@ -2,16 +2,81 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, Home, Package, Users, Menu, X, Wrench, LogOut, User, UserPlus } from "lucide-react"
+import {
+  ArrowLeft,
+  Home,
+  Package,
+  Users,
+  Menu,
+  X,
+  Wrench,
+  LogOut,
+  User,
+  UserPlus,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useRef, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
+import { canAccessServices, initPermissionsMode, getPermissionsSystemStatus } from "@/lib/user-permissions"
 
 export function MainNavigation() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [canAccessServicesModule, setCanAccessServicesModule] = useState<boolean | null>(null)
+  const [permissionsMode, setPermissionsMode] = useState<"cloud" | "local">("local")
+  const [permissionsError, setPermissionsError] = useState<string | null>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(true)
   const menuRef = useRef<HTMLDivElement>(null)
   const { signOut, session, isAuthenticated } = useAuth()
+
+  // Inicializar sistema de permisos
+  useEffect(() => {
+    async function initSystem() {
+      try {
+        await initPermissionsMode()
+        const status = getPermissionsSystemStatus()
+        setPermissionsMode(status.mode)
+        setPermissionsError(status.error)
+      } catch (error) {
+        console.error("Error al inicializar sistema de permisos:", error)
+      }
+    }
+
+    initSystem()
+  }, [])
+
+  // Verificar permisos de servicios
+  useEffect(() => {
+    async function checkServicesAccess() {
+      if (session?.username) {
+        setPermissionsLoading(true)
+        try {
+          const hasAccess = await canAccessServices(session.username)
+          console.log(`Navegación - Acceso a servicios para ${session.username}:`, hasAccess)
+          setCanAccessServicesModule(hasAccess)
+        } catch (error) {
+          console.error("Error al verificar permisos en navegación:", error)
+          // Fallback: permitir acceso a servicios para usuarios conocidos
+          const username = session.username.toLowerCase()
+          const hasAccess = username === "admin" || username === "ncannata" || username === "dpili"
+          setCanAccessServicesModule(hasAccess)
+        } finally {
+          setPermissionsLoading(false)
+        }
+      } else {
+        setCanAccessServicesModule(null)
+        setPermissionsLoading(false)
+      }
+    }
+
+    if (isAuthenticated) {
+      checkServicesAccess()
+    } else {
+      setPermissionsLoading(false)
+    }
+  }, [session?.username, isAuthenticated])
 
   // Cerrar menú al hacer clic fuera
   useEffect(() => {
@@ -37,9 +102,6 @@ export function MainNavigation() {
     }
   }
 
-  // Determinar qué enlaces mostrar según el usuario
-  const showServiciosLink = !session || session.username === "admin" || session.username === "ncannata"
-
   // Solo mostrar el botón de asignar en la página principal
   const isHomePage = pathname === "/"
 
@@ -47,6 +109,15 @@ export function MainNavigation() {
     <>
       {/* Navegación principal */}
       <div className="bg-white/95 backdrop-blur-sm border-b border-gray-200 py-2 px-3 md:py-2 md:px-4 shadow-sm sticky top-0 z-40">
+        {/* Indicador de modo de permisos (solo para admin) */}
+        {isAuthenticated && session?.username === "admin" && permissionsMode === "local" && (
+          <div className="bg-amber-50 text-amber-800 text-xs px-3 py-1 mb-2 rounded-md flex items-center">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            <span>Usando permisos locales</span>
+            {permissionsError && <span className="ml-1 text-amber-700">({permissionsError})</span>}
+          </div>
+        )}
+
         <div className="flex items-center justify-between md:hidden">
           <Button variant="ghost" size="sm" onClick={() => window.history.back()} title="Volver atrás">
             <ArrowLeft className="h-4 w-4" />
@@ -60,6 +131,7 @@ export function MainNavigation() {
                 <span className="text-xs font-medium text-gray-700 max-w-16 truncate">
                   {session?.username || "User"}
                 </span>
+                {permissionsLoading && <Loader2 className="h-2 w-2 ml-1 animate-spin text-blue-500" />}
               </div>
             )}
 
@@ -121,17 +193,27 @@ export function MainNavigation() {
                 </Button>
               </Link>
 
-              {showServiciosLink && (
-                <Link href="/servicios" onClick={() => setMobileMenuOpen(false)}>
-                  <Button
-                    variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
-                    size="sm"
-                    className="w-full justify-start text-xs h-8"
-                  >
-                    <Wrench className="h-3 w-3 mr-2" />
-                    <span>Servicios</span>
-                  </Button>
-                </Link>
+              {/* Mostrar servicios siempre si está autenticado, con indicador de estado */}
+              {isAuthenticated && (
+                <div className="relative">
+                  <Link href="/servicios" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
+                      size="sm"
+                      className={`w-full justify-start text-xs h-8 ${
+                        canAccessServicesModule === false ? "opacity-50" : ""
+                      }`}
+                      disabled={canAccessServicesModule === false}
+                    >
+                      <Wrench className="h-3 w-3 mr-2" />
+                      <span>Servicios</span>
+                      {permissionsLoading && <Loader2 className="h-2 w-2 ml-1 animate-spin" />}
+                    </Button>
+                  </Link>
+                  {canAccessServicesModule === false && !permissionsLoading && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -212,17 +294,27 @@ export function MainNavigation() {
                 </Button>
               </Link>
 
-              {showServiciosLink && (
-                <Link href="/servicios">
-                  <Button
-                    variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
-                    size="sm"
-                    className="flex items-center gap-2 h-8 px-3"
-                  >
-                    <Wrench className="h-3 w-3" />
-                    <span className="text-sm">Servicios</span>
-                  </Button>
-                </Link>
+              {/* Mostrar servicios siempre si está autenticado */}
+              {isAuthenticated && (
+                <div className="relative">
+                  <Link href="/servicios">
+                    <Button
+                      variant={pathname.startsWith("/servicios") ? "default" : "ghost"}
+                      size="sm"
+                      className={`flex items-center gap-2 h-8 px-3 ${
+                        canAccessServicesModule === false ? "opacity-50" : ""
+                      }`}
+                      disabled={canAccessServicesModule === false}
+                    >
+                      <Wrench className="h-3 w-3" />
+                      <span className="text-sm">Servicios</span>
+                      {permissionsLoading && <Loader2 className="h-3 w-3 ml-1 animate-spin" />}
+                    </Button>
+                  </Link>
+                  {canAccessServicesModule === false && !permissionsLoading && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                  )}
+                </div>
               )}
 
               {/* Botón de asignar en el menú desktop - solo en página principal */}
@@ -247,6 +339,7 @@ export function MainNavigation() {
               <div className="flex items-center bg-gray-100 rounded-full px-3 py-1">
                 <User className="h-3 w-3 text-gray-600 mr-2" />
                 <span className="text-sm font-medium text-gray-700">{session?.username || "Usuario"}</span>
+                {permissionsLoading && <Loader2 className="h-3 w-3 ml-2 animate-spin text-blue-500" />}
               </div>
               <Button
                 variant="outline"
