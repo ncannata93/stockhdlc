@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm install --legacy-peer-deps --timeout=300000 && npm run build",
+  "installCommand": "npm install --legacy-peer-deps --timeout=300000",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "functions": {
+    "app/**": {
+      "maxDuration": 30
+    }
+  }
+}
