@@ -3,6 +3,9 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/lib/auth-context"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/toaster"
+import StrictRouteGuard from "@/components/strict-route-guard"
 import PWARegister from "@/components/pwa-register"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -32,7 +35,7 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/icons/icon-192x192.png" }],
   },
-    generator: 'v0.dev'
+  generator: "v0.dev",
 }
 
 export default function RootLayout({
@@ -55,7 +58,12 @@ export default function RootLayout({
         <meta name="msapplication-tap-highlight" content="no" />
       </head>
       <body className={inter.className}>
-        <AuthProvider>{children}</AuthProvider>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+          <AuthProvider>
+            <StrictRouteGuard>{children}</StrictRouteGuard>
+            <Toaster />
+          </AuthProvider>
+        </ThemeProvider>
         <PWARegister />
       </body>
     </html>

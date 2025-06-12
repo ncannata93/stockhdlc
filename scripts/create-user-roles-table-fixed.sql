@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS user_roles (
     id SERIAL PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'EMPLOYEE',
-    custom_permissions TEXT[], -- Cambiar a array de texto para mejor compatibilidad
+    custom_permissions TEXT[], -- Array de texto para mejor compatibilidad
     updated_by VARCHAR(255) NOT NULL DEFAULT 'system',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -15,6 +15,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                    WHERE table_name = 'user_roles' AND column_name = 'custom_permissions') THEN
         ALTER TABLE user_roles ADD COLUMN custom_permissions TEXT[];
+        RAISE NOTICE 'Columna custom_permissions agregada exitosamente';
+    ELSE
+        RAISE NOTICE 'Columna custom_permissions ya existe';
     END IF;
 END $$;
 
@@ -47,4 +50,20 @@ INSERT INTO user_roles (username, role, updated_by) VALUES
 ON CONFLICT (username) DO NOTHING;
 
 -- Verificar que los datos se insertaron correctamente
-SELECT username, role, custom_permissions, created_at FROM user_roles ORDER BY username;
+SELECT 
+    username, 
+    role, 
+    custom_permissions,
+    created_at,
+    updated_at
+FROM user_roles 
+ORDER BY username;
+
+-- Verificar estructura de la tabla
+SELECT 
+    column_name, 
+    data_type, 
+    is_nullable 
+FROM information_schema.columns 
+WHERE table_name = 'user_roles' 
+ORDER BY ordinal_position;
