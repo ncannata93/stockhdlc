@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { useEmployeeDB } from "@/lib/employee-db"
 import { useState, useEffect } from "react"
-import { UserPlus, Calendar, BarChart3, ListChecks } from "lucide-react"
+import { UserPlus, Calendar, BarChart3, ListChecks, FileUp } from "lucide-react"
 
 interface InicioProps {
   onTabChange?: (tab: string) => void
@@ -84,6 +84,11 @@ export default function Inicio({ onTabChange }: InicioProps) {
           <Button className="h-20 flex-col gap-2" variant="outline" onClick={() => handleQuickAction("calendario")}>
             <Calendar className="h-6 w-6" />
             <span>Ver Calendario</span>
+          </Button>
+
+          <Button className="h-20 flex-col gap-2" variant="outline" onClick={() => handleQuickAction("importar")}>
+            <FileUp className="h-6 w-6" />
+            <span>Importar Asignaciones</span>
           </Button>
         </CardContent>
       </Card>

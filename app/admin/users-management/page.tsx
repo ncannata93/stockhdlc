@@ -32,6 +32,7 @@ import {
 } from "@/lib/user-permissions"
 import { Users, UserPlus, Edit, Shield, Key, CheckCircle, RefreshCw, Cloud, Settings } from "lucide-react"
 import ProtectedRoute from "@/components/protected-route"
+import PermissionsDebug from "@/components/permissions-debug"
 
 interface UserRoleData {
   username: string
@@ -634,6 +635,7 @@ export default function UsersManagementPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <PermissionsDebug />
       </div>
     </ProtectedRoute>
   )

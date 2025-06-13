@@ -21,7 +21,7 @@ export enum UserRole {
   SUPER_ADMIN = "SUPER_ADMIN",
   MANAGER = "MANAGER",
   EMPLOYEE = "EMPLOYEE",
-  CUSTOM = "CUSTOM", // Nuevo rol para permisos personalizados
+  CUSTOM = "CUSTOM",
 }
 
 export type ModuleName = "stock" | "empleados" | "servicios" | "admin"
@@ -42,27 +42,26 @@ const USER_SPECIFIC_ROLES: Record<string, UserRole> = {
   jprey: UserRole.EMPLOYEE,
 }
 
-// Clave para almacenar roles y permisos personalizados en localStorage
+// Claves para localStorage
 const USER_ROLES_KEY = "user_custom_roles"
 const USER_PERMISSIONS_KEY = "user_custom_permissions"
 
-// Cache local para mejorar rendimiento
+// Cache local
 let rolesCache: Record<string, UserRole> = {}
 let permissionsCache: Record<string, ModuleName[]> = {}
 let cacheTimestamp = 0
-const CACHE_DURATION = 2 * 60 * 1000 // 2 minutos
+const CACHE_DURATION = 30 * 1000 // 30 segundos para testing, luego cambiar a 2 minutos
 
-// Estado del sistema de permisos
+// Estado del sistema
 let cloudModeEnabled = true
 let cloudModeInitialized = false
 let cloudModeError: string | null = null
 
 /**
- * Obtiene los roles personalizados del localStorage (fallback)
+ * Funciones de localStorage (fallback)
  */
 function getCustomRoles(): Record<string, UserRole> {
   if (typeof window === "undefined") return {}
-
   try {
     const stored = localStorage.getItem(USER_ROLES_KEY)
     return stored ? JSON.parse(stored) : {}
@@ -72,12 +71,8 @@ function getCustomRoles(): Record<string, UserRole> {
   }
 }
 
-/**
- * Obtiene los permisos personalizados del localStorage (fallback)
- */
 function getCustomPermissions(): Record<string, ModuleName[]> {
   if (typeof window === "undefined") return {}
-
   try {
     const stored = localStorage.getItem(USER_PERMISSIONS_KEY)
     return stored ? JSON.parse(stored) : {}
@@ -87,12 +82,8 @@ function getCustomPermissions(): Record<string, ModuleName[]> {
   }
 }
 
-/**
- * Guarda los roles personalizados en localStorage (fallback)
- */
 function saveCustomRoles(roles: Record<string, UserRole>): void {
   if (typeof window === "undefined") return
-
   try {
     localStorage.setItem(USER_ROLES_KEY, JSON.stringify(roles))
   } catch (error) {
@@ -100,12 +91,8 @@ function saveCustomRoles(roles: Record<string, UserRole>): void {
   }
 }
 
-/**
- * Guarda los permisos personalizados en localStorage (fallback)
- */
 function saveCustomPermissions(permissions: Record<string, ModuleName[]>): void {
   if (typeof window === "undefined") return
-
   try {
     localStorage.setItem(USER_PERMISSIONS_KEY, JSON.stringify(permissions))
   } catch (error) {
@@ -114,39 +101,50 @@ function saveCustomPermissions(permissions: Record<string, ModuleName[]>): void 
 }
 
 /**
- * Verifica si la tabla user_roles existe
+ * Verifica si la tabla user_roles existe y es accesible
  */
 export async function checkUserRolesTable(): Promise<boolean> {
   const supabase = getSupabaseClient()
-  if (!supabase) return false
+  if (!supabase) {
+    console.log("No hay cliente Supabase disponible")
+    return false
+  }
 
   try {
+    console.log("Verificando tabla user_roles...")
     const { data, error } = await supabase.from("user_roles").select("username").limit(1)
 
-    if (error && error.message.includes("does not exist")) {
-      console.error("La tabla user_roles no existe:", error.message)
+    if (error) {
+      console.error("Error al verificar tabla:", error)
+      if (error.message.includes("does not exist")) {
+        console.error("❌ La tabla user_roles no existe")
+        return false
+      }
       return false
     }
 
-    return !error
+    console.log("✅ Tabla user_roles verificada correctamente")
+    return true
   } catch (error) {
-    console.error("Error al verificar tabla user_roles:", error)
+    console.error("Error de conexión al verificar tabla:", error)
     return false
   }
 }
 
 /**
- * Inicializa el modo de permisos (nube o local)
+ * Inicializa el modo de permisos
  */
 export async function initPermissionsMode(): Promise<boolean> {
   if (cloudModeInitialized) return cloudModeEnabled
+
+  console.log("Inicializando sistema de permisos...")
 
   try {
     const tableExists = await checkUserRolesTable()
     cloudModeEnabled = tableExists
     cloudModeError = tableExists ? null : "La tabla user_roles no existe en la base de datos"
 
-    console.log(`Sistema de permisos inicializado en modo ${tableExists ? "NUBE" : "LOCAL"}`)
+    console.log(`✅ Sistema inicializado en modo ${tableExists ? "NUBE" : "LOCAL"}`)
 
     if (!tableExists) {
       console.warn("⚠️ Usando sistema de permisos LOCAL como fallback")
@@ -164,7 +162,7 @@ export async function initPermissionsMode(): Promise<boolean> {
 }
 
 /**
- * Obtiene roles y permisos desde Supabase con cache
+ * Obtiene roles y permisos desde Supabase
  */
 async function getRolesAndPermissionsFromCloud(): Promise<{
   roles: Record<string, UserRole>
@@ -173,8 +171,9 @@ async function getRolesAndPermissionsFromCloud(): Promise<{
   const now = Date.now()
   const supabase = getSupabaseClient()
 
-  // Si no hay cliente Supabase o no estamos en modo nube, usar fallback
+  // Verificar si podemos usar la nube
   if (!supabase || !cloudModeEnabled) {
+    console.log("Usando fallback local")
     return {
       roles: { ...USER_SPECIFIC_ROLES, ...getCustomRoles() },
       permissions: getCustomPermissions(),
@@ -183,14 +182,16 @@ async function getRolesAndPermissionsFromCloud(): Promise<{
 
   // Usar cache si es reciente
   if (now - cacheTimestamp < CACHE_DURATION && Object.keys(rolesCache).length > 0) {
+    console.log("Usando cache local")
     return { roles: rolesCache, permissions: permissionsCache }
   }
 
   try {
+    console.log("Obteniendo datos desde Supabase...")
     const { data, error } = await supabase.from("user_roles").select("username, role, custom_permissions")
 
     if (error) {
-      console.error("Error al obtener roles:", error)
+      console.error("Error al obtener roles desde Supabase:", error)
       cloudModeError = error.message
 
       if (error.message.includes("does not exist")) {
@@ -207,16 +208,25 @@ async function getRolesAndPermissionsFromCloud(): Promise<{
     // Actualizar cache
     rolesCache = {}
     permissionsCache = {}
+
     data?.forEach((row) => {
-      rolesCache[row.username.toLowerCase()] = row.role as UserRole
-      if (row.custom_permissions) {
-        permissionsCache[row.username.toLowerCase()] = row.custom_permissions as ModuleName[]
+      const username = row.username.toLowerCase()
+      rolesCache[username] = row.role as UserRole
+
+      // Procesar permisos personalizados
+      if (row.custom_permissions && Array.isArray(row.custom_permissions)) {
+        permissionsCache[username] = row.custom_permissions as ModuleName[]
       }
     })
+
     cacheTimestamp = now
     cloudModeError = null
 
-    console.log("Roles y permisos cargados desde la nube:", { rolesCache, permissionsCache })
+    console.log("✅ Datos cargados desde Supabase:", {
+      usuarios: Object.keys(rolesCache).length,
+      permisosPersonalizados: Object.keys(permissionsCache).length,
+    })
+
     return { roles: rolesCache, permissions: permissionsCache }
   } catch (error) {
     console.error("Error de conexión:", error)
@@ -237,21 +247,10 @@ export async function getUserRole(username: string): Promise<UserRole> {
     await initPermissionsMode()
   }
 
-  if (cloudModeEnabled) {
-    const { roles } = await getRolesAndPermissionsFromCloud()
-    return roles[username.toLowerCase()] || UserRole.EMPLOYEE
-  }
-
-  const customRoles = getCustomRoles()
-  if (customRoles[username.toLowerCase()]) {
-    return customRoles[username.toLowerCase()]
-  }
-
-  if (USER_SPECIFIC_ROLES[username.toLowerCase()]) {
-    return USER_SPECIFIC_ROLES[username.toLowerCase()]
-  }
-
-  return UserRole.EMPLOYEE
+  const { roles } = await getRolesAndPermissionsFromCloud()
+  const role = roles[username.toLowerCase()] || UserRole.EMPLOYEE
+  console.log(`Rol de ${username}:`, role)
+  return role
 }
 
 /**
@@ -267,11 +266,15 @@ export async function getUserPermissions(username: string): Promise<ModuleName[]
 
   // Si tiene permisos personalizados, usarlos
   if (permissions[username.toLowerCase()]) {
-    return permissions[username.toLowerCase()]
+    const customPerms = permissions[username.toLowerCase()]
+    console.log(`Permisos personalizados de ${username}:`, customPerms)
+    return customPerms
   }
 
   // Si no, usar los permisos del rol
-  return ROLE_PERMISSIONS[userRole] || []
+  const rolePerms = ROLE_PERMISSIONS[userRole] || []
+  console.log(`Permisos por rol de ${username} (${userRole}):`, rolePerms)
+  return rolePerms
 }
 
 /**
@@ -282,6 +285,8 @@ export async function updateUserRole(
   newRole: UserRole,
   updatedBy = "admin",
 ): Promise<{ success: boolean; error?: string }> {
+  console.log(`Actualizando rol de ${username} a ${newRole}`)
+
   if (!cloudModeInitialized) {
     await initPermissionsMode()
   }
@@ -293,15 +298,20 @@ export async function updateUserRole(
     }
 
     try {
-      const { error } = await supabase.from("user_roles").upsert({
-        username: username.toLowerCase(),
-        role: newRole,
-        updated_by: updatedBy,
-        custom_permissions: null, // Limpiar permisos personalizados al cambiar rol
-      })
+      const { error } = await supabase.from("user_roles").upsert(
+        {
+          username: username.toLowerCase(),
+          role: newRole,
+          updated_by: updatedBy,
+          custom_permissions: null, // Limpiar permisos personalizados al cambiar rol
+        },
+        {
+          onConflict: "username",
+        },
+      )
 
       if (error) {
-        console.error("Error al actualizar rol:", error)
+        console.error("Error al actualizar rol en Supabase:", error)
 
         if (error.message.includes("does not exist")) {
           cloudModeEnabled = false
@@ -322,11 +332,12 @@ export async function updateUserRole(
       permissionsCache = {}
       cacheTimestamp = 0
 
-      console.log(`Rol actualizado en la nube: ${username} -> ${newRole}`)
+      console.log(`✅ Rol actualizado en Supabase: ${username} -> ${newRole}`)
       return { success: true }
     } catch (error) {
       console.error("Error de conexión al actualizar rol:", error)
 
+      // Fallback a modo local
       cloudModeEnabled = false
       const customRoles = getCustomRoles()
       customRoles[username.toLowerCase()] = newRole
@@ -338,11 +349,12 @@ export async function updateUserRole(
       }
     }
   } else {
+    // Modo local
     const customRoles = getCustomRoles()
     customRoles[username.toLowerCase()] = newRole
     saveCustomRoles(customRoles)
 
-    console.log(`Rol actualizado localmente: ${username} -> ${newRole}`)
+    console.log(`✅ Rol actualizado localmente: ${username} -> ${newRole}`)
     return { success: true }
   }
 }
@@ -355,6 +367,8 @@ export async function updateUserPermissions(
   permissions: ModuleName[],
   updatedBy = "admin",
 ): Promise<{ success: boolean; error?: string }> {
+  console.log(`Actualizando permisos de ${username}:`, permissions)
+
   if (!cloudModeInitialized) {
     await initPermissionsMode()
   }
@@ -366,15 +380,20 @@ export async function updateUserPermissions(
     }
 
     try {
-      const { error } = await supabase.from("user_roles").upsert({
-        username: username.toLowerCase(),
-        role: UserRole.CUSTOM,
-        custom_permissions: permissions,
-        updated_by: updatedBy,
-      })
+      const { error } = await supabase.from("user_roles").upsert(
+        {
+          username: username.toLowerCase(),
+          role: UserRole.CUSTOM,
+          custom_permissions: permissions,
+          updated_by: updatedBy,
+        },
+        {
+          onConflict: "username",
+        },
+      )
 
       if (error) {
-        console.error("Error al actualizar permisos:", error)
+        console.error("Error al actualizar permisos en Supabase:", error)
 
         if (error.message.includes("does not exist")) {
           cloudModeEnabled = false
@@ -399,11 +418,12 @@ export async function updateUserPermissions(
       permissionsCache = {}
       cacheTimestamp = 0
 
-      console.log(`Permisos actualizados en la nube: ${username} -> ${permissions.join(", ")}`)
+      console.log(`✅ Permisos actualizados en Supabase: ${username} -> [${permissions.join(", ")}]`)
       return { success: true }
     } catch (error) {
       console.error("Error de conexión al actualizar permisos:", error)
 
+      // Fallback a modo local
       cloudModeEnabled = false
       const customPermissions = getCustomPermissions()
       customPermissions[username.toLowerCase()] = permissions
@@ -419,6 +439,7 @@ export async function updateUserPermissions(
       }
     }
   } else {
+    // Modo local
     const customPermissions = getCustomPermissions()
     customPermissions[username.toLowerCase()] = permissions
     saveCustomPermissions(customPermissions)
@@ -427,7 +448,7 @@ export async function updateUserPermissions(
     customRoles[username.toLowerCase()] = UserRole.CUSTOM
     saveCustomRoles(customRoles)
 
-    console.log(`Permisos actualizados localmente: ${username} -> ${permissions.join(", ")}`)
+    console.log(`✅ Permisos actualizados localmente: ${username} -> [${permissions.join(", ")}]`)
     return { success: true }
   }
 }
@@ -437,7 +458,9 @@ export async function updateUserPermissions(
  */
 export async function canAccessModule(username: string, module: ModuleName): Promise<boolean> {
   const userPermissions = await getUserPermissions(username)
-  return userPermissions.includes(module)
+  const hasAccess = userPermissions.includes(module)
+  console.log(`${username} acceso a ${module}:`, hasAccess)
+  return hasAccess
 }
 
 /**
@@ -499,14 +522,20 @@ export async function getAllUserRoles(): Promise<
       }
 
       return (
-        data?.map((row) => ({
-          username: row.username,
-          role: row.role as UserRole,
-          permissions: row.custom_permissions || ROLE_PERMISSIONS[row.role as UserRole] || [],
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          updatedBy: row.updated_by,
-        })) || []
+        data?.map((row) => {
+          const permissions = row.custom_permissions
+            ? (row.custom_permissions as ModuleName[])
+            : ROLE_PERMISSIONS[row.role as UserRole] || []
+
+          return {
+            username: row.username,
+            role: row.role as UserRole,
+            permissions,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            updatedBy: row.updated_by,
+          }
+        }) || []
       )
     } catch (error) {
       console.error("Error de conexión:", error)
@@ -545,6 +574,8 @@ export async function createUserRole(
   role: UserRole,
   createdBy = "admin",
 ): Promise<{ success: boolean; error?: string }> {
+  console.log(`Creando usuario ${username} con rol ${role}`)
+
   if (!cloudModeInitialized) {
     await initPermissionsMode()
   }
@@ -563,7 +594,7 @@ export async function createUserRole(
       })
 
       if (error) {
-        console.error("Error al crear usuario:", error)
+        console.error("Error al crear usuario en Supabase:", error)
 
         if (error.message.includes("does not exist")) {
           cloudModeEnabled = false
@@ -579,15 +610,17 @@ export async function createUserRole(
         return { success: false, error: error.message }
       }
 
+      // Limpiar cache
       rolesCache = {}
       permissionsCache = {}
       cacheTimestamp = 0
 
-      console.log(`Usuario creado en la nube: ${username} con rol ${role}`)
+      console.log(`✅ Usuario creado en Supabase: ${username} con rol ${role}`)
       return { success: true }
     } catch (error) {
       console.error("Error de conexión al crear usuario:", error)
 
+      // Fallback a modo local
       cloudModeEnabled = false
       const customRoles = getCustomRoles()
       customRoles[username.toLowerCase()] = role
@@ -599,11 +632,12 @@ export async function createUserRole(
       }
     }
   } else {
+    // Modo local
     const customRoles = getCustomRoles()
     customRoles[username.toLowerCase()] = role
     saveCustomRoles(customRoles)
 
-    console.log(`Usuario creado localmente: ${username} con rol ${role}`)
+    console.log(`✅ Usuario creado localmente: ${username} con rol ${role}`)
     return { success: true }
   }
 }
@@ -616,7 +650,7 @@ export function refreshRolesCache(): void {
   permissionsCache = {}
   cacheTimestamp = 0
   cloudModeInitialized = false
-  console.log("Cache de roles y permisos limpiado")
+  console.log("🔄 Cache de roles y permisos limpiado")
 }
 
 /**
@@ -650,4 +684,8 @@ export async function debugRoles(): Promise<void> {
   console.log("Roles actuales:", roles)
   console.log("Permisos actuales:", permissions)
   console.log("Permisos por rol:", ROLE_PERMISSIONS)
+
+  // Verificar tabla
+  const tableExists = await checkUserRolesTable()
+  console.log("Tabla existe:", tableExists)
 }
