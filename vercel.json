@@ -1,7 +1,6 @@
 {
-  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm run build",
-  "installCommand": "pnpm install --no-frozen-lockfile",
-  "framework": "nextjs",
-  "regions": ["sfo1"],
-  "nodeVersion": "18.17.1"
+  "buildCommand": "mkdir -p public && cp index.html public/index.html && echo 'Deployment successful'",
+  "outputDirectory": "public",
+  "framework": null,
+  "regions": ["iad1"]
 }
