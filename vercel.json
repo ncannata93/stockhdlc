@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm install && npm run build",
-  "installCommand": "npm install",
+  "buildCommand": "npm install --no-package-lock && npm run build",
+  "installCommand": "npm install --no-package-lock",
   "framework": "nextjs",
-  "regions": ["cdg1"]
+  "regions": ["iad1"]
 }

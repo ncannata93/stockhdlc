@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  swcMinify: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -10,7 +11,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  transpilePackages: ["@radix-ui", "class-variance-authority", "clsx", "tailwind-merge", "lucide-react"],
 }
 
 module.exports = nextConfig
