@@ -309,27 +309,33 @@ export const saveAssignment = async (
 
         console.log(`Recalculando tarifas: $${fullDailyRate} ÷ ${totalAssignments} = $${finalDailyRate} por hotel`)
 
-        // Actualizar las asignaciones existentes con la nueva tarifa
-        for (const existingAssignment of existingAssignments) {
+        // CORRECCIÓN: Actualizar las asignaciones existentes con la nueva tarifa
+        const updatePromises = existingAssignments.map(async (existingAssignment) => {
           const { error: updateError } = await supabase
             .from("employee_assignments")
             .update({
               daily_rate_used: finalDailyRate,
               notes: existingAssignment.notes
-                ? existingAssignment.notes + " | Tarifa recalculada automáticamente"
-                : "Tarifa recalculada automáticamente",
+                ? `${existingAssignment.notes} | Tarifa recalculada automáticamente el ${new Date().toISOString().split("T")[0]}`
+                : `Tarifa recalculada automáticamente el ${new Date().toISOString().split("T")[0]}`,
             })
             .eq("id", existingAssignment.id)
 
           if (updateError) {
             console.error("Error al actualizar asignación existente:", updateError)
-            // Continuar con las demás actualizaciones
+            throw updateError
           }
-        }
+
+          console.log(`✅ Actualizada asignación en ${existingAssignment.hotel_name}: tarifa → $${finalDailyRate}`)
+          return true
+        })
+
+        // Esperar a que todas las actualizaciones se completen
+        await Promise.all(updatePromises)
 
         notesText = notesText
-          ? notesText + " | Tarifa dividida entre " + totalAssignments + " hoteles"
-          : "Tarifa dividida entre " + totalAssignments + " hoteles"
+          ? `${notesText} | Tarifa dividida entre ${totalAssignments} hoteles el ${new Date().toISOString().split("T")[0]}`
+          : `Tarifa dividida entre ${totalAssignments} hoteles el ${new Date().toISOString().split("T")[0]}`
       }
 
       // 3. Crear la nueva asignación con la tarifa recalculada
