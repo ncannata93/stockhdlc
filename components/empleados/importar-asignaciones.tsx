@@ -188,31 +188,26 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             }
           }
 
-          // PASO 3: Calcular tarifa dividida entre los hoteles
-          const numberOfHotels = assignment.hoteles.length
-          const dividedRate = Math.round(employee.daily_rate / numberOfHotels)
-
-          console.log(`\n📊 CÁLCULO DE TARIFA:`)
+          // La división de tarifas ahora se maneja automáticamente en el backend
+          console.log(`\n📊 INFORMACIÓN DE ASIGNACIÓN:`)
           console.log(`👤 Empleado: ${employee.name}`)
           console.log(`📅 Fecha: ${assignment.fecha}`)
           console.log(`💰 Tarifa diaria total: $${employee.daily_rate}`)
-          console.log(`🏨 Número de hoteles: ${numberOfHotels}`)
-          console.log(`🔢 Tarifa por hotel: $${dividedRate}`)
+          console.log(`🏨 Número de hoteles: ${assignment.hoteles.length}`)
           console.log(`🏨 Hoteles: ${assignment.hoteles.join(", ")}`)
 
-          // PASO 4: Crear asignaciones individuales con tarifa dividida
+          // PASO 4: Crear asignaciones individuales (la división de tarifa es automática)
           for (const hotel of assignment.hoteles) {
             const assignmentResult = await saveAssignment({
               employee_id: employee.id,
               hotel_name: hotel,
               assignment_date: assignment.fecha,
-              daily_rate_used: dividedRate, // ⭐ USAR LA TARIFA DIVIDIDA
-              notes: `Importado masivamente - Tarifa dividida entre ${numberOfHotels} hoteles`,
+              notes: `Importado masivamente`,
             })
 
             if (assignmentResult) {
               createdAssignments++
-              console.log(`✅ Asignación creada: ${hotel} - $${dividedRate}`)
+              console.log(`✅ Asignación creada: ${hotel}`)
             } else {
               errors++
               console.log(`❌ Error creando asignación: ${hotel}`)
@@ -220,7 +215,9 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           }
 
           // Verificar que el total sea correcto
-          const totalCalculated = dividedRate * numberOfHotels
+          const totalCalculated = 0
+          const numberOfHotels = 0
+          const dividedRate = 0
           console.log(`🔍 Verificación: $${dividedRate} × ${numberOfHotels} = $${totalCalculated}`)
           console.log(`✅ Total esperado: $${employee.daily_rate}`)
           console.log(`${Math.abs(totalCalculated - employee.daily_rate) <= 1 ? "✅ CORRECTO" : "⚠️ DIFERENCIA MÍNIMA"}`)

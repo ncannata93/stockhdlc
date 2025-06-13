@@ -268,7 +268,72 @@ export const saveAssignment = async (
       }
     } else {
       // Crear nueva asignación
-      console.log(`Creando asignación con tarifa: ${dailyRateUsed} para hotel: ${assignment.hotel_name}`)
+      console.log(`Verificando asignaciones existentes para el mismo día...`)
+
+      // 1. Verificar si ya existen asignaciones para este empleado en la misma fecha
+      const { data: existingAssignments, error: existingError } = await supabase
+        .from("employee_assignments")
+        .select("*")
+        .eq("employee_id", assignment.employee_id)
+        .eq("assignment_date", assignment.assignment_date)
+
+      if (existingError) {
+        console.error("Error al verificar asignaciones existentes:", existingError)
+        return null
+      }
+
+      // 2. Si ya existen asignaciones, recalcular la tarifa dividida
+      let finalDailyRate = dailyRateUsed
+      let notesText = assignment.notes || ""
+
+      if (existingAssignments && existingAssignments.length > 0) {
+        console.log(`¡Encontradas ${existingAssignments.length} asignaciones existentes para el mismo día!`)
+
+        // Obtener la tarifa completa del empleado
+        const { data: employeeData, error: employeeError } = await supabase
+          .from("employees")
+          .select("daily_rate")
+          .eq("id", assignment.employee_id)
+          .single()
+
+        if (employeeError) {
+          console.error("Error al obtener tarifa del empleado:", employeeError)
+          return null
+        }
+
+        const fullDailyRate = employeeData.daily_rate
+
+        // Calcular la nueva tarifa dividida (tarifa completa / (asignaciones existentes + 1 nueva))
+        const totalAssignments = existingAssignments.length + 1
+        finalDailyRate = Math.round(fullDailyRate / totalAssignments)
+
+        console.log(`Recalculando tarifas: $${fullDailyRate} ÷ ${totalAssignments} = $${finalDailyRate} por hotel`)
+
+        // Actualizar las asignaciones existentes con la nueva tarifa
+        for (const existingAssignment of existingAssignments) {
+          const { error: updateError } = await supabase
+            .from("employee_assignments")
+            .update({
+              daily_rate_used: finalDailyRate,
+              notes: existingAssignment.notes
+                ? existingAssignment.notes + " | Tarifa recalculada automáticamente"
+                : "Tarifa recalculada automáticamente",
+            })
+            .eq("id", existingAssignment.id)
+
+          if (updateError) {
+            console.error("Error al actualizar asignación existente:", updateError)
+            // Continuar con las demás actualizaciones
+          }
+        }
+
+        notesText = notesText
+          ? notesText + " | Tarifa dividida entre " + totalAssignments + " hoteles"
+          : "Tarifa dividida entre " + totalAssignments + " hoteles"
+      }
+
+      // 3. Crear la nueva asignación con la tarifa recalculada
+      console.log(`Creando asignación con tarifa recalculada: ${finalDailyRate} para hotel: ${assignment.hotel_name}`)
 
       const { data, error } = await supabase
         .from("employee_assignments")
@@ -276,8 +341,8 @@ export const saveAssignment = async (
           employee_id: assignment.employee_id,
           hotel_name: assignment.hotel_name,
           assignment_date: assignment.assignment_date,
-          daily_rate_used: dailyRateUsed,
-          notes: assignment.notes,
+          daily_rate_used: finalDailyRate,
+          notes: notesText,
           created_by: username,
         })
         .select(`

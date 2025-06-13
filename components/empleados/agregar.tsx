@@ -112,7 +112,7 @@ export default function EmpleadosAgregar() {
       }
 
       // Calcular la tarifa dividida entre los hoteles
-      const dividedRate = employee.daily_rate / formData.hotel_names.length
+      // const dividedRate = employee.daily_rate / formData.hotel_names.length
 
       // Asegurar que la fecha se maneje correctamente sin problemas de zona horaria
       const assignmentDate = formData.assignment_date
@@ -121,17 +121,32 @@ export default function EmpleadosAgregar() {
       console.log(`Empleado: ${employee.name}`)
       console.log(`Tarifa diaria original: ${employee.daily_rate}`)
       console.log(`Número de hoteles: ${formData.hotel_names.length}`)
-      console.log(`Tarifa dividida: ${dividedRate}`)
+      // console.log(`Tarifa dividida: ${dividedRate}`)
       console.log(`Hoteles seleccionados: ${formData.hotel_names.join(", ")}`)
 
       // Crear una asignación por cada hotel seleccionado
+      // const promises = formData.hotel_names.map((hotelName, index) => {
+      //   console.log(`Creando asignación ${index + 1} para hotel: ${hotelName} con tarifa: ${dividedRate}`)
+      //   return saveAssignment({
+      //     employee_id: Number.parseInt(formData.employee_id),
+      //     hotel_name: hotelName,
+      //     assignment_date: assignmentDate,
+      //     daily_rate_used: dividedRate, // Usar la tarifa dividida calculada
+      //     notes: formData.notes,
+      //   })
+      // })
+
+      // La división de tarifas ahora se maneja automáticamente en el backend
+      // Asegurar que la fecha se maneje correctamente sin problemas de zona horaria
+      // const assignmentDate = formData.assignment_date
+
+      // Crear una asignación por cada hotel seleccionado
       const promises = formData.hotel_names.map((hotelName, index) => {
-        console.log(`Creando asignación ${index + 1} para hotel: ${hotelName} con tarifa: ${dividedRate}`)
+        console.log(`Creando asignación ${index + 1} para hotel: ${hotelName}`)
         return saveAssignment({
           employee_id: Number.parseInt(formData.employee_id),
           hotel_name: hotelName,
           assignment_date: assignmentDate,
-          daily_rate_used: dividedRate, // Usar la tarifa dividida calculada
           notes: formData.notes,
         })
       })

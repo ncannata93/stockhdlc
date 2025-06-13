@@ -106,16 +106,13 @@ export default function AsignacionSimple() {
         throw new Error("Empleado no encontrado")
       }
 
-      // Calcular tarifa dividida entre hoteles
-      const tarifaDividida = empleado.daily_rate / hotelesSeleccionados.length
-
+      // La división de tarifas ahora se maneja automáticamente en el backend
       // Guardar una asignación por cada hotel
       const promesas = hotelesSeleccionados.map((hotel) =>
         saveAssignment({
           employee_id: empleado.id,
           hotel_name: hotel,
           assignment_date: fecha,
-          daily_rate_used: tarifaDividida,
         }),
       )
 
