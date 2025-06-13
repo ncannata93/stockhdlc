@@ -533,6 +533,5 @@ export const useEmployeeDB = () => {
     savePayment: (payment: Partial<EmployeePayment>) => savePayment(payment, username),
     deletePayment,
     getHotels,
-    getSupabaseClient,
   }
 }

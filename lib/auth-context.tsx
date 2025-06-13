@@ -13,12 +13,13 @@ import {
   ensurePredefinedUsers,
 } from "@/lib/local-auth"
 
-// Exportamos la función usernameToEmail para que esté disponible para importación
 export const usernameToEmail = convertUsernameToEmail
 
 type AuthContextType = {
   session: LocalSession | null
+  user: LocalSession | null
   isLoading: boolean
+  loading: boolean
   isAuthenticated: boolean
   isAdmin: boolean
   signIn: (username: string, password: string) => Promise<{ success: boolean; error: string | null }>
@@ -33,7 +34,9 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
+  user: null,
   isLoading: true,
+  loading: true,
   isAuthenticated: false,
   isAdmin: false,
   signIn: async () => ({ success: false, error: "No implementado" }),
@@ -107,7 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         session,
+        user: session,
         isLoading,
+        loading: isLoading,
         isAuthenticated,
         isAdmin,
         signIn,

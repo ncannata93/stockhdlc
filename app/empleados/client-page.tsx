@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, Calendar, BarChart3, UserPlus, Clock, ListChecks, Upload, AlertCircle } from "lucide-react"
+import { Users, Calendar, BarChart3, UserPlus, Clock, ListChecks } from "lucide-react"
 import Inicio from "@/components/empleados/inicio"
 import Agregar from "@/components/empleados/agregar"
 import EmpleadosList from "@/components/empleados/empleados-list"
@@ -10,9 +10,7 @@ import CalendarioSimple from "@/components/empleados/calendario-simple"
 import CalendarioMobile from "@/components/empleados/calendario-mobile"
 import Resumen from "@/components/empleados/resumen"
 import Historial from "@/components/empleados/historial"
-import ImportarAsignaciones from "@/components/empleados/importar-asignaciones"
 import { useMediaQuery } from "@/hooks/use-media-query"
-import DiagnosticoEmpleados from "@/components/empleados/diagnostico-empleados"
 
 export default function EmpleadosClientPage() {
   const [activeTab, setActiveTab] = useState("inicio")
@@ -21,7 +19,7 @@ export default function EmpleadosClientPage() {
   return (
     <div className="container mx-auto py-4 px-2 sm:px-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-8 mb-4">
+        <TabsList className="grid grid-cols-6 mb-4">
           <TabsTrigger value="inicio" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">Inicio</span>
@@ -46,14 +44,6 @@ export default function EmpleadosClientPage() {
             <Clock className="h-4 w-4" />
             <span className="hidden sm:inline">Historial</span>
           </TabsTrigger>
-          <TabsTrigger value="importar" className="flex items-center gap-2">
-            <Upload className="h-4 w-4" />
-            <span className="hidden sm:inline">Importar</span>
-          </TabsTrigger>
-          <TabsTrigger value="diagnostico" className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            <span className="hidden sm:inline">Debug</span>
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="inicio">
@@ -76,14 +66,6 @@ export default function EmpleadosClientPage() {
 
         <TabsContent value="historial">
           <Historial />
-        </TabsContent>
-
-        <TabsContent value="importar">
-          <ImportarAsignaciones />
-        </TabsContent>
-
-        <TabsContent value="diagnostico">
-          <DiagnosticoEmpleados />
         </TabsContent>
       </Tabs>
     </div>

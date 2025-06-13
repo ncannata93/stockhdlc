@@ -1,14 +1,10 @@
-import { Suspense } from "react"
-import EmpleadosClientPage from "./client-page"
-import LoadingScreen from "@/components/loading-screen"
-import { RouteGuard } from "@/components/route-guard"
+import ProtectedRoute from "@/components/protected-route"
+import EmpleadosClient from "./client-page"
 
 export default function EmpleadosPage() {
   return (
-    <RouteGuard requiredModule="empleados">
-      <Suspense fallback={<LoadingScreen />}>
-        <EmpleadosClientPage />
-      </Suspense>
-    </RouteGuard>
+    <ProtectedRoute>
+      <EmpleadosClient />
+    </ProtectedRoute>
   )
 }

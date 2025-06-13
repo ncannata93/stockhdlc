@@ -155,71 +155,16 @@ export default function EmpleadosResumen() {
     setSelectedWeek(monday.toISOString().split("T")[0])
   }
 
-  // Buscar la función handleMarkAsPaid y reemplazarla con esta versión mejorada
-  // que incluye mejor manejo de errores y logging
-
   const handleMarkAsPaid = async (paymentId: number) => {
     try {
-      console.log("🔄 Iniciando proceso de marcar pago como pagado, ID:", paymentId)
-
-      // Buscar el pago existente para obtener sus datos
-      const existingPayment = allPayments.find((payment) => payment.id === paymentId)
-
-      if (!existingPayment) {
-        console.error("❌ Pago no encontrado en la lista local, ID:", paymentId)
-        toast({
-          title: "Error",
-          description: "No se encontró el pago en el sistema. Intente recargar la página.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      console.log("✅ Pago encontrado:", existingPayment)
-
-      // Verificar que todos los campos requeridos estén presentes
-      if (!existingPayment.employee_id || existingPayment.amount === undefined || existingPayment.amount === null) {
-        console.error("❌ Datos de pago incompletos:", existingPayment)
-        toast({
-          title: "Error en datos",
-          description: "El pago tiene datos incompletos y no puede ser procesado.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Actualizar solo el estado a "pagado" manteniendo todos los demás datos
-      console.log("📝 Enviando actualización a la base de datos...")
-
-      // Establecer la fecha de pago a hoy si no existe
-      const paymentDate = existingPayment.payment_date || new Date().toISOString().split("T")[0]
-
-      const result = await savePayment({
-        id: paymentId,
-        employee_id: existingPayment.employee_id,
-        amount: existingPayment.amount,
-        payment_date: paymentDate,
-        week_start: existingPayment.week_start,
-        week_end: existingPayment.week_end,
-        status: "pagado",
-        notes: existingPayment.notes || "Marcado como pagado manualmente",
-      })
-
-      if (!result) {
-        throw new Error("La operación de guardado no devolvió resultados")
-      }
-
-      console.log("✅ Pago actualizado exitosamente:", result)
-
+      await savePayment(paymentId, { status: "pagado" })
       toast({
         title: "Pago Marcado",
         description: "El pago ha sido marcado como pagado exitosamente.",
       })
-
-      // Recargar datos después de marcar como pagado
-      await reloadData()
+      await reloadData() // Recargar datos después de marcar como pagado
     } catch (error) {
-      console.error("❌ Error al marcar como pagado:", error)
+      console.error("Error al marcar como pagado:", error)
       toast({
         title: "Error",
         description: "No se pudo marcar el pago como pagado. Intenta nuevamente.",
