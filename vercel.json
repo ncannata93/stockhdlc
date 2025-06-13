@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm ci --prefer-offline --no-audit --legacy-peer-deps && npm run build",
-  "installCommand": "npm ci --prefer-offline --no-audit --legacy-peer-deps",
+  "buildCommand": "npm install --prefer-offline --no-audit --legacy-peer-deps && npm run build",
+  "installCommand": "npm install --prefer-offline --no-audit --legacy-peer-deps",
   "framework": "nextjs",
   "regions": ["iad1"],
   "functions": {
