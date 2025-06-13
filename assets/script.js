@@ -37,3 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   versionElement.textContent = `Versión 1.3.1 - ${formattedDate}`
 })
+
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("Página de mantenimiento cargada correctamente")
+})
