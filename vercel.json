@@ -1,6 +1,7 @@
 {
-  "buildCommand": "npm install --no-package-lock && npm run build",
-  "installCommand": "npm install --no-package-lock",
+  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm run build",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "framework": "nextjs",
-  "regions": ["iad1"]
+  "regions": ["sfo1"],
+  "nodeVersion": "18.17.1"
 }
