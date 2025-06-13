@@ -81,7 +81,7 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
 }
 
 export default function EmpleadosResumen() {
-  const { getEmployees, getAssignments, getPayments } = useEmployeeDB()
+  const { getEmployees, getAssignments, getPayments, savePayment, deletePayment } = useEmployeeDB()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
   const [yearlyAssignments, setYearlyAssignments] = useState<EmployeeAssignment[]>([])
@@ -153,6 +153,45 @@ export default function EmpleadosResumen() {
     const today = new Date()
     const monday = startOfWeek(today, { weekStartsOn: 1 })
     setSelectedWeek(monday.toISOString().split("T")[0])
+  }
+
+  const handleMarkAsPaid = async (paymentId: number) => {
+    try {
+      await savePayment({
+        id: paymentId,
+        status: "pagado",
+      })
+      toast({
+        title: "Pago Marcado",
+        description: "El pago ha sido marcado como pagado exitosamente.",
+      })
+      await reloadData() // Recargar datos después de marcar como pagado
+    } catch (error) {
+      console.error("Error al marcar como pagado:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo marcar el pago como pagado. Intenta nuevamente.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: number) => {
+    try {
+      await deletePayment(paymentId)
+      toast({
+        title: "Pago Eliminado",
+        description: "El pago ha sido eliminado exitosamente.",
+      })
+      await reloadData() // Recargar datos después de eliminar
+    } catch (error) {
+      console.error("Error al eliminar el pago:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar el pago. Intenta nuevamente.",
+        variant: "destructive",
+      })
+    }
   }
 
   // Cargar datos iniciales
@@ -482,10 +521,13 @@ export default function EmpleadosResumen() {
     }
   }
 
+  // Determinar si mostrar el panel de estadísticas y la alerta de pagos pendientes
+  const showPendingPaymentsUI = pendingPayments.length > 0 && activeTab === "semanal"
+
   return (
     <div className="space-y-6">
-      {/* Panel de estadísticas generales */}
-      {pendingPayments.length > 0 && (
+      {/* Panel de estadísticas generales - SOLO MOSTRAR UNA VEZ */}
+      {showPendingPaymentsUI && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="border-red-200 bg-red-50">
             <CardContent className="p-4">
@@ -599,8 +641,8 @@ export default function EmpleadosResumen() {
             </div>
           </div>
 
-          {/* Alerta de pagos pendientes mejorada */}
-          {pendingPayments.length > 0 && (
+          {/* Alerta de pagos pendientes mejorada - SOLO MOSTRAR EN PESTAÑA SEMANAL */}
+          {showPendingPaymentsUI && (
             <Alert className="mb-6 border-red-300 bg-red-50">
               <AlertTriangle className="h-5 w-5 text-red-600" />
               <AlertTitle className="text-red-800 text-lg">🚨 ¡Atención! Hay semanas sin pagar</AlertTitle>
@@ -630,11 +672,11 @@ export default function EmpleadosResumen() {
                           <TableCell className="font-bold text-red-700">${payment.amount.toLocaleString()}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                              <Button size="sm" onClick={() => {}} className="bg-green-600">
+                              <Button size="sm" onClick={() => handleMarkAsPaid(payment.id)} className="bg-green-600">
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 Pagar
                               </Button>
-                              <Button variant="outline" size="sm" onClick={() => {}}>
+                              <Button variant="outline" size="sm" onClick={() => handleDeletePayment(payment.id)}>
                                 🗑️ Eliminar
                               </Button>
                             </div>
