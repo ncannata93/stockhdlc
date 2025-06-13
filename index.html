@@ -3,124 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hoteles Costa - Mantenimiento</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-      margin: 0;
-      padding: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      color: #333;
-    }
-    .container {
-      background-color: white;
-      border-radius: 8px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-      padding: 2rem;
-      max-width: 600px;
-      width: 90%;
-      text-align: center;
-    }
-    .logo {
-      width: 150px;
-      height: auto;
-      margin-bottom: 1.5rem;
-    }
-    h1 {
-      margin: 0 0 1rem;
-      color: #2d3748;
-      font-size: 2rem;
-    }
-    p {
-      margin: 0 0 1.5rem;
-      line-height: 1.6;
-      color: #4a5568;
-    }
-    .status {
-      background-color: #f7fafc;
-      border-radius: 6px;
-      padding: 1rem;
-      margin-bottom: 1.5rem;
-      border-left: 4px solid #3182ce;
-    }
-    .status-title {
-      font-weight: 600;
-      color: #2c5282;
-      margin: 0 0 0.5rem;
-    }
-    .status-message {
-      margin: 0;
-      color: #4a5568;
-    }
-    .contact {
-      font-size: 0.9rem;
-      color: #718096;
-    }
-    .progress-container {
-      width: 100%;
-      background-color: #edf2f7;
-      border-radius: 9999px;
-      height: 8px;
-      margin: 1.5rem 0;
-      overflow: hidden;
-    }
-    .progress-bar {
-      height: 100%;
-      width: 75%;
-      background-color: #3182ce;
-      animation: progress 2s ease-in-out infinite;
-    }
-    @keyframes progress {
-      0% { width: 15%; }
-      50% { width: 85%; }
-      100% { width: 15%; }
-    }
-  </style>
+  <title>Hoteles de la Costa - Sistema de Gestión</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <link rel="icon" href="assets/favicon.ico">
+  <meta name="description" content="Sistema integral para la gestión hotelera">
 </head>
 <body>
   <div class="container">
-    <svg class="logo" viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="20" width="160" height="60" rx="5" fill="#3182ce"/>
-      <text x="100" y="60" font-family="Arial" font-size="24" fill="white" text-anchor="middle">Hoteles Costa</text>
-    </svg>
-    
-    <h1>Sitio en mantenimiento</h1>
-    
-    <div class="status">
-      <h3 class="status-title">Estado: Actualización en progreso</h3>
-      <p class="status-message">Estamos realizando mejoras importantes en nuestro sistema.</p>
-    </div>
-    
-    <p>Estamos trabajando para mejorar su experiencia. El sistema estará disponible pronto con nuevas funcionalidades y mejoras de rendimiento.</p>
-    
-    <div class="progress-container">
-      <div class="progress-bar"></div>
-    </div>
-    
-    <p class="contact">Si necesita asistencia inmediata, por favor contacte al administrador del sistema.</p>
+    <header>
+      <div class="logo-container">
+        <img src="assets/logo.png" alt="Hoteles de la Costa" class="logo">
+      </div>
+      <h1>Sistema Integral de Gestión</h1>
+      <p class="subtitle">Plataforma Profesional para Administración Hotelera</p>
+    </header>
+
+    <main>
+      <div class="status-card">
+        <div class="status-icon">✅</div>
+        <h2>Servidor Operativo</h2>
+        <p>El sistema está funcionando correctamente</p>
+        <div class="version">Versión 1.3.1</div>
+      </div>
+
+      <div class="modules">
+        <div class="module-card" id="stock-module">
+          <div class="module-icon">📦</div>
+          <h3>Gestión de Stock</h3>
+          <p>Control completo del inventario y productos</p>
+          <button class="btn btn-primary" onclick="accessModule('stock')">Acceder</button>
+        </div>
+
+        <div class="module-card" id="employees-module">
+          <div class="module-icon">👥</div>
+          <h3>Gestión de Empleados</h3>
+          <p>Administración integral del personal</p>
+          <button class="btn btn-success" onclick="accessModule('empleados')">Acceder</button>
+        </div>
+
+        <div class="module-card" id="services-module">
+          <div class="module-icon">🔧</div>
+          <h3>Gestión de Servicios</h3>
+          <p>Control de servicios y reservaciones</p>
+          <button class="btn btn-purple" onclick="accessModule('servicios')">Acceder</button>
+        </div>
+      </div>
+
+      <div class="login-section">
+        <h3>Acceso al Sistema</h3>
+        <p>Inicia sesión para acceder a todos los módulos</p>
+        <button class="btn btn-dark" onclick="login()">Iniciar Sesión</button>
+      </div>
+    </main>
+
+    <footer>
+      <p>© 2025 Hoteles de la Costa. Sistema de Gestión Integral.</p>
+      <p class="small">Desarrollado con tecnología de vanguardia para la excelencia hotelera</p>
+    </footer>
   </div>
 
-  <script>
-    // Simulación de estado de mantenimiento
-    const messages = [
-      "Actualizando base de datos...",
-      "Optimizando rendimiento...",
-      "Implementando nuevas funcionalidades...",
-      "Realizando pruebas finales...",
-      "Preparando para lanzamiento..."
-    ];
-    
-    const statusMessage = document.querySelector('.status-message');
-    let messageIndex = 0;
-    
-    setInterval(() => {
-      statusMessage.textContent = messages[messageIndex];
-      messageIndex = (messageIndex + 1) % messages.length;
-    }, 3000);
-  </script>
+  <script src="assets/script.js"></script>
 </body>
 </html>
