@@ -2,13 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  webpack: (config) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "@": __dirname,
-    }
-    return config
-  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -17,6 +10,19 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+  },
+  experimental: {
+    esmExternals: "loose",
+    forceSwcTransforms: true,
+  },
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      path: false,
+      os: false,
+    }
+    return config
   },
 }
 

@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm install --no-save && npm run build",
-  "installCommand": "npm install --no-save",
+  "buildCommand": "npm install -g tailwindcss postcss autoprefixer && npm install && npm run build",
+  "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["iad1"],
   "functions": {
