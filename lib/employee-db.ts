@@ -516,8 +516,6 @@ export const addEmployeeAssignment = async (assignmentData: {
   })
 }
 
-// Exportar la función para uso directo
-
 // Hook personalizado para usar las funciones de base de datos con el usuario actual
 export const useEmployeeDB = () => {
   const { session } = useAuth()
@@ -535,6 +533,6 @@ export const useEmployeeDB = () => {
     savePayment: (payment: Partial<EmployeePayment>) => savePayment(payment, username),
     deletePayment,
     getHotels,
-    getSupabaseClient, // Agregar esta línea
+    getSupabaseClient,
   }
 }
