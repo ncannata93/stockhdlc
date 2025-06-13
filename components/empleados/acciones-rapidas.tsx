@@ -38,6 +38,14 @@ export default function AccionesRapidas({
     setLoading(true)
     try {
       console.log("🔄 Creando pago para:", employee.name, "por $", totalAmount)
+      console.log("Datos del pago:", {
+        employee_id: employee.id,
+        amount: totalAmount,
+        payment_date: new Date().toISOString().split("T")[0],
+        week_start: weekStart,
+        week_end: weekEnd,
+        status: "pendiente",
+      })
 
       const result = await savePayment({
         employee_id: employee.id,

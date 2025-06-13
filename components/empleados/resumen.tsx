@@ -81,7 +81,7 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
 }
 
 export default function EmpleadosResumen() {
-  const { getEmployees, getAssignments, getPayments, savePayment, deletePayment } = useEmployeeDB()
+  const { getEmployees, getAssignments, getPayments } = useEmployeeDB()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
   const [yearlyAssignments, setYearlyAssignments] = useState<EmployeeAssignment[]>([])
@@ -153,42 +153,6 @@ export default function EmpleadosResumen() {
     const today = new Date()
     const monday = startOfWeek(today, { weekStartsOn: 1 })
     setSelectedWeek(monday.toISOString().split("T")[0])
-  }
-
-  const handleMarkAsPaid = async (paymentId: number) => {
-    try {
-      await savePayment(paymentId, { status: "pagado" })
-      toast({
-        title: "Pago Marcado",
-        description: "El pago ha sido marcado como pagado exitosamente.",
-      })
-      await reloadData() // Recargar datos después de marcar como pagado
-    } catch (error) {
-      console.error("Error al marcar como pagado:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo marcar el pago como pagado. Intenta nuevamente.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleDeletePayment = async (paymentId: number) => {
-    try {
-      await deletePayment(paymentId)
-      toast({
-        title: "Pago Eliminado",
-        description: "El pago ha sido eliminado exitosamente.",
-      })
-      await reloadData() // Recargar datos después de eliminar
-    } catch (error) {
-      console.error("Error al eliminar el pago:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar el pago. Intenta nuevamente.",
-        variant: "destructive",
-      })
-    }
   }
 
   // Cargar datos iniciales
@@ -486,20 +450,35 @@ export default function EmpleadosResumen() {
 
   const reloadData = async () => {
     try {
+      console.log("🔄 Recargando datos...")
+
       // Recargar pagos semanales
       const paymentsData = await getPayments({
         start_date: startDateStr,
         end_date: endDateStr,
       })
+      console.log("💰 Pagos semanales recargados:", paymentsData.length)
       setPayments(paymentsData)
 
       // Recargar todos los pagos
       const allPaymentsData = await getPayments({})
+      console.log("💳 Todos los pagos recargados:", allPaymentsData.length)
       setAllPayments(allPaymentsData)
 
-      console.log("🔄 Datos recargados exitosamente")
+      console.log("✅ Datos recargados exitosamente")
+
+      // Mostrar toast de confirmación
+      toast({
+        title: "✅ Datos actualizados",
+        description: "La información de pagos ha sido actualizada correctamente",
+      })
     } catch (error) {
       console.error("❌ Error al recargar datos:", error)
+      toast({
+        title: "❌ Error",
+        description: "No se pudieron recargar los datos. Por favor, intenta de nuevo.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -651,11 +630,11 @@ export default function EmpleadosResumen() {
                           <TableCell className="font-bold text-red-700">${payment.amount.toLocaleString()}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                              <Button size="sm" onClick={() => handleMarkAsPaid(payment.id)} className="bg-green-600">
+                              <Button size="sm" onClick={() => {}} className="bg-green-600">
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 Pagar
                               </Button>
-                              <Button variant="outline" size="sm" onClick={() => handleDeletePayment(payment.id)}>
+                              <Button variant="outline" size="sm" onClick={() => {}}>
                                 🗑️ Eliminar
                               </Button>
                             </div>
