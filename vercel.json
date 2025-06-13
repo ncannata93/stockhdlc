@@ -1,6 +1,6 @@
 {
-  "buildCommand": "mkdir -p public && cp index.html public/index.html && cp -r assets public/assets",
-  "outputDirectory": "public",
-  "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
   "regions": ["iad1"]
 }
