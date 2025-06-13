@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm install --legacy-peer-deps --timeout=300000 && npm run build",
-  "installCommand": "npm install --legacy-peer-deps --timeout=300000",
+  "buildCommand": "npm ci --prefer-offline --no-audit --legacy-peer-deps && npm run build",
+  "installCommand": "npm ci --prefer-offline --no-audit --legacy-peer-deps",
   "framework": "nextjs",
   "regions": ["iad1"],
   "functions": {
