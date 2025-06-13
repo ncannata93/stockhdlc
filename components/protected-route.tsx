@@ -25,7 +25,7 @@ export default function ProtectedRoute({ children, adminOnly = false, allowRedir
     // Verificar permisos de admin si es requerido
     if (!isLoading && isAuthenticated && adminOnly) {
       const username = session?.username || ""
-      const isAdmin = username === "admin" || username === "ncannata"
+      const isAdmin = session?.isAdmin || false
 
       if (!isAdmin && allowRedirect) {
         router.replace("/stock")

@@ -1,275 +1,186 @@
-// Sistema de autenticación local que no depende de Supabase
-// Almacena usuarios y sesiones en localStorage
-
-// Tipos para el sistema de autenticación local
+// Tipos para la autenticación local
 export interface LocalUser {
+  id: string
   username: string
-  password: string // En una aplicación real, esto debería ser un hash
+  email: string
+  password: string
   isAdmin: boolean
   createdAt: string
+  lastLogin?: string
 }
 
 export interface LocalSession {
+  id: string
+  userId: string
   username: string
+  email: string
   isAdmin: boolean
   createdAt: string
   expiresAt: string
 }
 
-// Constantes
-const LOCAL_USERS_KEY = "local_users"
-const LOCAL_SESSION_KEY = "local_session"
-const SESSION_DURATION_DAYS = 7
+// Constantes para almacenamiento local
+const LOCAL_USERS_KEY = "hotel_management_users"
+const LOCAL_SESSION_KEY = "hotel_management_session"
 
-// Función para inicializar el sistema de autenticación local
-export function ensurePredefinedUsers() {
-  // Obtener usuarios actuales
-  const users = getLocalUsers()
-
-  // Lista de usuarios predefinidos que siempre deben existir
-  const predefinedUsers = [
-    {
-      username: "admin",
-      password: "admin123",
-      isAdmin: true,
-    },
-    {
-      username: "ncannata",
-      password: "nacho1234N",
-      isAdmin: true,
-    },
-    {
-      username: "dpili",
-      password: "pili123",
-      isAdmin: false,
-    },
-    {
-      username: "jprey",
-      password: "qw425540",
-      isAdmin: false,
-    },
-  ]
-
-  let usersChanged = false
-
-  // Verificar cada usuario predefinido
-  predefinedUsers.forEach((predefinedUser) => {
-    // Comprobar si el usuario ya existe
-    const userExists = users.some((user) => user.username.toLowerCase() === predefinedUser.username.toLowerCase())
-
-    // Si no existe, añadirlo
-    if (!userExists) {
-      users.push({
-        ...predefinedUser,
-        createdAt: new Date().toISOString(),
-      })
-      usersChanged = true
-      console.log(`Usuario predefinido creado: ${predefinedUser.username}`)
-    }
-  })
-
-  // Si se añadió algún usuario, guardar la lista actualizada
-  if (usersChanged) {
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users))
-    console.log("Lista de usuarios actualizada con usuarios predefinidos")
-  }
-
-  return users
+// Función para generar un ID único
+const generateId = (): string => {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
 }
 
-// Modificar la función initLocalAuth para usar ensurePredefinedUsers
-export function initLocalAuth() {
-  try {
-    // Verificar si ya hay usuarios creados
-    const users = getLocalUsers()
-
-    // Si no hay usuarios, crear los usuarios predefinidos
-    if (users.length === 0) {
-      const predefinedUsers: LocalUser[] = [
-        {
-          username: "admin",
-          password: "admin123",
-          isAdmin: true,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          username: "ncannata",
-          password: "nacho1234N",
-          isAdmin: true,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          username: "dpili",
-          password: "pili123",
-          isAdmin: false,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          username: "jprey",
-          password: "qw425540",
-          isAdmin: false,
-          createdAt: new Date().toISOString(),
-        },
-      ]
-
-      // Guardar los usuarios predefinidos
-      localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(predefinedUsers))
-      console.log("Usuarios predefinidos creados inicialmente")
-    } else {
-      // Asegurarse de que los usuarios predefinidos existan
-      ensurePredefinedUsers()
-    }
-  } catch (error) {
-    console.error("Error en initLocalAuth:", error)
-  }
+// Función para convertir nombre de usuario a email
+export const usernameToEmail = (username: string): string => {
+  return `${username}@hotelesdelacosta.com`
 }
 
-// Función para obtener todos los usuarios locales
-export function getLocalUsers(): LocalUser[] {
+// Obtener usuarios locales
+export const getLocalUsers = (): LocalUser[] => {
+  if (typeof window === "undefined") return []
+
+  const usersJson = localStorage.getItem(LOCAL_USERS_KEY)
+  if (!usersJson) return []
+
   try {
-    const usersJson = localStorage.getItem(LOCAL_USERS_KEY)
-    return usersJson ? JSON.parse(usersJson) : []
+    return JSON.parse(usersJson)
   } catch (error) {
-    console.error("Error al obtener usuarios locales:", error)
+    console.error("Error parsing local users:", error)
     return []
   }
 }
 
-// Función para obtener un usuario por nombre de usuario
-export function getLocalUserByUsername(username: string): LocalUser | null {
-  const users = getLocalUsers()
-  return users.find((user) => user.username.toLowerCase() === username.toLowerCase()) || null
+// Guardar usuarios locales
+const saveLocalUsers = (users: LocalUser[]): void => {
+  if (typeof window === "undefined") return
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users))
 }
 
-// Función para crear un nuevo usuario local
-export function createLocalUser(
+// Crear usuario local
+export const createLocalUser = (
   username: string,
   password: string,
   isAdmin = false,
-): { success: boolean; error: string | null } {
-  try {
-    // Validar que el nombre de usuario no esté vacío
-    if (!username.trim()) {
-      return { success: false, error: "El nombre de usuario no puede estar vacío" }
-    }
-
-    // Validar que la contraseña tenga al menos 6 caracteres
-    if (password.length < 6) {
-      return { success: false, error: "La contraseña debe tener al menos 6 caracteres" }
-    }
-
-    // Verificar si el usuario ya existe
-    const existingUser = getLocalUserByUsername(username)
-    if (existingUser) {
-      return { success: false, error: "El nombre de usuario ya está en uso" }
-    }
-
-    // Crear el nuevo usuario
-    const newUser: LocalUser = {
-      username,
-      password, // En una aplicación real, esto debería ser un hash
-      isAdmin,
-      createdAt: new Date().toISOString(),
-    }
-
-    // Obtener la lista actual de usuarios y añadir el nuevo
-    const users = getLocalUsers()
-    users.push(newUser)
-
-    // Guardar la lista actualizada
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users))
-
-    return { success: true, error: null }
-  } catch (error) {
-    console.error("Error al crear usuario local:", error)
-    return { success: false, error: "Error al crear usuario" }
+): { success: boolean; error: string | null } => {
+  if (!username || !password) {
+    return { success: false, error: "Nombre de usuario y contraseña son requeridos" }
   }
+
+  const users = getLocalUsers()
+
+  // Verificar si el usuario ya existe
+  if (users.some((user) => user.username === username)) {
+    return { success: false, error: "El usuario ya existe" }
+  }
+
+  const newUser: LocalUser = {
+    id: generateId(),
+    username,
+    email: usernameToEmail(username),
+    password, // En una aplicación real, deberíamos hashear la contraseña
+    isAdmin,
+    createdAt: new Date().toISOString(),
+  }
+
+  users.push(newUser)
+  saveLocalUsers(users)
+
+  return { success: true, error: null }
 }
 
-// Función para iniciar sesión con un usuario local
-export function loginLocalUser(
+// Iniciar sesión con usuario local
+export const loginLocalUser = (
   username: string,
   password: string,
-): { success: boolean; error: string | null; session: LocalSession | null } {
-  try {
-    // Buscar el usuario
-    const user = getLocalUserByUsername(username)
+): { success: boolean; error: string | null; session: LocalSession | null } => {
+  const users = getLocalUsers()
+  const user = users.find((u) => u.username === username)
 
-    // Verificar si el usuario existe
-    if (!user) {
-      return { success: false, error: "Usuario no encontrado", session: null }
+  if (!user) {
+    return { success: false, error: "Usuario no encontrado", session: null }
+  }
+
+  if (user.password !== password) {
+    return { success: false, error: "Contraseña incorrecta", session: null }
+  }
+
+  // Crear sesión
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000) // 24 horas
+
+  const session: LocalSession = {
+    id: generateId(),
+    userId: user.id,
+    username: user.username,
+    email: user.email,
+    isAdmin: user.isAdmin,
+    createdAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  }
+
+  // Actualizar último inicio de sesión
+  const updatedUsers = users.map((u) => {
+    if (u.id === user.id) {
+      return { ...u, lastLogin: now.toISOString() }
     }
+    return u
+  })
 
-    // Verificar la contraseña
-    if (user.password !== password) {
-      return { success: false, error: "Contraseña incorrecta", session: null }
-    }
+  saveLocalUsers(updatedUsers)
+  saveLocalSession(session)
 
-    // Crear una sesión
-    const now = new Date()
-    const expiresAt = new Date(now)
-    expiresAt.setDate(now.getDate() + SESSION_DURATION_DAYS)
+  return { success: true, error: null, session }
+}
 
-    const session: LocalSession = {
-      username: user.username,
-      isAdmin: user.isAdmin,
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    }
+// Guardar sesión local
+const saveLocalSession = (session: LocalSession | null): void => {
+  if (typeof window === "undefined") return
 
-    // Guardar la sesión
+  if (session) {
     localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(session))
-    console.log("loginLocalUser: Sesión creada y guardada", session)
-
-    return { success: true, error: null, session }
-  } catch (error) {
-    console.error("Error al iniciar sesión:", error)
-    return { success: false, error: "Error al iniciar sesión", session: null }
+  } else {
+    localStorage.removeItem(LOCAL_SESSION_KEY)
   }
 }
 
-// Función para cerrar sesión
-export function logoutLocalUser(): void {
-  localStorage.removeItem(LOCAL_SESSION_KEY)
-}
+// Obtener sesión actual
+export const getCurrentLocalSession = (): LocalSession | null => {
+  if (typeof window === "undefined") return null
 
-// Función para obtener la sesión actual
-export function getCurrentLocalSession(): LocalSession | null {
+  const sessionJson = localStorage.getItem(LOCAL_SESSION_KEY)
+  if (!sessionJson) return null
+
   try {
-    if (typeof window === "undefined") {
-      console.log("getCurrentLocalSession: No estamos en el cliente")
-      return null
-    }
-
-    const sessionJson = localStorage.getItem(LOCAL_SESSION_KEY)
-    if (!sessionJson) {
-      console.log("getCurrentLocalSession: No hay sesión en localStorage")
-      return null
-    }
-
-    const session: LocalSession = JSON.parse(sessionJson)
-    console.log("getCurrentLocalSession: Sesión encontrada", session)
+    const session = JSON.parse(sessionJson) as LocalSession
 
     // Verificar si la sesión ha expirado
-    const now = new Date()
-    const expiresAt = new Date(session.expiresAt)
-
-    if (now > expiresAt) {
-      // La sesión ha expirado, eliminarla
-      console.log("getCurrentLocalSession: La sesión ha expirado")
-      logoutLocalUser()
+    if (new Date(session.expiresAt) < new Date()) {
+      localStorage.removeItem(LOCAL_SESSION_KEY)
       return null
     }
 
     return session
   } catch (error) {
-    console.error("Error al obtener sesión actual:", error)
+    console.error("Error parsing local session:", error)
     return null
   }
 }
 
-// Añadir esta función al final del archivo si no existe:
-export function usernameToEmail(username: string): string {
-  // Convertir el nombre de usuario a un formato de correo electrónico
-  return `${username.toLowerCase()}@example.com`
+// Cerrar sesión
+export const logoutLocalUser = (): void => {
+  if (typeof window === "undefined") return
+  localStorage.removeItem(LOCAL_SESSION_KEY)
+}
+
+// Asegurar que existan usuarios predefinidos
+export const ensurePredefinedUsers = (): void => {
+  const users = getLocalUsers()
+
+  // Si no hay usuarios, crear los predefinidos
+  if (users.length === 0) {
+    // Crear usuario admin
+    createLocalUser("admin", "admin123", true)
+
+    // Crear algunos usuarios normales
+    createLocalUser("usuario1", "password1")
+    createLocalUser("usuario2", "password2")
+  }
 }

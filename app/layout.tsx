@@ -1,13 +1,11 @@
 import type React from "react"
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
 import "./globals.css"
-
-const inter = Inter({ subsets: ["latin"] })
+import type { Metadata } from "next"
+import { AuthProvider } from "@/lib/auth-context"
 
 export const metadata: Metadata = {
-  title: "Hoteles de la Costa - Sistema de Gestión",
-  description: "Sistema integral para la gestión hotelera",
+  title: "Sistema de Gestión Hotelera",
+  description: "Plataforma integral para la administración de hoteles",
     generator: 'v0.dev'
 }
 
@@ -18,7 +16,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   )
 }
