@@ -1,6 +1,6 @@
 {
-  "buildCommand": "mkdir -p public && cp index.html public/index.html && echo 'Deployment successful'",
-  "outputDirectory": "public",
-  "framework": null,
+  "buildCommand": "npm install && npm run build",
+  "installCommand": "npm install",
+  "framework": "nextjs",
   "regions": ["iad1"]
 }
