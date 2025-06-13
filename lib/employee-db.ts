@@ -270,6 +270,41 @@ export const saveAssignment = async (
       // Crear nueva asignación
       console.log(`Verificando asignaciones existentes para el mismo día...`)
 
+      // IMPORTANTE: Si ya se proporciona una tarifa explícita, usarla directamente
+      // Esto evita problemas de concurrencia cuando se crean múltiples asignaciones simultáneamente
+      if (assignment.daily_rate_used !== undefined) {
+        console.log(`Usando tarifa proporcionada explícitamente: ${assignment.daily_rate_used}`)
+
+        const { data, error } = await supabase
+          .from("employee_assignments")
+          .insert({
+            employee_id: assignment.employee_id,
+            hotel_name: assignment.hotel_name,
+            assignment_date: assignment.assignment_date,
+            daily_rate_used: assignment.daily_rate_used,
+            notes: assignment.notes,
+            created_by: username,
+          })
+          .select(`
+            *,
+            employees!inner(name)
+          `)
+          .single()
+
+        if (error) {
+          console.error("Error al crear asignación:", error)
+          return null
+        }
+
+        console.log(`Asignación creada exitosamente con tarifa explícita: ${data.daily_rate_used}`)
+
+        return {
+          ...data,
+          employee_name: data.employees?.name,
+        }
+      }
+
+      // RESTO DE LA LÓGICA ORIGINAL para cuando no se proporciona tarifa explícita
       // 1. Verificar si ya existen asignaciones para este empleado en la misma fecha
       const { data: existingAssignments, error: existingError } = await supabase
         .from("employee_assignments")
