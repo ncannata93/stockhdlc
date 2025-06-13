@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm install --prefer-offline --no-audit --legacy-peer-deps && npm run build",
-  "installCommand": "npm install --prefer-offline --no-audit --legacy-peer-deps",
+  "buildCommand": "npm install --no-save && npm run build",
+  "installCommand": "npm install --no-save",
   "framework": "nextjs",
   "regions": ["iad1"],
   "functions": {
