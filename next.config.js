@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -11,19 +10,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    esmExternals: "loose",
-    forceSwcTransforms: true,
-  },
-  webpack: (config) => {
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      path: false,
-      os: false,
-    }
-    return config
-  },
+  transpilePackages: ["@radix-ui", "class-variance-authority", "clsx", "tailwind-merge", "lucide-react"],
 }
 
 module.exports = nextConfig
