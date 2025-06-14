@@ -482,12 +482,44 @@ export const savePayment = async (
   payment: Partial<EmployeePayment>,
   username?: string,
 ): Promise<EmployeePayment | null> => {
+  console.log("💾 INICIANDO savePayment")
+  console.log("📝 Datos recibidos:", payment)
+  console.log("👤 Usuario:", username)
+
+  // VERIFICAR CONEXIÓN A SUPABASE
   const supabase = getSupabaseClient()
-  if (!supabase) return null
+  if (!supabase) {
+    console.error("❌ No hay cliente de Supabase disponible")
+    console.error("❌ Variables de entorno:")
+    console.error("- SUPABASE_URL:", !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+    console.error("- SUPABASE_KEY:", !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    return null
+  }
+
+  console.log("✅ Cliente de Supabase inicializado correctamente")
+
+  // VERIFICAR QUE LA TABLA EXISTE
+  try {
+    console.log("🔍 Verificando que la tabla employee_payments existe...")
+    const { data: tableCheck, error: tableError } = await supabase.from("employee_payments").select("id").limit(1)
+
+    if (tableError) {
+      console.error("❌ Error al verificar tabla employee_payments:", tableError)
+      console.error("❌ Esto indica que la tabla no existe o no hay permisos")
+      return null
+    }
+
+    console.log("✅ Tabla employee_payments verificada correctamente")
+  } catch (err) {
+    console.error("❌ Error inesperado al verificar tabla:", err)
+    return null
+  }
 
   try {
     if (payment.id) {
-      // Actualizar pago existente
+      console.log("🔄 Actualizando pago existente con ID:", payment.id)
+      console.log("📤 Enviando UPDATE a Supabase...")
+
       const { data, error } = await supabase
         .from("employee_payments")
         .update({
@@ -507,47 +539,66 @@ export const savePayment = async (
         `)
         .single()
 
+      console.log("📥 Respuesta de Supabase UPDATE:", { data, error })
+
       if (error) {
-        console.error("Error al actualizar pago:", error)
+        console.error("❌ Error al actualizar pago en Supabase:", error)
         return null
       }
 
+      console.log("✅ Pago actualizado exitosamente en Supabase:", data)
       return {
         ...data,
         employee_name: data.employees?.name,
       }
     } else {
-      // Crear nuevo pago
+      console.log("➕ Creando nuevo pago")
+      console.log("📤 Enviando INSERT a Supabase...")
+
+      const insertData = {
+        employee_id: payment.employee_id,
+        amount: payment.amount,
+        payment_date: payment.payment_date,
+        week_start: payment.week_start,
+        week_end: payment.week_end,
+        status: payment.status || "pendiente",
+        notes: payment.notes,
+        created_by: username,
+      }
+
+      console.log("📤 Datos a insertar en Supabase:", insertData)
+
       const { data, error } = await supabase
         .from("employee_payments")
-        .insert({
-          employee_id: payment.employee_id,
-          amount: payment.amount,
-          payment_date: payment.payment_date,
-          week_start: payment.week_start,
-          week_end: payment.week_end,
-          status: payment.status || "pendiente",
-          notes: payment.notes,
-          created_by: username,
-        })
+        .insert(insertData)
         .select(`
           *,
           employees!inner(name)
         `)
         .single()
 
+      console.log("📥 Respuesta de Supabase INSERT:", { data, error })
+
       if (error) {
-        console.error("Error al crear pago:", error)
+        console.error("❌ Error al crear pago en Supabase:", error)
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        })
         return null
       }
 
+      console.log("✅ Pago creado exitosamente en Supabase:", data)
       return {
         ...data,
         employee_name: data.employees?.name,
       }
     }
   } catch (err) {
-    console.error("Error inesperado al guardar pago:", err)
+    console.error("❌ Error inesperado al guardar pago:", err)
+    console.error("❌ Stack trace:", err instanceof Error ? err.stack : "No stack available")
     return null
   }
 }
@@ -627,6 +678,14 @@ export const useEmployeeDB = () => {
   const { session } = useAuth()
   const username = session?.username || "sistema"
 
+  console.log("🔧 useEmployeeDB inicializado con usuario:", username)
+
+  const wrappedSavePayment = (payment: Partial<EmployeePayment>) => {
+    console.log("🎯 wrappedSavePayment llamado con:", payment)
+    console.log("👤 Username para savePayment:", username)
+    return savePayment(payment, username)
+  }
+
   return {
     getEmployees,
     saveEmployee,
@@ -636,7 +695,7 @@ export const useEmployeeDB = () => {
     addEmployeeAssignment,
     deleteAssignment,
     getPayments,
-    savePayment: (payment: Partial<EmployeePayment>) => savePayment(payment, username),
+    savePayment: wrappedSavePayment,
     deletePayment,
     getHotels,
   }

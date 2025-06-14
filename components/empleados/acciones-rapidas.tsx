@@ -29,53 +29,93 @@ export default function AccionesRapidas({
   weekEnd,
   onPaymentChange,
 }: AccionesRapidasProps) {
-  const { savePayment, deletePayment } = useEmployeeDB()
   const [loading, setLoading] = useState(false)
 
+  // Get the hook functions directly
+  const employeeDB = useEmployeeDB()
+  const { savePayment, deletePayment } = employeeDB || {}
+
   const handleCreatePayment = async () => {
-    if (loading || daysWorked === 0) return
+    console.log("🚀 handleCreatePayment iniciado")
 
+    // Safety validations
+    if (!employeeDB) {
+      console.error("❌ employeeDB hook no disponible")
+      toast({
+        title: "❌ Error",
+        description: "Sistema de base de datos no inicializado",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!savePayment) {
+      console.error("❌ savePayment no está disponible")
+      toast({
+        title: "❌ Error",
+        description: "Función savePayment no disponible",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!employee?.id) {
+      console.error("❌ employee o employee.id no disponible")
+      toast({
+        title: "❌ Error",
+        description: "Información del empleado no disponible",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (loading || daysWorked === 0) {
+      console.log("❌ Bloqueado por loading o días trabajados")
+      return
+    }
+
+    console.log("✅ Todas las validaciones pasaron")
     setLoading(true)
-    try {
-      console.log("🔄 Creando pago para:", employee.name, "por $", totalAmount)
-      console.log("Datos del pago:", {
-        employee_id: employee.id,
-        amount: totalAmount,
-        payment_date: new Date().toISOString().split("T")[0],
-        week_start: weekStart,
-        week_end: weekEnd,
-        status: "pendiente",
-      })
 
-      const result = await savePayment({
+    try {
+      const paymentData = {
         employee_id: employee.id,
         amount: totalAmount,
         payment_date: new Date().toISOString().split("T")[0],
         week_start: weekStart,
         week_end: weekEnd,
-        status: "pendiente",
-      })
+        status: "pendiente" as const,
+      }
+
+      console.log("📤 Datos del pago:", paymentData)
+
+      const result = await savePayment(paymentData)
+      console.log("📥 Resultado:", result)
 
       if (result) {
-        console.log("✅ Pago creado exitosamente:", result)
+        console.log("✅ Pago creado exitosamente")
         toast({
           title: "✅ Pago registrado",
           description: `Pago de $${totalAmount.toLocaleString()} registrado para ${employee.name}`,
         })
-        onPaymentChange()
+
+        if (onPaymentChange) {
+          onPaymentChange()
+          console.log("✅ onPaymentChange ejecutado")
+        }
       } else {
-        console.error("❌ No se pudo crear el pago")
+        console.error("❌ savePayment retornó null/undefined")
         toast({
           title: "❌ Error",
-          description: "No se pudo registrar el pago. Intenta de nuevo.",
+          description: "No se pudo registrar el pago",
           variant: "destructive",
         })
       }
     } catch (error) {
-      console.error("❌ Error al crear pago:", error)
+      console.error("❌ Error completo:", error)
       toast({
         title: "❌ Error",
-        description: "Ocurrió un error inesperado al registrar el pago",
+        description: `Error: ${error instanceof Error ? error.message : "Desconocido"}`,
         variant: "destructive",
       })
     } finally {
@@ -84,29 +124,25 @@ export default function AccionesRapidas({
   }
 
   const handleMarkAsPaid = async () => {
-    if (loading || !payment) return
+    if (loading || !payment || !savePayment) return
 
     setLoading(true)
     try {
-      console.log("🔄 Marcando pago como pagado:", payment.id)
-
       const result = await savePayment({
         ...payment,
         status: "pagado",
       })
 
       if (result) {
-        console.log("✅ Pago marcado como pagado:", result)
         toast({
           title: "✅ Pago actualizado",
           description: `Pago de $${payment.amount.toLocaleString()} marcado como pagado`,
         })
-        onPaymentChange()
+        onPaymentChange?.()
       } else {
-        console.error("❌ No se pudo actualizar el pago")
         toast({
           title: "❌ Error",
-          description: "No se pudo actualizar el pago. Intenta de nuevo.",
+          description: "No se pudo actualizar el pago",
           variant: "destructive",
         })
       }
@@ -114,7 +150,7 @@ export default function AccionesRapidas({
       console.error("❌ Error al actualizar pago:", error)
       toast({
         title: "❌ Error",
-        description: "Ocurrió un error inesperado al actualizar el pago",
+        description: "Error inesperado al actualizar el pago",
         variant: "destructive",
       })
     } finally {
@@ -123,32 +159,26 @@ export default function AccionesRapidas({
   }
 
   const handleDeletePayment = async () => {
-    if (loading || !payment) return
+    if (loading || !payment || !deletePayment) return
 
-    const confirmMessage = `¿Eliminar el pago de $${payment.amount.toLocaleString()} para ${employee.name}?\n\nSemana: ${formatDateForDisplay(weekStart)} - ${formatDateForDisplay(weekEnd)}\n\nEsta acción no se puede deshacer.`
-
-    if (!confirm(confirmMessage)) {
+    if (!confirm(`¿Eliminar el pago de $${payment.amount.toLocaleString()} para ${employee.name}?`)) {
       return
     }
 
     setLoading(true)
     try {
-      console.log("🔄 Eliminando pago:", payment.id)
-
       const success = await deletePayment(payment.id)
 
       if (success) {
-        console.log("✅ Pago eliminado exitosamente")
         toast({
           title: "🗑️ Pago eliminado",
-          description: `Pago de $${payment.amount.toLocaleString()} eliminado correctamente`,
+          description: `Pago eliminado correctamente`,
         })
-        onPaymentChange()
+        onPaymentChange?.()
       } else {
-        console.error("❌ No se pudo eliminar el pago")
         toast({
           title: "❌ Error",
-          description: "No se pudo eliminar el pago. Intenta de nuevo.",
+          description: "No se pudo eliminar el pago",
           variant: "destructive",
         })
       }
@@ -156,7 +186,7 @@ export default function AccionesRapidas({
       console.error("❌ Error al eliminar pago:", error)
       toast({
         title: "❌ Error",
-        description: "Ocurrió un error inesperado al eliminar el pago",
+        description: "Error inesperado al eliminar el pago",
         variant: "destructive",
       })
     } finally {
@@ -169,7 +199,7 @@ export default function AccionesRapidas({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
           <User className="h-5 w-5" />
-          Acciones Rápidas - {employee.name}
+          Acciones Rápidas - {employee?.name || "Sin nombre"}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -218,12 +248,18 @@ export default function AccionesRapidas({
           )}
         </div>
 
+        {/* Debug info */}
+        <div className="text-xs text-gray-500 p-2 bg-gray-50 rounded">
+          Estado: Hook={!!employeeDB ? "✅" : "❌"}, SavePayment={!!savePayment ? "✅" : "❌"}, Employee=
+          {!!employee ? "✅" : "❌"}, EmployeeID={employee?.id || "❌"}
+        </div>
+
         {/* Botones de acción */}
         <div className="flex flex-col gap-3">
           {!payment ? (
             <Button
               onClick={handleCreatePayment}
-              disabled={loading || daysWorked === 0}
+              disabled={loading || daysWorked === 0 || !savePayment}
               className="w-full bg-green-600 hover:bg-green-700 h-12"
               size="lg"
             >
@@ -234,7 +270,7 @@ export default function AccionesRapidas({
             <div className="space-y-3">
               <Button
                 onClick={handleMarkAsPaid}
-                disabled={loading}
+                disabled={loading || !savePayment}
                 className="w-full bg-green-600 hover:bg-green-700 h-12"
                 size="lg"
               >
@@ -244,7 +280,7 @@ export default function AccionesRapidas({
               <Button
                 variant="outline"
                 onClick={handleDeletePayment}
-                disabled={loading}
+                disabled={loading || !deletePayment}
                 className="w-full h-12 border-red-300 text-red-700 hover:bg-red-50"
                 size="lg"
               >
@@ -262,7 +298,7 @@ export default function AccionesRapidas({
               <Button
                 variant="outline"
                 onClick={handleDeletePayment}
-                disabled={loading}
+                disabled={loading || !deletePayment}
                 className="w-full h-12 border-red-300 text-red-700 hover:bg-red-50"
                 size="lg"
               >
