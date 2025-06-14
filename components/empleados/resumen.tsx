@@ -1,39 +1,21 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { parseISO, startOfYear, endOfYear, isBefore, addWeeks, subWeeks, startOfWeek } from "date-fns"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
+import { parseISO, startOfYear, endOfYear, addWeeks, subWeeks, startOfWeek } from "date-fns"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Loader2,
-  Calendar,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  BarChart3,
-  AlertTriangle,
-  Info,
-  ChevronLeft,
-  ChevronRight,
-  CalendarDays,
-  Banknote,
-  Users,
-  TriangleIcon as ExclamationTriangle,
-} from "lucide-react"
+import { Loader2, Calendar, BarChart3, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
-import type { Employee, EmployeeAssignment, EmployeePayment } from "@/lib/employee-types"
+import type { Employee, EmployeeAssignment } from "@/lib/employee-types"
 import { Badge } from "@/components/ui/badge"
-import { toast } from "@/components/ui/use-toast"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateForDisplay } from "@/lib/date-utils"
 import AccionesRapidas from "./acciones-rapidas"
 
-// Función para obtener color del hotel
 const getHotelColor = (hotelName: string) => {
   const colors: Record<string, string> = {
     Jaguel: "bg-red-100 text-red-800 border-red-200",
@@ -54,7 +36,6 @@ const getHotelColor = (hotelName: string) => {
   return colors[hotelName] || "bg-gray-100 text-gray-800 border-gray-200"
 }
 
-// Función para obtener color sólido del hotel para gráficos
 const getHotelSolidColor = (hotelName: string) => {
   const colors: Record<string, string> = {
     Jaguel: "bg-red-500",
@@ -75,70 +56,37 @@ const getHotelSolidColor = (hotelName: string) => {
   return colors[hotelName] || "bg-gray-500"
 }
 
-// Función para verificar si una fecha está en el rango de la semana
 const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): boolean => {
   return date >= weekStart && date <= weekEnd
 }
 
 export default function EmpleadosResumen() {
-  const { getEmployees, getAssignments, getPayments, savePayment, deletePayment } = useEmployeeDB()
+  const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
   const [yearlyAssignments, setYearlyAssignments] = useState<EmployeeAssignment[]>([])
-  const [payments, setPayments] = useState<EmployeePayment[]>([])
-  const [allPayments, setAllPayments] = useState<EmployeePayment[]>([])
+  const [paidWeeks, setPaidWeeks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingYearly, setLoadingYearly] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<string>("todos")
   const [selectedWeek, setSelectedWeek] = useState<string>(() => {
-    // Obtener el lunes de la semana actual
     const today = new Date()
     const monday = startOfWeek(today, { weekStartsOn: 1 })
-    return monday.toISOString().split("T")[0] // Formato YYYY-MM-DD
+    return monday.toISOString().split("T")[0]
   })
-  const [showDebugInfo, setShowDebugInfo] = useState(false)
   const [activeTab, setActiveTab] = useState("semanal")
 
-  // Calcular fechas de inicio y fin de la semana seleccionada de manera segura
-  const startDate = (() => {
-    try {
-      return parseISO(selectedWeek)
-    } catch (e) {
-      console.error("Error parsing selectedWeek:", selectedWeek, e)
-      return new Date() // Fallback a la fecha actual
-    }
-  })()
+  const startDate = parseISO(selectedWeek)
+  const endDate = new Date(startDate)
+  endDate.setDate(startDate.getDate() + 6)
 
-  const endDate = (() => {
-    try {
-      // CORRECCIÓN: Calcular manualmente el domingo de la semana
-      // Si el lunes es 12/05, el domingo debe ser 18/05 (6 días después)
-      const calculatedEndDate = new Date(startDate)
-      calculatedEndDate.setDate(startDate.getDate() + 6)
-
-      console.log("📅 CÁLCULO DE SEMANA:")
-      console.log("🟢 Inicio (lunes):", startDate.toISOString().split("T")[0])
-      console.log("🔴 Fin calculado (domingo):", calculatedEndDate.toISOString().split("T")[0])
-
-      return calculatedEndDate
-    } catch (e) {
-      console.error("Error calculating endDate:", e)
-      const fallback = new Date(startDate)
-      fallback.setDate(fallback.getDate() + 6)
-      return fallback
-    }
-  })()
-
-  // Convertir a strings para comparación
   const startDateStr = startDate.toISOString().split("T")[0]
   const endDateStr = endDate.toISOString().split("T")[0]
 
-  // Fechas para el año actual
   const currentYear = new Date().getFullYear()
   const yearStart = startOfYear(new Date(currentYear, 0, 1))
   const yearEnd = endOfYear(new Date(currentYear, 11, 31))
 
-  // Funciones para navegar entre semanas
   const goToPreviousWeek = () => {
     const previousWeek = subWeeks(startDate, 1)
     setSelectedWeek(previousWeek.toISOString().split("T")[0])
@@ -155,117 +103,30 @@ export default function EmpleadosResumen() {
     setSelectedWeek(monday.toISOString().split("T")[0])
   }
 
-  const handleMarkAsPaid = async (paymentId: number) => {
-    try {
-      await savePayment({
-        id: paymentId,
-        status: "pagado",
-      })
-      toast({
-        title: "Pago Marcado",
-        description: "El pago ha sido marcado como pagado exitosamente.",
-      })
-      await reloadData() // Recargar datos después de marcar como pagado
-    } catch (error) {
-      console.error("Error al marcar como pagado:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo marcar el pago como pagado. Intenta nuevamente.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleDeletePayment = async (paymentId: number) => {
-    try {
-      await deletePayment(paymentId)
-      toast({
-        title: "Pago Eliminado",
-        description: "El pago ha sido eliminado exitosamente.",
-      })
-      await reloadData() // Recargar datos después de eliminar
-    } catch (error) {
-      console.error("Error al eliminar el pago:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar el pago. Intenta nuevamente.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Cargar datos iniciales
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
       try {
-        console.log("🔍 === INICIO DE CARGA DE DATOS ===")
-        console.log("📅 Semana seleccionada:", selectedWeek)
-        console.log("📅 Rango calculado:", startDateStr, "al", endDateStr)
-
         const employeesData = await getEmployees()
-        console.log("👥 Empleados cargados:", employeesData.length)
         setEmployees(employeesData)
 
-        // Cargar todos los pagos para verificar pendientes
-        const allPaymentsData = await getPayments({})
-        console.log("💳 Pagos totales cargados:", allPaymentsData.length)
-        setAllPayments(allPaymentsData)
-
-        // Cargar asignaciones SIN filtros de fecha primero para ver todo
-        console.log("📋 Cargando TODAS las asignaciones...")
         const allAssignmentsData = await getAssignments({})
-        console.log("📋 Total de asignaciones en BD:", allAssignmentsData.length)
-
-        // Mostrar todas las fechas únicas para debugging
-        const allDates = [...new Set(allAssignmentsData.map((a) => a.assignment_date))].sort()
-        console.log("📅 Todas las fechas en BD:", allDates)
-
-        // FILTRADO ESTRICTO: Solo asignaciones dentro del rango exacto
         const filteredAssignments = allAssignmentsData.filter((assignment) => {
           const assignmentDate = assignment.assignment_date
-          const isInRange = isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
-
-          if (!isInRange) {
-            console.log(`❌ EXCLUIDA: ${assignmentDate} (fuera del rango ${startDateStr} - ${endDateStr})`)
-          } else {
-            console.log(`✅ INCLUIDA: ${assignmentDate} (dentro del rango)`)
-          }
-
-          return isInRange
+          return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
         })
 
-        console.log("📊 Asignaciones después del filtrado estricto:", filteredAssignments.length)
-
-        // Mostrar fechas filtradas
-        const filteredDates = [...new Set(filteredAssignments.map((a) => a.assignment_date))].sort()
-        console.log("📅 Fechas después del filtrado:", filteredDates)
-
-        // Filtrar por empleado si es necesario
         let finalAssignments = filteredAssignments
         if (selectedEmployee !== "todos") {
           finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
-          console.log("👤 Asignaciones filtradas por empleado:", finalAssignments.length)
         }
 
         setAssignments(finalAssignments)
 
-        // Cargar pagos de la semana
-        const paymentsData = await getPayments({
-          start_date: startDateStr,
-          end_date: endDateStr,
-        })
-        console.log("💰 Pagos semanales cargados:", paymentsData.length)
-        setPayments(paymentsData)
-
-        console.log("🔍 === FIN DE CARGA DE DATOS ===")
+        const paidWeeksData = await getPaidWeeks({})
+        setPaidWeeks(paidWeeksData)
       } catch (error) {
-        console.error("❌ Error al cargar datos:", error)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los datos. Por favor, intenta de nuevo.",
-          variant: "destructive",
-        })
+        // Error silencioso
       } finally {
         setLoading(false)
       }
@@ -274,37 +135,29 @@ export default function EmpleadosResumen() {
     loadData()
   }, [selectedEmployee, selectedWeek, startDateStr, endDateStr])
 
-  // Cargar datos anuales cuando se cambia a la pestaña anual
   useEffect(() => {
     const loadYearlyData = async () => {
       if (activeTab !== "anual") return
 
       setLoadingYearly(true)
       try {
-        console.log("📊 Cargando datos anuales...")
-
-        // Cargar asignaciones para todo el año
         const yearStartStr = yearStart.toISOString().split("T")[0]
         const yearEndStr = yearEnd.toISOString().split("T")[0]
-        console.log("📅 Rango anual:", yearStartStr, "a", yearEndStr)
 
         let yearlyAssignmentsData = await getAssignments({
           start_date: yearStartStr,
           end_date: yearEndStr,
         })
-        console.log("📊 Asignaciones anuales cargadas:", yearlyAssignmentsData.length)
 
-        // Filtrar por empleado si es necesario
         if (selectedEmployee !== "todos") {
           yearlyAssignmentsData = yearlyAssignmentsData.filter(
             (a) => a.employee_id === Number.parseInt(selectedEmployee),
           )
-          console.log("👤 Asignaciones anuales filtradas por empleado:", yearlyAssignmentsData.length)
         }
 
         setYearlyAssignments(yearlyAssignmentsData)
       } catch (error) {
-        console.error("❌ Error al cargar datos anuales:", error)
+        // Error silencioso
       } finally {
         setLoadingYearly(false)
       }
@@ -313,77 +166,26 @@ export default function EmpleadosResumen() {
     loadYearlyData()
   }, [activeTab, selectedEmployee, employees])
 
-  // Función segura para formatear fechas con validación estricta
-  const safeFormatDate = (dateString: string | null | undefined, format = "dd/MM/yyyy"): string => {
+  const safeFormatDate = (dateString: string | null | undefined): string => {
     if (!dateString) return ""
     try {
-      // Validar que la fecha esté en formato correcto
       if (typeof dateString === "string" && !/^\d{4}-\d{2}-\d{2}/.test(dateString)) {
-        console.warn("⚠️ Formato de fecha inválido:", dateString)
         return ""
       }
-
       const date = parseISO(dateString)
       if (isNaN(date.getTime())) {
-        console.warn("⚠️ Fecha inválida:", dateString)
         return ""
       }
-
-      return format === "input" ? date.toISOString().split("T")[0] : formatDateForDisplay(date)
+      return formatDateForDisplay(date)
     } catch (e) {
-      console.error("❌ Error formatting date:", dateString, e)
       return ""
     }
   }
 
-  // Calcular pagos pendientes de semanas anteriores
-  const pendingPayments = allPayments.filter((payment) => {
-    // Verificar si es un pago pendiente
-    if (payment.status !== "pendiente") return false
-
-    // Verificar si es de una semana anterior a la actual
-    try {
-      const paymentEndDate = parseISO(payment.week_end)
-      return isBefore(paymentEndDate, startDate)
-    } catch (e) {
-      console.error("❌ Error comparing dates:", payment.week_end, e)
-      return false
-    }
-  })
-
-  console.log("⏰ Pagos pendientes encontrados:", pendingPayments.length)
-
-  // Agrupar pagos pendientes por empleado
-  const pendingPaymentsByEmployee = pendingPayments.reduce(
-    (acc, payment) => {
-      const employeeId = payment.employee_id
-      if (!acc[employeeId]) {
-        acc[employeeId] = []
-      }
-      acc[employeeId].push(payment)
-      return acc
-    },
-    {} as Record<number, EmployeePayment[]>,
-  )
-
-  // Calcular estadísticas generales
-  const totalPendingAmount = pendingPayments.reduce((sum, payment) => sum + payment.amount, 0)
-  const employeesWithPendingPayments = Object.keys(pendingPaymentsByEmployee).length
-
-  // Calcular resumen por empleado con división de tarifas USANDO LA TARIFA GUARDADA
   const employeeSummary = employees
     .map((employee) => {
       const employeeAssignments = assignments.filter((a) => a.employee_id === employee.id)
 
-      console.log(`👤 Procesando empleado: ${employee.name}`)
-      console.log(`📋 Asignaciones encontradas: ${employeeAssignments.length}`)
-
-      if (employeeAssignments.length > 0) {
-        const dates = employeeAssignments.map((a) => a.assignment_date).sort()
-        console.log(`📅 Fechas del empleado ${employee.name}:`, dates)
-      }
-
-      // Agrupar asignaciones por fecha para calcular división de tarifas
       const assignmentsByDate = employeeAssignments.reduce(
         (acc, assignment) => {
           const date = assignment.assignment_date
@@ -396,17 +198,11 @@ export default function EmpleadosResumen() {
         {} as Record<string, EmployeeAssignment[]>,
       )
 
-      // Calcular días trabajados y monto total USANDO LA TARIFA GUARDADA
       const daysWorked = Object.keys(assignmentsByDate).length
       let totalAmount = 0
 
-      // Crear detalle de asignaciones con tarifa guardada
       const assignmentDetails = Object.entries(assignmentsByDate).map(([date, dayAssignments]) => {
-        // Calcular el total para este día sumando las tarifas guardadas de cada asignación
         const totalForDay = dayAssignments.reduce((sum, assignment) => sum + assignment.daily_rate_used, 0)
-
-        console.log(`📅 ${date}: ${dayAssignments.length} asignaciones, total: $${totalForDay}`)
-
         return {
           date,
           assignments: dayAssignments,
@@ -414,43 +210,32 @@ export default function EmpleadosResumen() {
         }
       })
 
-      // Calcular el monto total sumando los totales de cada día
       totalAmount = assignmentDetails.reduce((sum, detail) => sum + detail.totalForDay, 0)
 
-      console.log(`💰 Total para ${employee.name}: $${totalAmount}`)
-
-      // Obtener hoteles únicos
       const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
 
-      // Verificar si ya existe un pago para este empleado en esta semana
-      const existingPayment = payments.find(
-        (p) => p.employee_id === employee.id && p.week_start === startDateStr && p.week_end === endDateStr,
+      // Verificar si la semana está pagada
+      const isPaid = paidWeeks.some(
+        (pw) => pw.employee_id === employee.id && pw.week_start === startDateStr && pw.week_end === endDateStr,
       )
-
-      // Obtener pagos pendientes de semanas anteriores para este empleado
-      const previousPendingPayments = pendingPaymentsByEmployee[employee.id] || []
 
       return {
         employee,
         daysWorked,
         totalAmount,
         hotels,
-        payment: existingPayment,
         assignmentDetails,
         assignments: employeeAssignments,
-        previousPendingPayments,
+        isPaid,
       }
     })
     .filter((summary) => {
-      // Si hay un empleado seleccionado, filtrar solo ese
       if (selectedEmployee !== "todos") {
         return summary.employee.id === Number.parseInt(selectedEmployee)
       }
-      // Si no hay filtro, mostrar solo los que trabajaron al menos un día
       return summary.daysWorked > 0
     })
 
-  // Calcular totales por hotel para el año USANDO LA TARIFA GUARDADA
   const hotelYearlyTotals = yearlyAssignments.reduce(
     (acc, assignment) => {
       const hotelName = assignment.hotel_name
@@ -462,9 +247,7 @@ export default function EmpleadosResumen() {
         }
       }
 
-      // Usar la tarifa guardada en la asignación
       const savedDailyRate = assignment.daily_rate_used || 0
-
       acc[hotelName].count++
       acc[hotelName].amount += savedDailyRate
       acc[hotelName].employees.add(assignment.employee_id)
@@ -474,7 +257,6 @@ export default function EmpleadosResumen() {
     {} as Record<string, { count: number; amount: number; employees: Set<number> }>,
   )
 
-  // Ordenar hoteles por monto total
   const sortedHotels = Object.entries(hotelYearlyTotals)
     .sort((a, b) => b[1].amount - a[1].amount)
     .map(([hotel, data]) => ({
@@ -484,89 +266,19 @@ export default function EmpleadosResumen() {
       employeeCount: data.employees.size,
     }))
 
-  // Calcular el monto máximo para la escala del gráfico
   const maxAmount = sortedHotels.length > 0 ? sortedHotels[0].amount : 0
 
   const reloadData = async () => {
     try {
-      console.log("🔄 Recargando datos...")
-
-      // Recargar pagos semanales
-      const paymentsData = await getPayments({
-        start_date: startDateStr,
-        end_date: endDateStr,
-      })
-      console.log("💰 Pagos semanales recargados:", paymentsData.length)
-      setPayments(paymentsData)
-
-      // Recargar todos los pagos
-      const allPaymentsData = await getPayments({})
-      console.log("💳 Todos los pagos recargados:", allPaymentsData.length)
-      setAllPayments(allPaymentsData)
-
-      console.log("✅ Datos recargados exitosamente")
-
-      // Mostrar toast de confirmación
-      toast({
-        title: "✅ Datos actualizados",
-        description: "La información de pagos ha sido actualizada correctamente",
-      })
+      const paidWeeksData = await getPaidWeeks({})
+      setPaidWeeks(paidWeeksData)
     } catch (error) {
-      console.error("❌ Error al recargar datos:", error)
-      toast({
-        title: "❌ Error",
-        description: "No se pudieron recargar los datos. Por favor, intenta de nuevo.",
-        variant: "destructive",
-      })
+      // Error silencioso
     }
   }
 
-  // Determinar si mostrar el panel de estadísticas y la alerta de pagos pendientes
-  const showPendingPaymentsUI = pendingPayments.length > 0 && activeTab === "semanal"
-
   return (
     <div className="space-y-6">
-      {/* Panel de estadísticas generales - SOLO MOSTRAR UNA VEZ */}
-      {showPendingPaymentsUI && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-red-200 bg-red-50">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <ExclamationTriangle className="h-8 w-8 text-red-600" />
-                <div>
-                  <p className="text-sm font-medium text-red-800">Semanas Impagas</p>
-                  <p className="text-2xl font-bold text-red-900">{pendingPayments.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-orange-200 bg-orange-50">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <Users className="h-8 w-8 text-orange-600" />
-                <div>
-                  <p className="text-sm font-medium text-orange-800">Empleados Afectados</p>
-                  <p className="text-2xl font-bold text-orange-900">{employeesWithPendingPayments}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-yellow-200 bg-yellow-50">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <Banknote className="h-8 w-8 text-yellow-600" />
-                <div>
-                  <p className="text-sm font-medium text-yellow-800">Total Pendiente</p>
-                  <p className="text-2xl font-bold text-yellow-900">${totalPendingAmount.toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -575,17 +287,11 @@ export default function EmpleadosResumen() {
                 <CalendarDays className="h-6 w-6" />
                 Resumen de Empleados
               </CardTitle>
-              <CardDescription>
-                Gestión semanal de pagos y asignaciones con navegación fácil entre semanas
-              </CardDescription>
+              <CardDescription>Gestión semanal de pagos y asignaciones</CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setShowDebugInfo(!showDebugInfo)}>
-              {showDebugInfo ? "Ocultar Detalles" : "Ver Detalles"}
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {/* Navegación de semanas mejorada */}
           <div className="flex flex-col gap-4 mb-6">
             <div className="w-full">
               <Label htmlFor="week-select" className="text-base font-medium">
@@ -613,9 +319,7 @@ export default function EmpleadosResumen() {
                 </Button>
               </div>
               <div className="text-xs text-muted-foreground mt-2 p-2 bg-blue-50 rounded-md border border-blue-200">
-                {" "}
-                {/* Reducir texto */}📍 <strong>Semana:</strong> {safeFormatDate(startDateStr)} al{" "}
-                {safeFormatDate(endDateStr)}
+                📍 <strong>Semana:</strong> {safeFormatDate(startDateStr)} al {safeFormatDate(endDateStr)}
               </div>
             </div>
 
@@ -625,8 +329,6 @@ export default function EmpleadosResumen() {
               </Label>
               <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
                 <SelectTrigger id="employee-select" className="mt-2 text-sm">
-                  {" "}
-                  {/* Reducir tamaño de texto */}
                   <SelectValue placeholder="Todos los empleados" />
                 </SelectTrigger>
                 <SelectContent>
@@ -640,93 +342,6 @@ export default function EmpleadosResumen() {
               </Select>
             </div>
           </div>
-
-          {/* Alerta de pagos pendientes mejorada - SOLO MOSTRAR EN PESTAÑA SEMANAL */}
-          {showPendingPaymentsUI && (
-            <Alert className="mb-6 border-red-300 bg-red-50">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
-              <AlertTitle className="text-red-800 text-lg">🚨 ¡Atención! Hay semanas sin pagar</AlertTitle>
-              <AlertDescription>
-                <div className="mt-3 text-red-700">
-                  Se encontraron <strong>{pendingPayments.length}</strong> semana(s) impaga(s) que afectan a{" "}
-                  <strong>{employeesWithPendingPayments}</strong> empleado(s) por un total de{" "}
-                  <strong>${totalPendingAmount.toLocaleString()}</strong>.
-                </div>
-                <div className="mt-4 max-h-60 overflow-auto bg-white rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-red-100">
-                        <TableHead className="text-red-800 font-semibold">👤 Empleado</TableHead>
-                        <TableHead className="text-red-800 font-semibold">📅 Semana</TableHead>
-                        <TableHead className="text-red-800 font-semibold">💰 Monto</TableHead>
-                        <TableHead className="text-red-800 font-semibold">⚡ Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pendingPayments.map((payment) => (
-                        <TableRow key={payment.id} className="hover:bg-red-50">
-                          <TableCell className="font-medium">{payment.employee_name}</TableCell>
-                          <TableCell>
-                            {safeFormatDate(payment.week_start)} - {safeFormatDate(payment.week_end)}
-                          </TableCell>
-                          <TableCell className="font-bold text-red-700">${payment.amount.toLocaleString()}</TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button size="sm" onClick={() => handleMarkAsPaid(payment.id)} className="bg-green-600">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Pagar
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => handleDeletePayment(payment.id)}>
-                                🗑️ Eliminar
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {showDebugInfo && (
-            <Alert className="mb-6 border-blue-200 bg-blue-50">
-              <AlertCircle className="h-4 w-4 text-blue-600" />
-              <AlertTitle className="text-blue-800">🔍 Información de depuración</AlertTitle>
-              <AlertDescription>
-                <div className="mt-2 space-y-2 text-blue-700">
-                  <div>
-                    <strong>👥 Empleados:</strong> {employees.length}
-                  </div>
-                  <div>
-                    <strong>📋 Asignaciones semanales:</strong> {assignments.length}
-                  </div>
-                  <div>
-                    <strong>📊 Asignaciones anuales:</strong> {yearlyAssignments.length}
-                  </div>
-                  <div>
-                    <strong>💳 Pagos totales:</strong> {allPayments.length}
-                  </div>
-                  <div>
-                    <strong>⏰ Pagos pendientes:</strong> {pendingPayments.length}
-                  </div>
-                  <div>
-                    <strong>🏨 Hoteles con datos:</strong> {Object.keys(hotelYearlyTotals).length}
-                  </div>
-                  <div>
-                    <strong>📅 Semana seleccionada:</strong> {selectedWeek}
-                  </div>
-                  <div>
-                    <strong>🗓️ Fecha inicio:</strong> {startDateStr}
-                  </div>
-                  <div>
-                    <strong>🗓️ Fecha fin:</strong> {endDateStr}
-                  </div>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
             <TabsList className="grid w-full grid-cols-2">
@@ -763,9 +378,6 @@ export default function EmpleadosResumen() {
                           ? "Todos"
                           : employees.find((e) => e.id.toString() === selectedEmployee)?.name}
                       </div>
-                      <div>
-                        📊 <strong>Asignaciones encontradas:</strong> {assignments.length}
-                      </div>
                     </div>
                     <div className="mt-6">
                       <Button onClick={goToCurrentWeek} variant="outline">
@@ -783,26 +395,16 @@ export default function EmpleadosResumen() {
                           <div>
                             <CardTitle className="flex items-center gap-3 text-xl">
                               👤 {summary.employee.name}
-                              {summary.payment && (
-                                <Badge
-                                  variant={summary.payment.status === "pagado" ? "default" : "outline"}
-                                  className={`ml-2 px-3 py-1 ${
-                                    summary.payment.status === "pagado"
-                                      ? "bg-green-100 text-green-800 border-green-300"
-                                      : "bg-yellow-100 text-yellow-800 border-yellow-300"
-                                  }`}
-                                >
-                                  {summary.payment.status === "pagado" ? (
-                                    <>
-                                      <CheckCircle className="w-4 h-4 mr-1" />✅ Semana Pagada
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Clock className="w-4 h-4 mr-1" />⏰ Pago Pendiente
-                                    </>
-                                  )}
-                                </Badge>
-                              )}
+                              <Badge
+                                variant={summary.isPaid ? "default" : "outline"}
+                                className={`ml-2 px-3 py-1 ${
+                                  summary.isPaid
+                                    ? "bg-green-100 text-green-800 border-green-300"
+                                    : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                }`}
+                              >
+                                {summary.isPaid ? "✅ Semana Pagada" : "⏰ Pendiente"}
+                              </Badge>
                             </CardTitle>
                             <CardDescription className="flex items-center gap-2 text-base">
                               🏷️ {summary.employee.role} • 💰 Tarifa actual: $
@@ -810,28 +412,12 @@ export default function EmpleadosResumen() {
                             </CardDescription>
                           </div>
                           <div className="text-right bg-white p-4 rounded-lg border shadow-sm">
-                            <div className="text-sm text-muted-foreground">💵 Total a pagar</div>
+                            <div className="text-sm text-muted-foreground">💵 Total</div>
                             <div className="text-3xl font-bold text-green-600">
                               ${summary.totalAmount.toLocaleString()}
                             </div>
                           </div>
                         </div>
-
-                        {summary.previousPendingPayments.length > 0 && (
-                          <Alert variant="destructive" className="mt-4 border-red-300 bg-red-50">
-                            <AlertTriangle className="h-5 w-5" />
-                            <AlertTitle className="text-red-800">🚨 Pagos pendientes anteriores</AlertTitle>
-                            <AlertDescription className="text-red-700">
-                              Este empleado tiene <strong>{summary.previousPendingPayments.length}</strong> semana(s)
-                              impaga(s) por un total de{" "}
-                              <strong>
-                                $
-                                {summary.previousPendingPayments.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
-                              </strong>
-                              .
-                            </AlertDescription>
-                          </Alert>
-                        )}
                       </CardHeader>
                       <CardContent className="pt-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -856,10 +442,7 @@ export default function EmpleadosResumen() {
                         </div>
 
                         <div className="bg-gray-50 rounded-lg p-4 border">
-                          <div className="text-base font-medium mb-4 flex items-center gap-2">
-                            <Info className="h-5 w-5 text-blue-600" />
-                            <span>📊 Detalle de asignaciones y tarifas por hotel</span>
-                          </div>
+                          <div className="text-base font-medium mb-4">📊 Detalle de asignaciones por día</div>
                           <div className="overflow-x-auto">
                             <Table>
                               <TableHeader>
@@ -867,7 +450,6 @@ export default function EmpleadosResumen() {
                                   <TableHead className="font-semibold">📅 Fecha</TableHead>
                                   <TableHead className="font-semibold">🏨 Hoteles y Tarifas</TableHead>
                                   <TableHead className="font-semibold">💰 Total del Día</TableHead>
-                                  <TableHead className="font-semibold">📝 Notas</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -892,24 +474,11 @@ export default function EmpleadosResumen() {
                                             </span>
                                           </div>
                                         ))}
-                                        <div className="text-xs text-muted-foreground mt-2 p-2 bg-blue-50 rounded">
-                                          📊 {detail.assignments.length} hotel
-                                          {detail.assignments.length > 1 ? "es" : ""} visitado
-                                          {detail.assignments.length > 1 ? "s" : ""} este día
-                                        </div>
                                       </div>
                                     </TableCell>
                                     <TableCell>
                                       <div className="text-xl font-bold text-green-600 bg-green-50 p-2 rounded text-center">
                                         ${detail.totalForDay.toLocaleString()}
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>
-                                      <div className="text-sm">
-                                        {detail.assignments
-                                          .map((a) => a.notes)
-                                          .filter(Boolean)
-                                          .join(", ") || "📝 Sin notas"}
                                       </div>
                                     </TableCell>
                                   </TableRow>
@@ -919,19 +488,17 @@ export default function EmpleadosResumen() {
                           </div>
                         </div>
                       </CardContent>
-                      <CardFooter className="bg-gray-50 border-t p-6">
-                        <div className="w-full">
-                          <AccionesRapidas
-                            employee={summary.employee}
-                            totalAmount={summary.totalAmount}
-                            daysWorked={summary.daysWorked}
-                            payment={summary.payment}
-                            weekStart={startDateStr}
-                            weekEnd={endDateStr}
-                            onPaymentChange={reloadData}
-                          />
-                        </div>
-                      </CardFooter>
+                      <CardContent className="bg-gray-50 border-t p-6">
+                        <AccionesRapidas
+                          employee={summary.employee}
+                          totalAmount={summary.totalAmount}
+                          daysWorked={summary.daysWorked}
+                          weekStart={startDateStr}
+                          weekEnd={endDateStr}
+                          isPaid={summary.isPaid}
+                          onPaymentChange={reloadData}
+                        />
+                      </CardContent>
                     </Card>
                   ))}
                 </div>
@@ -945,8 +512,7 @@ export default function EmpleadosResumen() {
                     <BarChart3 className="h-6 w-6" />📊 Gastos por Hotel en {currentYear}
                   </CardTitle>
                   <CardDescription className="text-base">
-                    💰 Distribución de gastos por hotel durante el año actual usando las tarifas aplicadas en cada
-                    momento
+                    💰 Distribución de gastos por hotel durante el año actual
                     {selectedEmployee !== "todos" &&
                       ` para ${employees.find((e) => e.id.toString() === selectedEmployee)?.name}`}
                   </CardDescription>
@@ -964,11 +530,6 @@ export default function EmpleadosResumen() {
                       <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                       <div className="mb-2 text-lg font-semibold">
                         No hay datos para mostrar en el año {currentYear}
-                      </div>
-                      <div className="text-sm">
-                        {yearlyAssignments.length === 0
-                          ? "📊 No se encontraron asignaciones para este período"
-                          : "🔍 No hay asignaciones que coincidan con los filtros seleccionados"}
                       </div>
                     </div>
                   ) : (
@@ -1019,8 +580,7 @@ export default function EmpleadosResumen() {
                           <div>
                             <span className="font-medium text-xl">📊 Total Anual {currentYear}</span>
                             <div className="text-sm text-muted-foreground mt-1">
-                              📈 {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales con
-                              tarifas históricas
+                              📈 {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales
                             </div>
                           </div>
                           <span className="text-4xl font-bold text-green-600">

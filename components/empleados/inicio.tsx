@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { useEmployeeDB } from "@/lib/employee-db"
 import { useState, useEffect } from "react"
-import { UserPlus, Calendar, BarChart3, ListChecks, FileUp } from "lucide-react"
+import { UserPlus, Calendar, BarChart3, UserCog, FileUp, Users } from "lucide-react"
 
 interface InicioProps {
   onTabChange?: (tab: string) => void
@@ -43,7 +43,7 @@ export default function Inicio({ onTabChange }: InicioProps) {
           pendingPayments: 0, // Esto requeriría otra consulta
         })
       } catch (error) {
-        console.error("Error al cargar estadísticas:", error)
+        // Error silencioso
       } finally {
         setLoading(false)
       }
@@ -67,7 +67,7 @@ export default function Inicio({ onTabChange }: InicioProps) {
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
           <Button className="h-20 flex-col gap-2" variant="outline" onClick={() => handleQuickAction("empleados")}>
-            <ListChecks className="h-6 w-6" />
+            <UserCog className="h-6 w-6" />
             <span>Gestionar Empleados</span>
           </Button>
 
@@ -86,9 +86,14 @@ export default function Inicio({ onTabChange }: InicioProps) {
             <span>Ver Calendario</span>
           </Button>
 
+          <Button className="h-20 flex-col gap-2" variant="outline" onClick={() => handleQuickAction("historial")}>
+            <Users className="h-6 w-6" />
+            <span>Ver Historial</span>
+          </Button>
+
           <Button className="h-20 flex-col gap-2" variant="outline" onClick={() => handleQuickAction("importar")}>
             <FileUp className="h-6 w-6" />
-            <span>Importar Asignaciones</span>
+            <span>Importar Datos</span>
           </Button>
         </CardContent>
       </Card>
@@ -104,12 +109,12 @@ export default function Inicio({ onTabChange }: InicioProps) {
             <div className="text-2xl font-bold">{loading ? "..." : stats.totalEmployees}</div>
           </div>
           <div className="flex items-center justify-between border-b pb-2">
-            <div className="text-sm font-medium">Asignaciones Activas</div>
+            <div className="text-sm font-medium">Asignaciones del Mes</div>
             <div className="text-2xl font-bold">{loading ? "..." : stats.activeAssignments}</div>
           </div>
           <div className="flex items-center justify-between">
-            <div className="text-sm font-medium">Pagos Pendientes</div>
-            <div className="text-2xl font-bold">{loading ? "..." : stats.pendingPayments}</div>
+            <div className="text-sm font-medium">Sistema</div>
+            <div className="text-sm font-bold text-green-600">✅ Activo</div>
           </div>
         </CardContent>
       </Card>
@@ -131,10 +136,13 @@ export default function Inicio({ onTabChange }: InicioProps) {
               <strong>Ver Calendario:</strong> Visualiza todas las asignaciones en formato calendario.
             </li>
             <li>
-              <strong>Resumen de Pagos:</strong> Gestiona los pagos semanales a empleados.
+              <strong>Resumen de Pagos:</strong> Marca las semanas como pagadas.
             </li>
             <li>
               <strong>Historial:</strong> Consulta el historial completo de asignaciones.
+            </li>
+            <li>
+              <strong>Importar:</strong> Importa datos desde archivos CSV o Excel.
             </li>
           </ol>
         </CardContent>

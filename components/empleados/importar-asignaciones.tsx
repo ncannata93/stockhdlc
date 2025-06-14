@@ -10,6 +10,7 @@ import { Upload, FileText, CheckCircle, AlertCircle, Users, Calendar, Calculator
 import { useEmployeeDB } from "@/lib/employee-db"
 import { HOTELS } from "@/lib/employee-types"
 import { useToast } from "@/hooks/use-toast"
+import type { Employee } from "@/lib/employee-types"
 
 interface ImportarAsignacionesProps {
   onSuccess?: () => void
@@ -36,7 +37,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
   const [parsedData, setParsedData] = useState<ParsedRow[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  const { getEmployees, saveEmployee, saveAssignment } = useEmployeeDB()
+  const { getEmployees, saveEmployee, saveAssignment, getPaidWeeks, markWeekAsPaid } = useEmployeeDB()
   const { toast } = useToast()
 
   // Ejemplo de formato
@@ -134,6 +135,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
 
       let createdEmployees = 0
       let createdAssignments = 0
+      let createdPayments = 0
       let errors = 0
 
       // PASO 1: Agrupar asignaciones por empleado y fecha
@@ -160,8 +162,6 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         }
       }
 
-      console.log("🔍 Asignaciones agrupadas:", Array.from(groupedAssignments.values()))
-
       // PASO 2: Procesar cada asignación agrupada
       for (const assignment of groupedAssignments.values()) {
         try {
@@ -180,56 +180,120 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               employee = newEmployee
               employeeMap.set(assignment.empleado.toLowerCase(), employee)
               createdEmployees++
-              console.log(`✅ Empleado creado: ${employee.name} - Tarifa: $${employee.daily_rate}`)
             } else {
               errors++
-              console.log(`❌ Error creando empleado: ${assignment.empleado}`)
               continue
             }
           }
 
-          // La división de tarifas ahora se maneja automáticamente en el backend
-          console.log(`\n📊 INFORMACIÓN DE ASIGNACIÓN:`)
-          console.log(`👤 Empleado: ${employee.name}`)
-          console.log(`📅 Fecha: ${assignment.fecha}`)
-          console.log(`💰 Tarifa diaria total: $${employee.daily_rate}`)
-          console.log(`🏨 Número de hoteles: ${assignment.hoteles.length}`)
-          console.log(`🏨 Hoteles: ${assignment.hoteles.join(", ")}`)
+          // Guardar el ID del empleado para crear pagos después
+          assignment.employeeId = employee.id
+          assignment.dailyRate = employee.daily_rate
 
-          // PASO 4: Crear asignaciones individuales (la división de tarifa es automática)
+          // PASO 3: Crear asignaciones individuales
           for (const hotel of assignment.hoteles) {
             const assignmentResult = await saveAssignment({
               employee_id: employee.id,
               hotel_name: hotel,
               assignment_date: assignment.fecha,
-              notes: `Importado masivamente`,
+              notes: `Importado masivamente el ${new Date().toISOString().split("T")[0]}`,
             })
 
             if (assignmentResult) {
               createdAssignments++
-              console.log(`✅ Asignación creada: ${hotel}`)
             } else {
               errors++
-              console.log(`❌ Error creando asignación: ${hotel}`)
             }
           }
-
-          // Verificar que el total sea correcto
-          const totalCalculated = 0
-          const numberOfHotels = 0
-          const dividedRate = 0
-          console.log(`🔍 Verificación: $${dividedRate} × ${numberOfHotels} = $${totalCalculated}`)
-          console.log(`✅ Total esperado: $${employee.daily_rate}`)
-          console.log(`${Math.abs(totalCalculated - employee.daily_rate) <= 1 ? "✅ CORRECTO" : "⚠️ DIFERENCIA MÍNIMA"}`)
         } catch (error) {
-          console.error("❌ Error procesando asignación agrupada:", error)
+          errors++
+        }
+      }
+
+      // PASO 4: Marcar semanas como pagadas usando el sistema simplificado
+      const paymentGroups = new Map<
+        string,
+        {
+          employee: Employee
+          weekStart: string
+          weekEnd: string
+          totalAmount: number
+          assignmentDates: string[]
+        }
+      >()
+
+      for (const assignment of groupedAssignments.values()) {
+        if (!assignment.employeeId || !assignment.dailyRate) continue
+
+        const employee = employeeMap.get(assignment.empleado.toLowerCase())
+        if (!employee) continue
+
+        // Calcular inicio y fin de semana (lunes a domingo)
+        const assignmentDate = new Date(assignment.fecha)
+        const dayOfWeek = assignmentDate.getDay()
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+
+        const weekStart = new Date(assignmentDate)
+        weekStart.setDate(assignmentDate.getDate() + mondayOffset)
+
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekStart.getDate() + 6)
+
+        const weekStartStr = weekStart.toISOString().split("T")[0]
+        const weekEndStr = weekEnd.toISOString().split("T")[0]
+
+        const key = `${employee.id}-${weekStartStr}`
+
+        if (!paymentGroups.has(key)) {
+          paymentGroups.set(key, {
+            employee,
+            weekStart: weekStartStr,
+            weekEnd: weekEndStr,
+            totalAmount: 0,
+            assignmentDates: [],
+          })
+        }
+
+        const group = paymentGroups.get(key)!
+
+        // Calcular el total para este día (tarifa completa del empleado)
+        group.totalAmount += employee.daily_rate
+        group.assignmentDates.push(assignment.fecha)
+      }
+
+      // Marcar semanas como pagadas usando el sistema simplificado
+      for (const group of paymentGroups.values()) {
+        try {
+          // Verificar si ya existe una semana pagada
+          const existingPaidWeeks = await getPaidWeeks({
+            employee_id: group.employee.id,
+            start_date: group.weekStart,
+            end_date: group.weekEnd,
+          })
+
+          if (!existingPaidWeeks || existingPaidWeeks.length === 0) {
+            const success = await markWeekAsPaid(
+              group.employee.id,
+              group.weekStart,
+              group.weekEnd,
+              group.totalAmount,
+              `Pago generado automáticamente por importación masiva - Fechas: ${group.assignmentDates.join(", ")}`,
+            )
+
+            if (success) {
+              createdPayments++
+            } else {
+              errors++
+            }
+          }
+        } catch (error) {
           errors++
         }
       }
 
       toast({
         title: "✅ Importación completada",
-        description: `Empleados creados: ${createdEmployees}, Asignaciones creadas: ${createdAssignments}, Errores: ${errors}`,
+        description: `Empleados: ${createdEmployees}, Asignaciones: ${createdAssignments}, Semanas pagadas: ${createdPayments}, Errores: ${errors}`,
       })
 
       if (errors === 0) {
@@ -239,7 +303,6 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         onSuccess?.()
       }
     } catch (error) {
-      console.error("❌ Error en importación:", error)
       toast({
         title: "Error",
         description: "Error durante la importación",
@@ -285,10 +348,10 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           <Alert className="border-green-200 bg-green-50">
             <Calculator className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-800">
-              <strong>✅ División de Tarifas Corregida:</strong> Ahora funciona correctamente. Si un empleado trabaja en
-              múltiples hoteles el mismo día, su tarifa se divide automáticamente.
+              <strong>✅ Importación Completa:</strong> Ahora crea automáticamente asignaciones Y marca las semanas como
+              pagadas.
               <br />
-              <strong>Ejemplo:</strong> Diego ($34,700) en 2 hoteles = $17,350 por hotel.
+              <strong>Ejemplo:</strong> Diego trabaja 3 días → Se marcan las semanas correspondientes como pagadas.
             </AlertDescription>
           </Alert>
 
@@ -334,7 +397,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle className="h-5 w-5" />
-              Vista Previa - División Automática de Tarifas
+              Vista Previa - Importación Completa
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -387,7 +450,8 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             {groupedPreview.size > 0 && (
               <div>
                 <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <Calculator className="h-4 w-4 text-green-600" />✅ Resumen con división automática de tarifas:
+                  <Calculator className="h-4 w-4 text-green-600" />✅ Resumen - Se crearán asignaciones Y se marcarán
+                  semanas como pagadas:
                 </h4>
                 <div className="max-h-60 overflow-y-auto space-y-2">
                   {Array.from(groupedPreview.values())
@@ -411,11 +475,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
                           ))}
                         </div>
                         <div className="ml-auto text-xs">
-                          <span className="text-green-600 font-medium">
-                            ✅ Tarifa ÷ {assignment.hoteles.length} = Tarifa por hotel
-                          </span>
-                          <br />
-                          <span className="text-blue-600">Total día = Tarifa completa del empleado</span>
+                          <span className="text-green-600 font-medium">✅ Asignaciones + Semana pagada</span>
                         </div>
                       </div>
                     ))}

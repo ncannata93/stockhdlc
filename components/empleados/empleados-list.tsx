@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee } from "@/lib/employee-types"
-import { Loader2, Pencil, Plus, Trash2, Search } from "lucide-react"
+import { Loader2, Pencil, Plus, Trash2, Search, UserCog } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function EmpleadosList() {
@@ -36,7 +36,6 @@ export default function EmpleadosList() {
       const data = await getEmployees()
       setEmployees(data)
     } catch (error) {
-      console.error("Error al cargar empleados:", error)
       toast({
         title: "Error",
         description: "No se pudieron cargar los empleados",
@@ -102,7 +101,6 @@ export default function EmpleadosList() {
         loadEmployees()
       }
     } catch (error) {
-      console.error("Error al guardar empleado:", error)
       toast({
         title: "Error",
         description: "No se pudo guardar el empleado",
@@ -135,7 +133,6 @@ export default function EmpleadosList() {
         })
       }
     } catch (error) {
-      console.error("Error al eliminar empleado:", error)
       toast({
         title: "Error",
         description: "No se pudo eliminar el empleado",
@@ -148,7 +145,10 @@ export default function EmpleadosList() {
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>Empleados</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <UserCog className="h-5 w-5" />
+            Gestión de Empleados
+          </CardTitle>
           <Button onClick={handleNewEmployee}>
             <Plus className="h-4 w-4 mr-2" />
             Nuevo Empleado
@@ -171,7 +171,9 @@ export default function EmpleadosList() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : filteredEmployees.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">No se encontraron empleados</div>
+          <div className="text-center py-8 text-muted-foreground">
+            {searchTerm ? "No se encontraron empleados con ese criterio" : "No hay empleados registrados"}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -185,17 +187,24 @@ export default function EmpleadosList() {
               </TableHeader>
               <TableBody>
                 {filteredEmployees.map((employee) => (
-                  <TableRow key={employee.id} className="border-b">
-                    <TableCell className="font-medium text-sm py-3">{employee.name}</TableCell>
-                    <TableCell className="text-sm py-3">{employee.role}</TableCell>
-                    <TableCell className="text-right text-sm py-3">${employee.daily_rate.toLocaleString()}</TableCell>
+                  <TableRow key={employee.id}>
+                    <TableCell className="font-medium">{employee.name}</TableCell>
+                    <TableCell>{employee.role}</TableCell>
+                    <TableCell className="text-right">${employee.daily_rate.toLocaleString()}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={() => handleEditEmployee(employee)}>
-                          <Pencil className="h-3 w-3" />
+                          <Pencil className="h-3 w-3 mr-1" />
+                          Editar
                         </Button>
-                        <Button variant="outline" size="icon" onClick={() => handleDeleteEmployee(employee.id)}>
-                          <Trash2 className="h-4 w-4" />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteEmployee(employee.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Eliminar
                         </Button>
                       </div>
                     </TableCell>
@@ -235,6 +244,8 @@ export default function EmpleadosList() {
                     <SelectItem value="Mantenimiento">Mantenimiento</SelectItem>
                     <SelectItem value="Limpieza">Limpieza</SelectItem>
                     <SelectItem value="Administración">Administración</SelectItem>
+                    <SelectItem value="Recepción">Recepción</SelectItem>
+                    <SelectItem value="Seguridad">Seguridad</SelectItem>
                     <SelectItem value="Otro">Otro</SelectItem>
                   </SelectContent>
                 </Select>
