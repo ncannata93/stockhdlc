@@ -209,7 +209,7 @@ export const deleteAssignment = async (id: number): Promise<boolean> => {
   }
 }
 
-// Funciones simplificadas para semanas pagadas
+// Funciones para semanas pagadas - CORREGIDAS
 export const getPaidWeeks = async (filters?: {
   employee_id?: number
   start_date?: string
@@ -247,6 +247,7 @@ export const getPaidWeeks = async (filters?: {
   }
 }
 
+// FUNCIÓN CORREGIDA: Solo marca como pagada cuando se llama explícitamente
 export const markWeekAsPaid = async (
   employeeId: number,
   weekStart: string,
@@ -258,13 +259,15 @@ export const markWeekAsPaid = async (
   if (!supabase) return false
 
   try {
+    console.log("🔄 Marcando semana como pagada:", { employeeId, weekStart, weekEnd, amount })
+
     const { error } = await supabase.from("paid_weeks").upsert(
       {
         employee_id: employeeId,
         week_start: weekStart,
         week_end: weekEnd,
         amount: amount,
-        notes: notes,
+        notes: notes || `Pago registrado el ${new Date().toLocaleDateString()}`,
         paid_date: new Date().toISOString().split("T")[0],
       },
       {
@@ -272,8 +275,15 @@ export const markWeekAsPaid = async (
       },
     )
 
-    return !error
+    if (error) {
+      console.error("❌ Error al marcar como pagada:", error)
+      return false
+    }
+
+    console.log("✅ Semana marcada como pagada exitosamente")
+    return true
   } catch (err) {
+    console.error("❌ Error inesperado:", err)
     return false
   }
 }
@@ -283,6 +293,8 @@ export const unmarkWeekAsPaid = async (employeeId: number, weekStart: string, we
   if (!supabase) return false
 
   try {
+    console.log("🔄 Desmarcando semana como pagada:", { employeeId, weekStart, weekEnd })
+
     const { error } = await supabase
       .from("paid_weeks")
       .delete()
@@ -290,8 +302,15 @@ export const unmarkWeekAsPaid = async (employeeId: number, weekStart: string, we
       .eq("week_start", weekStart)
       .eq("week_end", weekEnd)
 
-    return !error
+    if (error) {
+      console.error("❌ Error al desmarcar:", error)
+      return false
+    }
+
+    console.log("✅ Semana desmarcada exitosamente")
+    return true
   } catch (err) {
+    console.error("❌ Error inesperado:", err)
     return false
   }
 }
@@ -303,7 +322,7 @@ export const getHotels = async (): Promise<Hotel[]> => {
   }))
 }
 
-// Alias para saveAssignment para compatibilidad
+// FUNCIÓN CORREGIDA: Solo crea asignaciones, NO marca como pagada
 export const addEmployeeAssignment = async (assignmentData: {
   employee_id: number
   hotel_id?: number
@@ -312,6 +331,8 @@ export const addEmployeeAssignment = async (assignmentData: {
   daily_rate: number
   notes?: string
 }): Promise<EmployeeAssignment | null> => {
+  console.log("🔄 Creando asignación (NO marcando como pagada):", assignmentData)
+
   // Si viene hotel_id, necesitamos obtener el nombre del hotel
   let hotelName = assignmentData.hotel_name
 
@@ -321,13 +342,20 @@ export const addEmployeeAssignment = async (assignmentData: {
     hotelName = hotel?.name
   }
 
-  return saveAssignment({
+  // SOLO crear la asignación, NO marcar como pagada
+  const result = await saveAssignment({
     employee_id: assignmentData.employee_id,
     hotel_name: hotelName,
     assignment_date: assignmentData.date,
     daily_rate_used: assignmentData.daily_rate,
     notes: assignmentData.notes,
   })
+
+  if (result) {
+    console.log("✅ Asignación creada exitosamente (pendiente de pago)")
+  }
+
+  return result
 }
 
 // Hook simplificado

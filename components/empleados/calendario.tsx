@@ -241,29 +241,32 @@ export default function EmpleadosCalendario() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[100px] sm:min-h-[120px] border rounded-md p-2 relative
+                          min-h-[120px] sm:min-h-[140px] border rounded-md p-1 relative
                           ${isToday ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                           ${hasAssignments ? "border-green-300 bg-green-50" : ""}
                         `}
                       >
-                        <div className="text-sm font-medium mb-2">{format(day, "d")}</div>
+                        <div className="text-sm font-medium mb-1 text-center">{format(day, "d")}</div>
 
                         {hasAssignments ? (
-                          <div className="space-y-1">
-                            {dayAssignments.slice(0, 2).map((assignment) => (
+                          <div className="grid grid-cols-2 gap-0.5">
+                            {dayAssignments.map((assignment) => (
                               <TooltipProvider key={assignment.id}>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <div
                                       className={`
-                                        text-xs p-1.5 rounded font-bold text-center cursor-pointer
+                                        text-xs p-0.5 rounded font-bold text-center cursor-pointer
                                         ${getHotelColor(assignment.hotel_name)}
+                                        min-h-[20px] flex flex-col justify-center
                                       `}
                                     >
-                                      <div className="text-xs font-bold">{getHotelCode(assignment.hotel_name)}</div>
-                                      <div className="text-xs truncate leading-tight">
-                                        {assignment.employee_name?.split(" ")[0] || "N/A"}
+                                      <div className="text-xs font-bold leading-none">
+                                        {getHotelCode(assignment.hotel_name)}
+                                      </div>
+                                      <div className="text-xs truncate leading-none mt-0.5">
+                                        {assignment.employee_name?.split(" ")[0]?.substring(0, 4) || "N/A"}
                                       </div>
                                     </div>
                                   </TooltipTrigger>
@@ -276,11 +279,6 @@ export default function EmpleadosCalendario() {
                                 </Tooltip>
                               </TooltipProvider>
                             ))}
-                            {dayAssignments.length > 2 && (
-                              <div className="text-xs text-center text-blue-600 font-medium bg-blue-100 rounded p-1">
-                                +{dayAssignments.length - 2} más
-                              </div>
-                            )}
                           </div>
                         ) : (
                           isCurrentMonth && (
