@@ -4,11 +4,13 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { toast } from "@/components/ui/use-toast"
-import { DollarSign, CheckCircle, Undo2, Loader2, Calendar, User } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
+import { CheckCircle, XCircle, User, Clock, CreditCard } from "lucide-react"
 import type { Employee } from "@/lib/employee-types"
-import { formatDateForDisplay } from "@/lib/date-utils"
 
 interface AccionesRapidasProps {
   employee: Employee
@@ -29,39 +31,35 @@ export default function AccionesRapidas({
   isPaid,
   onPaymentChange,
 }: AccionesRapidasProps) {
+  const { toast } = useToast()
+  const { markWeekAsPaid, markWeekAsUnpaid } = useEmployeeDB()
   const [loading, setLoading] = useState(false)
-  const { markWeekAsPaid, unmarkWeekAsPaid } = useEmployeeDB()
+  const [paymentNotes, setPaymentNotes] = useState("")
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
 
   const handleMarkAsPaid = async () => {
-    if (loading || daysWorked === 0) return
-
     setLoading(true)
     try {
-      const success = await markWeekAsPaid(
-        employee.id,
-        weekStart,
-        weekEnd,
-        totalAmount,
-        `Semana pagada el ${new Date().toISOString().split("T")[0]}`,
-      )
+      await markWeekAsPaid({
+        employee_id: employee.id,
+        week_start: weekStart,
+        week_end: weekEnd,
+        amount_paid: totalAmount,
+        payment_notes: paymentNotes || `Pago semanal - ${daysWorked} días trabajados`,
+      })
 
-      if (success) {
-        toast({
-          title: "✅ Semana marcada como pagada",
-          description: `$${totalAmount.toLocaleString()} para ${employee.name}`,
-        })
-        onPaymentChange()
-      } else {
-        toast({
-          title: "❌ Error",
-          description: "No se pudo marcar la semana como pagada",
-          variant: "destructive",
-        })
-      }
+      toast({
+        title: "✅ Semana marcada como pagada",
+        description: `Se registró el pago de $${totalAmount.toLocaleString()} para ${employee.name}`,
+      })
+
+      setShowPaymentDialog(false)
+      setPaymentNotes("")
+      onPaymentChange()
     } catch (error) {
       toast({
-        title: "❌ Error",
-        description: "Error inesperado",
+        title: "❌ Error al marcar como pagada",
+        description: "No se pudo registrar el pago. Intenta nuevamente.",
         variant: "destructive",
       })
     } finally {
@@ -69,38 +67,42 @@ export default function AccionesRapidas({
     }
   }
 
-  const handleUnmarkAsPaid = async () => {
-    if (loading) return
-
-    if (!confirm(`¿Desmarcar la semana como pagada para ${employee.name}?`)) {
-      return
-    }
-
+  const handleMarkAsUnpaid = async () => {
     setLoading(true)
     try {
-      const success = await unmarkWeekAsPaid(employee.id, weekStart, weekEnd)
+      await markWeekAsUnpaid({
+        employee_id: employee.id,
+        week_start: weekStart,
+        week_end: weekEnd,
+      })
 
-      if (success) {
-        toast({
-          title: "🔄 Semana desmarcada",
-          description: `Semana desmarcada para ${employee.name}`,
-        })
-        onPaymentChange()
-      } else {
-        toast({
-          title: "❌ Error",
-          description: "No se pudo desmarcar la semana",
-          variant: "destructive",
-        })
-      }
+      toast({
+        title: "⏰ Semana marcada como pendiente",
+        description: `Se removió el registro de pago para ${employee.name}`,
+      })
+
+      onPaymentChange()
     } catch (error) {
       toast({
-        title: "❌ Error",
-        description: "Error inesperado",
+        title: "❌ Error al marcar como pendiente",
+        description: "No se pudo actualizar el estado. Intenta nuevamente.",
         variant: "destructive",
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString + "T00:00:00")
+      return date.toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    } catch {
+      return dateString
     }
   }
 
@@ -108,81 +110,148 @@ export default function AccionesRapidas({
     <Card className="border-l-4 border-l-blue-500">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <User className="h-5 w-5" />
+          <User className="h-5 w-5 text-blue-600" />
           {employee.name}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Información de la semana */}
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <div className="flex items-center gap-3">
-            <Calendar className="h-5 w-5 text-blue-600" />
-            <div>
-              <div className="font-medium">Días trabajados: {daysWorked}</div>
-              <div className="text-sm text-muted-foreground">
-                {formatDateForDisplay(weekStart)} - {formatDateForDisplay(weekEnd)}
-              </div>
+        {/* Información del empleado - Layout móvil optimizado */}
+        <div className="grid grid-cols-1 gap-3">
+          {/* Información básica */}
+          <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">👤 Empleado</span>
+              <span className="font-medium">{employee.name}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">🏷️ Rol</span>
+              <span className="font-medium">{employee.role}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">💰 Tarifa diaria</span>
+              <span className="font-medium">${employee.daily_rate.toLocaleString()}</span>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-green-600">${totalAmount.toLocaleString()}</div>
-            <div className="text-sm text-muted-foreground">Total</div>
+
+          {/* Resumen de la semana */}
+          <div className="bg-blue-50 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">📅 Período</span>
+              <span className="font-medium text-sm">
+                {formatDate(weekStart)} - {formatDate(weekEnd)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">⏰ Días trabajados</span>
+              <span className="font-bold text-blue-600">{daysWorked}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">💵 Total a pagar</span>
+              <span className="font-bold text-green-600 text-lg">${totalAmount.toLocaleString()}</span>
+            </div>
+          </div>
+
+          {/* Estado de pago */}
+          <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
+            <div className="flex items-center gap-2">
+              {isPaid ? (
+                <CheckCircle className="h-5 w-5 text-green-600" />
+              ) : (
+                <Clock className="h-5 w-5 text-yellow-600" />
+              )}
+              <span className="font-medium">Estado del pago</span>
+            </div>
+            <Badge
+              variant={isPaid ? "default" : "outline"}
+              className={`${
+                isPaid
+                  ? "bg-green-100 text-green-800 border-green-300"
+                  : "bg-yellow-100 text-yellow-800 border-yellow-300"
+              }`}
+            >
+              {isPaid ? "✅ Pagada" : "⏰ Pendiente"}
+            </Badge>
           </div>
         </div>
 
-        {/* Estado del pago */}
-        <div className="flex items-center justify-center p-3">
-          <Badge
-            variant={isPaid ? "default" : "outline"}
-            className={`px-4 py-2 text-base ${
-              isPaid
-                ? "bg-green-100 text-green-800 border-green-300"
-                : "bg-yellow-100 text-yellow-800 border-yellow-300"
-            }`}
-          >
-            {isPaid ? (
-              <>
-                <CheckCircle className="w-4 h-4 mr-2" />✅ Semana Pagada
-              </>
-            ) : (
-              <>
-                <DollarSign className="w-4 h-4 mr-2" />💰 Pendiente de Pago
-              </>
-            )}
-          </Badge>
-        </div>
-
-        {/* Botones de acción */}
-        <div className="flex flex-col gap-3">
+        {/* Acciones */}
+        <div className="space-y-2 pt-2 border-t">
           {!isPaid ? (
-            <Button
-              onClick={handleMarkAsPaid}
-              disabled={loading || daysWorked === 0}
-              className="w-full bg-green-600 hover:bg-green-700 h-12"
-              size="lg"
-            >
-              {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <DollarSign className="mr-2 h-5 w-5" />}
-              {loading ? "Marcando..." : "💰 Marcar como Pagada"}
-            </Button>
+            <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+              <DialogTrigger asChild>
+                <Button className="w-full bg-green-600 hover:bg-green-700" size="lg">
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Marcar como Pagada
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-[95vw] max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5" />
+                    Confirmar Pago
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Empleado:</span>
+                      <span className="font-medium">{employee.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Período:</span>
+                      <span className="font-medium text-sm">
+                        {formatDate(weekStart)} - {formatDate(weekEnd)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Días:</span>
+                      <span className="font-medium">{daysWorked}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-2">
+                      <span className="font-medium">Total:</span>
+                      <span className="font-bold text-green-600 text-lg">${totalAmount.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="payment-notes">Notas del pago (opcional)</Label>
+                    <Textarea
+                      id="payment-notes"
+                      placeholder="Ej: Pago en efectivo, transferencia bancaria, etc."
+                      value={paymentNotes}
+                      onChange={(e) => setPaymentNotes(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setShowPaymentDialog(false)} className="flex-1">
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleMarkAsPaid}
+                      disabled={loading}
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                    >
+                      {loading ? "Procesando..." : "Confirmar Pago"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           ) : (
             <Button
-              onClick={handleUnmarkAsPaid}
-              disabled={loading}
               variant="outline"
-              className="w-full h-12 border-orange-300 text-orange-700 hover:bg-orange-50"
+              onClick={handleMarkAsUnpaid}
+              disabled={loading}
+              className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50"
               size="lg"
             >
-              {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Undo2 className="mr-2 h-5 w-5" />}
-              {loading ? "Desmarcando..." : "🔄 Desmarcar Pago"}
+              <XCircle className="h-4 w-4 mr-2" />
+              {loading ? "Procesando..." : "Marcar como Pendiente"}
             </Button>
           )}
         </div>
-
-        {daysWorked === 0 && (
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
-            <span className="text-sm text-yellow-800">No hay días trabajados en esta semana</span>
-          </div>
-        )}
       </CardContent>
     </Card>
   )
