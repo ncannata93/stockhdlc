@@ -17,6 +17,7 @@ import {
   User,
   DollarSign,
   Clock,
+  RefreshCw,
 } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment } from "@/lib/employee-types"
@@ -77,6 +78,7 @@ export default function EmpleadosResumen() {
   const [paidWeeks, setPaidWeeks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingYearly, setLoadingYearly] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<string>("todos")
   const [selectedWeek, setSelectedWeek] = useState<string>(() => {
     const today = new Date()
@@ -112,35 +114,39 @@ export default function EmpleadosResumen() {
     setSelectedWeek(monday.toISOString().split("T")[0])
   }
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      try {
-        const employeesData = await getEmployees()
-        setEmployees(employeesData)
+  const loadData = async () => {
+    console.log("🔄 Cargando datos del resumen...")
+    setLoading(true)
+    try {
+      const employeesData = await getEmployees()
+      console.log("📊 Empleados cargados:", employeesData.length)
+      setEmployees(employeesData)
 
-        const allAssignmentsData = await getAssignments({})
-        const filteredAssignments = allAssignmentsData.filter((assignment) => {
-          const assignmentDate = assignment.assignment_date
-          return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
-        })
+      const allAssignmentsData = await getAssignments({})
+      const filteredAssignments = allAssignmentsData.filter((assignment) => {
+        const assignmentDate = assignment.assignment_date
+        return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
+      })
 
-        let finalAssignments = filteredAssignments
-        if (selectedEmployee !== "todos") {
-          finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
-        }
-
-        setAssignments(finalAssignments)
-
-        const paidWeeksData = await getPaidWeeks({})
-        setPaidWeeks(paidWeeksData)
-      } catch (error) {
-        // Error silencioso
-      } finally {
-        setLoading(false)
+      let finalAssignments = filteredAssignments
+      if (selectedEmployee !== "todos") {
+        finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
       }
-    }
 
+      console.log("📊 Asignaciones filtradas:", finalAssignments.length)
+      setAssignments(finalAssignments)
+
+      const paidWeeksData = await getPaidWeeks({})
+      console.log("💰 Semanas pagadas cargadas:", paidWeeksData.length)
+      setPaidWeeks(paidWeeksData)
+    } catch (error) {
+      console.error("❌ Error cargando datos:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
     loadData()
   }, [selectedEmployee, selectedWeek, startDateStr, endDateStr])
 
@@ -166,7 +172,7 @@ export default function EmpleadosResumen() {
 
         setYearlyAssignments(yearlyAssignmentsData)
       } catch (error) {
-        // Error silencioso
+        console.error("❌ Error cargando datos anuales:", error)
       } finally {
         setLoadingYearly(false)
       }
@@ -228,6 +234,13 @@ export default function EmpleadosResumen() {
         (pw) => pw.employee_id === employee.id && pw.week_start === startDateStr && pw.week_end === endDateStr,
       )
 
+      console.log(`💰 Estado de pago para ${employee.name}:`, {
+        isPaid,
+        weekStart: startDateStr,
+        weekEnd: endDateStr,
+        paidWeeksForEmployee: paidWeeks.filter((pw) => pw.employee_id === employee.id),
+      })
+
       return {
         employee,
         daysWorked,
@@ -278,11 +291,15 @@ export default function EmpleadosResumen() {
   const maxAmount = sortedHotels.length > 0 ? sortedHotels[0].amount : 0
 
   const reloadData = async () => {
+    console.log("🔄 Recargando datos después de cambio de pago...")
+    setRefreshing(true)
     try {
-      const paidWeeksData = await getPaidWeeks({})
-      setPaidWeeks(paidWeeksData)
+      await loadData()
+      console.log("✅ Datos recargados exitosamente")
     } catch (error) {
-      // Error silencioso
+      console.error("❌ Error recargando datos:", error)
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -298,6 +315,16 @@ export default function EmpleadosResumen() {
               </CardTitle>
               <CardDescription className="text-sm">Gestión semanal de pagos y asignaciones</CardDescription>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={reloadData}
+              disabled={refreshing}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Actualizando..." : "Actualizar"}
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
