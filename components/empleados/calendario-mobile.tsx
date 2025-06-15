@@ -20,7 +20,51 @@ import { ChevronLeft, ChevronRight, Loader2, CalendarIcon, AlertCircle, Info } f
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { getSupabaseClient } from "@/lib/supabase"
-import { HOTELS, getHotelCode, getHotelColor } from "@/lib/employee-types"
+import { HOTELS } from "@/lib/employee-types"
+
+// Códigos de 2 letras para cada hotel - COMPLETO
+const hotelCodes: Record<string, string> = {
+  Jaguel: "JA",
+  Monaco: "MO",
+  Mallak: "MA",
+  Argentina: "AR",
+  Falkner: "FA",
+  Stromboli: "ST",
+  "San Miguel": "SM",
+  Colores: "CO",
+  Puntarenas: "PU",
+  Tupe: "TU",
+  Munich: "MU",
+  Tiburones: "TI",
+  Barlovento: "BA",
+  Carama: "CA",
+}
+
+// Colores distintivos para cada hotel - COMPLETO Y ACTUALIZADO
+const hotelColors: Record<string, string> = {
+  Jaguel: "bg-red-600 text-white",
+  Monaco: "bg-blue-600 text-white",
+  Mallak: "bg-green-600 text-white",
+  Argentina: "bg-purple-600 text-white",
+  Falkner: "bg-yellow-600 text-black",
+  Stromboli: "bg-pink-600 text-white",
+  "San Miguel": "bg-indigo-600 text-white",
+  Colores: "bg-orange-600 text-white",
+  Puntarenas: "bg-teal-600 text-white",
+  Tupe: "bg-cyan-600 text-white",
+  Munich: "bg-amber-600 text-black",
+  Tiburones: "bg-slate-600 text-white",
+  Barlovento: "bg-emerald-600 text-white",
+  Carama: "bg-violet-600 text-white",
+}
+
+const getHotelCode = (hotelName: string) => {
+  return hotelCodes[hotelName] || hotelName.substring(0, 2).toUpperCase()
+}
+
+const getHotelColor = (hotelName: string) => {
+  return hotelColors[hotelName] || "bg-gray-600 text-white"
+}
 
 interface Assignment {
   id: number
@@ -181,14 +225,12 @@ export default function CalendarioMobile() {
 
         {!loading && (
           <div className="space-y-4">
-            {/* Leyenda COMPLETA de todos los 14 hoteles */}
+            {/* Leyenda COMPLETA de hoteles */}
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Códigos de Hoteles ({HOTELS.length} hoteles):
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-32 overflow-y-auto">
-                {HOTELS.map((hotel, index) => (
-                  <div key={`${hotel}-${index}`} className="flex items-center gap-1">
+              <h4 className="text-sm font-medium text-muted-foreground">Códigos de Hoteles:</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {HOTELS.map((hotel) => (
+                  <div key={hotel} className="flex items-center gap-1">
                     <div className={`px-2 py-1 rounded text-xs font-bold ${getHotelColor(hotel)}`}>
                       {getHotelCode(hotel)}
                     </div>

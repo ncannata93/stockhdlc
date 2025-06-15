@@ -20,7 +20,73 @@ import { ChevronLeft, ChevronRight, Loader2, CalendarIcon, AlertCircle } from "l
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { getSupabaseClient } from "@/lib/supabase"
-import { HOTELS, getHotelCode, getHotelLightColor } from "@/lib/employee-types"
+import { HOTELS } from "@/lib/employee-types"
+
+// Colores distintivos para cada hotel - COMPLETO Y CONSISTENTE
+const hotelColors: Record<string, string> = {
+  Jaguel: "bg-red-100 text-red-800 border-red-300",
+  Monaco: "bg-blue-100 text-blue-800 border-blue-300",
+  Mallak: "bg-green-100 text-green-800 border-green-300",
+  Argentina: "bg-purple-100 text-purple-800 border-purple-300",
+  Falkner: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  Stromboli: "bg-pink-100 text-pink-800 border-pink-300",
+  "San Miguel": "bg-indigo-100 text-indigo-800 border-indigo-300",
+  Colores: "bg-orange-100 text-orange-800 border-orange-300",
+  Puntarenas: "bg-teal-100 text-teal-800 border-teal-300",
+  Tupe: "bg-cyan-100 text-cyan-800 border-cyan-300",
+  Munich: "bg-amber-100 text-amber-800 border-amber-300",
+  Tiburones: "bg-slate-100 text-slate-800 border-slate-300",
+  Barlovento: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  Carama: "bg-violet-100 text-violet-800 border-violet-300",
+}
+
+// Colores sólidos para gráficos
+const hotelSolidColors: Record<string, string> = {
+  Jaguel: "bg-red-500",
+  Monaco: "bg-blue-500",
+  Mallak: "bg-green-500",
+  Argentina: "bg-purple-500",
+  Falkner: "bg-yellow-500",
+  Stromboli: "bg-pink-500",
+  "San Miguel": "bg-indigo-500",
+  Colores: "bg-orange-500",
+  Puntarenas: "bg-teal-500",
+  Tupe: "bg-cyan-500",
+  Munich: "bg-amber-500",
+  Tiburones: "bg-slate-500",
+  Barlovento: "bg-emerald-500",
+  Carama: "bg-violet-500",
+}
+
+// Códigos de 2 letras para cada hotel
+const hotelCodes: Record<string, string> = {
+  Jaguel: "JA",
+  Monaco: "MO",
+  Mallak: "MA",
+  Argentina: "AR",
+  Falkner: "FA",
+  Stromboli: "ST",
+  "San Miguel": "SM",
+  Colores: "CO",
+  Puntarenas: "PU",
+  Tupe: "TU",
+  Munich: "MU",
+  Tiburones: "TI",
+  Barlovento: "BA",
+  Carama: "CA",
+}
+
+const getHotelColor = (hotelName: string) => {
+  return hotelColors[hotelName] || "bg-gray-100 text-gray-800 border-gray-300"
+}
+
+const getHotelSolidColor = (hotelName: string) => {
+  return hotelSolidColors[hotelName] || "bg-gray-500"
+}
+
+const getHotelCode = (hotelName: string) => {
+  return hotelCodes[hotelName] || hotelName.substring(0, 2).toUpperCase()
+}
 
 interface Assignment {
   id: number
@@ -149,15 +215,13 @@ export default function CalendarioSimple() {
 
         {!loading && (
           <div className="space-y-4">
-            {/* Leyenda COMPLETA con scroll para todos los hoteles */}
+            {/* Leyenda COMPLETA de hoteles con colores */}
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Leyenda de Hoteles ({HOTELS.length} hoteles):
-              </h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 max-h-40 overflow-y-auto border rounded-md p-2 bg-gray-50">
-                {HOTELS.map((hotel, index) => (
-                  <div key={`${hotel}-${index}`} className="flex items-center gap-2">
-                    <Badge className={`${getHotelLightColor(hotel)} font-bold text-xs px-2 py-1 shrink-0`}>
+              <h4 className="text-sm font-medium text-muted-foreground">Leyenda de Hoteles:</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                {HOTELS.map((hotel) => (
+                  <div key={hotel} className="flex items-center gap-2">
+                    <Badge className={`${getHotelColor(hotel)} font-bold text-xs px-2 py-1`}>
                       {getHotelCode(hotel)}
                     </Badge>
                     <span className="text-xs truncate" title={hotel}>
@@ -205,7 +269,7 @@ export default function CalendarioSimple() {
                                 <div
                                   className={`
                                     text-xs p-2 rounded border font-medium
-                                    ${getHotelLightColor(assignment.hotel_name)}
+                                    ${getHotelColor(assignment.hotel_name)}
                                   `}
                                   title={`${assignment.hotel_name}: ${assignment.employee_name}`}
                                 >
