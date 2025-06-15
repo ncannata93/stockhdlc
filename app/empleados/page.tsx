@@ -26,7 +26,7 @@ export default function EmpleadosPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -36,34 +36,55 @@ export default function EmpleadosPage() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="inicio" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Inicio
+            <TabsList className="grid w-full grid-cols-7 lg:grid-cols-7 md:grid-cols-4 sm:grid-cols-2 gap-1 h-auto p-1 overflow-x-auto">
+              <TabsTrigger
+                value="inicio"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Inicio</span>
               </TabsTrigger>
-              <TabsTrigger value="empleados" className="flex items-center gap-2">
-                <UserCog className="h-4 w-4" />
-                Empleados
+              <TabsTrigger
+                value="empleados"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <UserCog className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Empleados</span>
               </TabsTrigger>
-              <TabsTrigger value="agregar" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Agregar
+              <TabsTrigger
+                value="agregar"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Settings className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Agregar</span>
               </TabsTrigger>
-              <TabsTrigger value="calendario" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Calendario
+              <TabsTrigger
+                value="calendario"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Calendario</span>
               </TabsTrigger>
-              <TabsTrigger value="historial" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Historial
+              <TabsTrigger
+                value="historial"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Historial</span>
               </TabsTrigger>
-              <TabsTrigger value="resumen" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Resumen
+              <TabsTrigger
+                value="resumen"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Resumen</span>
               </TabsTrigger>
-              <TabsTrigger value="importar" className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                Importar
+              <TabsTrigger
+                value="importar"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Upload className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Importar</span>
               </TabsTrigger>
             </TabsList>
 
