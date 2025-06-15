@@ -190,13 +190,17 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           assignment.employeeId = employee.id
           assignment.dailyRate = employee.daily_rate
 
-          // PASO 3: Crear asignaciones individuales
+          // PASO 3: Crear asignaciones individuales con tarifa dividida
+          // Calcular tarifa dividida por la cantidad de hoteles ese día
+          const dividedRate = assignment.dailyRate! / assignment.hoteles.length
+
           for (const hotel of assignment.hoteles) {
             const assignmentResult = await saveAssignment({
               employee_id: employee.id,
               hotel_name: hotel,
               assignment_date: assignment.fecha,
-              notes: `Importado masivamente el ${new Date().toISOString().split("T")[0]}`,
+              daily_rate_used: dividedRate, // Usar tarifa dividida
+              notes: `Importado masivamente el ${new Date().toISOString().split("T")[0]} - Tarifa dividida entre ${assignment.hoteles.length} hotel(es): $${dividedRate.toLocaleString()}`,
             })
 
             if (assignmentResult) {
@@ -475,7 +479,14 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
                           ))}
                         </div>
                         <div className="ml-auto text-xs">
-                          <span className="text-green-600 font-medium">✅ Asignaciones + Semana pagada</span>
+                          <span className="text-green-600 font-medium">
+                            ✅ Asignaciones + Semana pagada
+                            {assignment.hoteles.length > 1 && (
+                              <div className="text-xs text-blue-600">
+                                Tarifa dividida: ${(15000 / assignment.hoteles.length).toLocaleString()} c/u
+                              </div>
+                            )}
+                          </span>
                         </div>
                       </div>
                     ))}
