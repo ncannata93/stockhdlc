@@ -22,23 +22,40 @@ import { Badge } from "@/components/ui/badge"
 import { getSupabaseClient } from "@/lib/supabase"
 import { HOTELS } from "@/lib/employee-types"
 
-// Colores distintivos para cada hotel (mismos que en móvil)
+// Colores distintivos para cada hotel - COMPLETO Y CONSISTENTE
 const hotelColors: Record<string, string> = {
-  Jaguel: "bg-red-600 text-white border-red-600",
-  Monaco: "bg-blue-600 text-white border-blue-600",
-  Mallak: "bg-green-600 text-white border-green-600",
-  Argentina: "bg-purple-600 text-white border-purple-600",
-  Falkner: "bg-yellow-500 text-black border-yellow-500",
-  Stromboli: "bg-pink-600 text-white border-pink-600",
-  "San Miguel": "bg-indigo-600 text-white border-indigo-600",
-  Colores: "bg-orange-600 text-white border-orange-600",
-  Puntarenas: "bg-teal-600 text-white border-teal-600",
-  Tupe: "bg-cyan-600 text-white border-cyan-600",
-  Munich: "bg-amber-500 text-black border-amber-500",
-  Tiburones: "bg-slate-600 text-white border-slate-600",
-  Barlovento: "bg-emerald-600 text-white border-emerald-600",
-  Carama: "bg-violet-600 text-white border-violet-600",
-  default: "bg-gray-600 text-white border-gray-600",
+  Jaguel: "bg-red-100 text-red-800 border-red-300",
+  Monaco: "bg-blue-100 text-blue-800 border-blue-300",
+  Mallak: "bg-green-100 text-green-800 border-green-300",
+  Argentina: "bg-purple-100 text-purple-800 border-purple-300",
+  Falkner: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  Stromboli: "bg-pink-100 text-pink-800 border-pink-300",
+  "San Miguel": "bg-indigo-100 text-indigo-800 border-indigo-300",
+  Colores: "bg-orange-100 text-orange-800 border-orange-300",
+  Puntarenas: "bg-teal-100 text-teal-800 border-teal-300",
+  Tupe: "bg-cyan-100 text-cyan-800 border-cyan-300",
+  Munich: "bg-amber-100 text-amber-800 border-amber-300",
+  Tiburones: "bg-slate-100 text-slate-800 border-slate-300",
+  Barlovento: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  Carama: "bg-violet-100 text-violet-800 border-violet-300",
+}
+
+// Colores sólidos para gráficos
+const hotelSolidColors: Record<string, string> = {
+  Jaguel: "bg-red-500",
+  Monaco: "bg-blue-500",
+  Mallak: "bg-green-500",
+  Argentina: "bg-purple-500",
+  Falkner: "bg-yellow-500",
+  Stromboli: "bg-pink-500",
+  "San Miguel": "bg-indigo-500",
+  Colores: "bg-orange-500",
+  Puntarenas: "bg-teal-500",
+  Tupe: "bg-cyan-500",
+  Munich: "bg-amber-500",
+  Tiburones: "bg-slate-500",
+  Barlovento: "bg-emerald-500",
+  Carama: "bg-violet-500",
 }
 
 // Códigos de 2 letras para cada hotel
@@ -60,7 +77,11 @@ const hotelCodes: Record<string, string> = {
 }
 
 const getHotelColor = (hotelName: string) => {
-  return hotelColors[hotelName] || hotelColors.default
+  return hotelColors[hotelName] || "bg-gray-100 text-gray-800 border-gray-300"
+}
+
+const getHotelSolidColor = (hotelName: string) => {
+  return hotelSolidColors[hotelName] || "bg-gray-500"
 }
 
 const getHotelCode = (hotelName: string) => {
@@ -81,7 +102,6 @@ export default function CalendarioSimple() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Función para cargar asignaciones
   const loadAssignments = async (date: Date) => {
     setLoading(true)
     setError(null)
@@ -101,8 +121,6 @@ export default function CalendarioSimple() {
       const startDateStr = format(startDate, "yyyy-MM-dd")
       const endDateStr = format(endDate, "yyyy-MM-dd")
 
-      console.log("Cargando asignaciones:", { startDateStr, endDateStr })
-
       const { data, error: queryError } = await supabase
         .from("employee_assignments")
         .select(`
@@ -117,7 +135,6 @@ export default function CalendarioSimple() {
         .order("assignment_date")
 
       if (queryError) {
-        console.error("Error al cargar asignaciones:", queryError)
         setError("Error al cargar asignaciones")
         return
       }
@@ -130,41 +147,34 @@ export default function CalendarioSimple() {
         employee_name: item.employees?.name,
       }))
 
-      console.log("Asignaciones cargadas:", formattedAssignments.length)
       setAssignments(formattedAssignments)
     } catch (err) {
-      console.error("Error inesperado:", err)
       setError("Error al cargar los datos")
     } finally {
       setLoading(false)
     }
   }
 
-  // Cargar datos cuando cambia el mes
   useEffect(() => {
     loadAssignments(currentDate)
   }, [currentDate])
 
-  // Calcular fechas para el calendario
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
   const startDate = startOfWeek(monthStart, { weekStartsOn: 1 })
   const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
   const daysToDisplay = eachDayOfInterval({ start: startDate, end: endDate })
 
-  // Agrupar días por semanas
   const weeks: Date[][] = []
   for (let i = 0; i < daysToDisplay.length; i += 7) {
     weeks.push(daysToDisplay.slice(i, i + 7))
   }
 
-  // Obtener asignaciones para un día específico
   const getAssignmentsForDay = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd")
     return assignments.filter((a) => a.assignment_date === dateStr)
   }
 
-  // Navegar meses
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1))
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1))
   const currentMonth = () => setCurrentDate(new Date())
@@ -205,7 +215,7 @@ export default function CalendarioSimple() {
 
         {!loading && (
           <div className="space-y-4">
-            {/* Leyenda completa de hoteles con colores */}
+            {/* Leyenda COMPLETA de hoteles con colores */}
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-muted-foreground">Leyenda de Hoteles:</h4>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
@@ -214,7 +224,9 @@ export default function CalendarioSimple() {
                     <Badge className={`${getHotelColor(hotel)} font-bold text-xs px-2 py-1`}>
                       {getHotelCode(hotel)}
                     </Badge>
-                    <span className="text-xs">{hotel}</span>
+                    <span className="text-xs truncate" title={hotel}>
+                      {hotel}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -243,7 +255,7 @@ export default function CalendarioSimple() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[120px] border rounded-md p-2 relative
+                          min-h-[140px] border rounded-md p-2 relative
                           ${isToday ? "border-blue-500 bg-blue-50" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                         `}
@@ -282,7 +294,6 @@ export default function CalendarioSimple() {
               ))}
             </div>
 
-            {/* Estado vacío */}
             {assignments.length === 0 && !loading && (
               <div className="text-center py-8 text-muted-foreground">
                 <CalendarIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />

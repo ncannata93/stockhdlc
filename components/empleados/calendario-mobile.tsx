@@ -22,7 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { getSupabaseClient } from "@/lib/supabase"
 import { HOTELS } from "@/lib/employee-types"
 
-// Códigos de 2 letras para cada hotel
+// Códigos de 2 letras para cada hotel - COMPLETO
 const hotelCodes: Record<string, string> = {
   Jaguel: "JA",
   Monaco: "MO",
@@ -40,23 +40,22 @@ const hotelCodes: Record<string, string> = {
   Carama: "CA",
 }
 
-// Colores distintivos para cada hotel
+// Colores distintivos para cada hotel - COMPLETO Y ACTUALIZADO
 const hotelColors: Record<string, string> = {
   Jaguel: "bg-red-600 text-white",
   Monaco: "bg-blue-600 text-white",
   Mallak: "bg-green-600 text-white",
   Argentina: "bg-purple-600 text-white",
-  Falkner: "bg-yellow-500 text-black",
+  Falkner: "bg-yellow-600 text-black",
   Stromboli: "bg-pink-600 text-white",
   "San Miguel": "bg-indigo-600 text-white",
   Colores: "bg-orange-600 text-white",
   Puntarenas: "bg-teal-600 text-white",
   Tupe: "bg-cyan-600 text-white",
-  Munich: "bg-amber-500 text-black",
+  Munich: "bg-amber-600 text-black",
   Tiburones: "bg-slate-600 text-white",
   Barlovento: "bg-emerald-600 text-white",
   Carama: "bg-violet-600 text-white",
-  default: "bg-gray-600 text-white",
 }
 
 const getHotelCode = (hotelName: string) => {
@@ -64,7 +63,7 @@ const getHotelCode = (hotelName: string) => {
 }
 
 const getHotelColor = (hotelName: string) => {
-  return hotelColors[hotelName] || hotelColors.default
+  return hotelColors[hotelName] || "bg-gray-600 text-white"
 }
 
 interface Assignment {
@@ -81,7 +80,6 @@ export default function CalendarioMobile() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Función para cargar asignaciones
   const loadAssignments = async (date: Date) => {
     setLoading(true)
     setError(null)
@@ -101,8 +99,6 @@ export default function CalendarioMobile() {
       const startDateStr = format(startDate, "yyyy-MM-dd")
       const endDateStr = format(endDate, "yyyy-MM-dd")
 
-      console.log("Cargando asignaciones:", { startDateStr, endDateStr })
-
       const { data, error: queryError } = await supabase
         .from("employee_assignments")
         .select(`
@@ -117,7 +113,6 @@ export default function CalendarioMobile() {
         .order("assignment_date")
 
       if (queryError) {
-        console.error("Error al cargar asignaciones:", queryError)
         setError("Error al cargar asignaciones")
         return
       }
@@ -130,46 +125,38 @@ export default function CalendarioMobile() {
         employee_name: item.employees?.name,
       }))
 
-      console.log("Asignaciones cargadas:", formattedAssignments.length)
       setAssignments(formattedAssignments)
     } catch (err) {
-      console.error("Error inesperado:", err)
       setError("Error al cargar los datos")
     } finally {
       setLoading(false)
     }
   }
 
-  // Cargar datos cuando cambia el mes
   useEffect(() => {
     loadAssignments(currentDate)
   }, [currentDate])
 
-  // Calcular fechas para el calendario
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
   const startDate = startOfWeek(monthStart, { weekStartsOn: 1 })
   const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
   const daysToDisplay = eachDayOfInterval({ start: startDate, end: endDate })
 
-  // Agrupar días por semanas
   const weeks: Date[][] = []
   for (let i = 0; i < daysToDisplay.length; i += 7) {
     weeks.push(daysToDisplay.slice(i, i + 7))
   }
 
-  // Obtener asignaciones para un día específico
   const getAssignmentsForDay = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd")
     return assignments.filter((a) => a.assignment_date === dateStr)
   }
 
-  // Navegar meses
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1))
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1))
   const currentMonth = () => setCurrentDate(new Date())
 
-  // Componente para mostrar detalles del día
   const DayDetailsDialog = ({ day, assignments }: { day: Date; assignments: Assignment[] }) => (
     <Dialog>
       <DialogTrigger asChild>
@@ -238,16 +225,18 @@ export default function CalendarioMobile() {
 
         {!loading && (
           <div className="space-y-4">
-            {/* Leyenda de hoteles */}
+            {/* Leyenda COMPLETA de hoteles */}
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-muted-foreground">Códigos de Hoteles:</h4>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {HOTELS.map((hotel) => (
                   <div key={hotel} className="flex items-center gap-1">
-                    <div className={`px-1 py-0.5 rounded text-xs font-bold ${getHotelColor(hotel)}`}>
+                    <div className={`px-2 py-1 rounded text-xs font-bold ${getHotelColor(hotel)}`}>
                       {getHotelCode(hotel)}
                     </div>
-                    <span className="text-xs truncate">{hotel}</span>
+                    <span className="text-xs truncate" title={hotel}>
+                      {hotel}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -276,7 +265,7 @@ export default function CalendarioMobile() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[70px] border rounded-md p-1 relative
+                          min-h-[80px] border rounded-md p-1 relative
                           ${isToday ? "border-blue-500 bg-blue-50" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                         `}
@@ -290,7 +279,7 @@ export default function CalendarioMobile() {
 
                         {hasAssignments ? (
                           <div className="space-y-1">
-                            {dayAssignments.slice(0, 2).map((assignment) => (
+                            {dayAssignments.slice(0, 3).map((assignment) => (
                               <div
                                 key={assignment.id}
                                 className={`
@@ -302,9 +291,9 @@ export default function CalendarioMobile() {
                                 {getHotelCode(assignment.hotel_name)}
                               </div>
                             ))}
-                            {dayAssignments.length > 2 && (
+                            {dayAssignments.length > 3 && (
                               <div className="text-xs text-center text-muted-foreground font-medium">
-                                +{dayAssignments.length - 2}
+                                +{dayAssignments.length - 3}
                               </div>
                             )}
                           </div>
@@ -318,7 +307,6 @@ export default function CalendarioMobile() {
               ))}
             </div>
 
-            {/* Estado vacío */}
             {assignments.length === 0 && !loading && (
               <div className="text-center py-8 text-muted-foreground">
                 <CalendarIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
