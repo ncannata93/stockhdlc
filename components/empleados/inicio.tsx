@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Users, UserPlus, Calendar, BarChart3, Upload, TrendingUp, Clock, DollarSign, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useEmployeeDB } from "@/lib/employee-db"
 
 interface EmpleadosInicioProps {
   onTabChange?: (tab: string) => void
@@ -13,22 +14,90 @@ interface EmpleadosInicioProps {
 
 export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
   const { toast } = useToast()
+  const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
   const [stats, setStats] = useState({
     totalEmpleados: 0,
     empleadosActivos: 0,
     asignacionesHoy: 0,
     pagosPendientes: 0,
   })
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Simular carga de estadísticas
-    setStats({
-      totalEmpleados: 12,
-      empleadosActivos: 8,
-      asignacionesHoy: 5,
-      pagosPendientes: 3,
-    })
-  }, [])
+    const loadRealStats = async () => {
+      setLoading(true)
+      try {
+        // Obtener todos los empleados
+        const employees = await getEmployees()
+
+        // Obtener fecha de hoy
+        const today = new Date()
+        const todayStr = today.toISOString().split("T")[0]
+
+        // Obtener asignaciones de hoy
+        const todayAssignments = await getAssignments({
+          start_date: todayStr,
+          end_date: todayStr,
+        })
+
+        // Obtener empleados únicos que trabajan hoy
+        const uniqueEmployeesToday = new Set(todayAssignments.map((a) => a.employee_id))
+
+        // Obtener asignaciones de la semana actual para calcular pagos pendientes
+        const startOfWeek = new Date(today)
+        startOfWeek.setDate(today.getDate() - today.getDay())
+        const endOfWeek = new Date(startOfWeek)
+        endOfWeek.setDate(startOfWeek.getDate() + 6)
+
+        const weekAssignments = await getAssignments({
+          start_date: startOfWeek.toISOString().split("T")[0],
+          end_date: endOfWeek.toISOString().split("T")[0],
+        })
+
+        // Obtener semanas pagadas para calcular pendientes
+        const paidWeeks = await getPaidWeeks({
+          start_date: startOfWeek.toISOString().split("T")[0],
+          end_date: endOfWeek.toISOString().split("T")[0],
+        })
+
+        // Calcular empleados con asignaciones pero sin pagos
+        const employeesWithAssignments = new Set(weekAssignments.map((a) => a.employee_id))
+        const employeesWithPayments = new Set(paidWeeks.map((p) => p.employee_id))
+        const pendingPayments = employeesWithAssignments.size - employeesWithPayments.size
+
+        // Calcular empleados activos (con asignaciones en los últimos 30 días)
+        const thirtyDaysAgo = new Date(today)
+        thirtyDaysAgo.setDate(today.getDate() - 30)
+
+        const recentAssignments = await getAssignments({
+          start_date: thirtyDaysAgo.toISOString().split("T")[0],
+          end_date: todayStr,
+        })
+
+        const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
+
+        setStats({
+          totalEmpleados: employees.length,
+          empleadosActivos: activeEmployees.size,
+          asignacionesHoy: uniqueEmployeesToday.size,
+          pagosPendientes: Math.max(0, pendingPayments),
+        })
+      } catch (error) {
+        console.error("Error loading stats:", error)
+        // En caso de error, mostrar valores por defecto
+        setStats({
+          totalEmpleados: 0,
+          empleadosActivos: 0,
+          asignacionesHoy: 0,
+          pagosPendientes: 0,
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadRealStats()
+  }, [getEmployees, getAssignments, getPaidWeeks])
 
   const handleQuickAction = (action: string, tab: string) => {
     toast({
@@ -47,7 +116,7 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
             <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
             <div>
               <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total</p>
-              <p className="text-lg sm:text-2xl font-bold">{stats.totalEmpleados}</p>
+              <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.totalEmpleados}</p>
             </div>
           </div>
         </Card>
@@ -57,7 +126,7 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
             <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
             <div>
               <p className="text-xs sm:text-sm font-medium text-muted-foreground">Activos</p>
-              <p className="text-lg sm:text-2xl font-bold">{stats.empleadosActivos}</p>
+              <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.empleadosActivos}</p>
             </div>
           </div>
         </Card>
@@ -67,7 +136,7 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
             <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
             <div>
               <p className="text-xs sm:text-sm font-medium text-muted-foreground">Hoy</p>
-              <p className="text-lg sm:text-2xl font-bold">{stats.asignacionesHoy}</p>
+              <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.asignacionesHoy}</p>
             </div>
           </div>
         </Card>
@@ -77,7 +146,7 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
             <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
             <div>
               <p className="text-xs sm:text-sm font-medium text-muted-foreground">Pendientes</p>
-              <p className="text-lg sm:text-2xl font-bold">{stats.pagosPendientes}</p>
+              <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.pagosPendientes}</p>
             </div>
           </div>
         </Card>
@@ -172,7 +241,7 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
         </CardContent>
       </Card>
 
-      {/* Resumen Rápido */}
+      {/* Resumen del Día */}
       <Card>
         <CardHeader className="pb-3 sm:pb-4">
           <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
@@ -184,15 +253,17 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-xs sm:text-sm text-muted-foreground">Empleados trabajando hoy</span>
-              <Badge variant="secondary">{stats.asignacionesHoy}</Badge>
+              <Badge variant="secondary">{loading ? "..." : stats.asignacionesHoy}</Badge>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-xs sm:text-sm text-muted-foreground">Pagos pendientes</span>
-              <Badge variant={stats.pagosPendientes > 0 ? "destructive" : "secondary"}>{stats.pagosPendientes}</Badge>
+              <Badge variant={stats.pagosPendientes > 0 ? "destructive" : "secondary"}>
+                {loading ? "..." : stats.pagosPendientes}
+              </Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-xs sm:text-sm text-muted-foreground">Empleados activos</span>
-              <Badge variant="default">{stats.empleadosActivos}</Badge>
+              <span className="text-xs sm:text-sm text-muted-foreground">Empleados activos (30 días)</span>
+              <Badge variant="default">{loading ? "..." : stats.empleadosActivos}</Badge>
             </div>
           </div>
         </CardContent>
