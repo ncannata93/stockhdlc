@@ -362,10 +362,21 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           <Alert>
             <FileText className="h-4 w-4" />
             <AlertDescription>
-              <strong>Formato esperado:</strong> Fecha (DD/MM/YYYY) + TAB + Nombre + TAB + Hoteles (separados por comas)
-              <br />
-              <strong>Ejemplo:</strong>
-              <pre className="mt-2 text-xs bg-gray-100 p-2 rounded">{exampleData}</pre>
+              <div className="space-y-3">
+                <div>
+                  <strong>Formato esperado:</strong> Fecha (DD/MM/YYYY) + TAB + Nombre + TAB + Hoteles (separados por
+                  comas)
+                </div>
+                <div>
+                  <strong>Ejemplo:</strong>
+                  <div className="mt-2 text-xs bg-gray-100 p-3 rounded-lg space-y-1 font-mono">
+                    <div className="break-all">01/04/2025 → Tucu → San Miguel, Colores</div>
+                    <div className="break-all">01/04/2025 → Diego → San Miguel, Colores</div>
+                    <div className="break-all">02/04/2025 → Tucu → Monaco</div>
+                    <div className="break-all">02/04/2025 → Diego → Jaguel, Argentina</div>
+                  </div>
+                </div>
+              </div>
             </AlertDescription>
           </Alert>
 
@@ -375,19 +386,24 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               value={textData}
               onChange={(e) => setTextData(e.target.value)}
               placeholder="Pega aquí los datos en el formato especificado..."
-              rows={10}
-              className="font-mono text-sm"
+              rows={8}
+              className="font-mono text-sm resize-none"
             />
           </div>
 
-          <div className="flex gap-2">
-            <Button onClick={parseData} disabled={!textData.trim()}>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button onClick={parseData} disabled={!textData.trim()} className="w-full sm:w-auto">
               <FileText className="h-4 w-4 mr-2" />
               Analizar Datos
             </Button>
 
             {showPreview && (
-              <Button onClick={processImport} disabled={isProcessing || validRows.length === 0} variant="default">
+              <Button
+                onClick={processImport}
+                disabled={isProcessing || validRows.length === 0}
+                variant="default"
+                className="w-full sm:w-auto"
+              >
                 {isProcessing ? "Procesando..." : "Importar"}
                 <Upload className="h-4 w-4 ml-2" />
               </Button>
@@ -405,30 +421,30 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-green-50 p-4 rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-green-50 p-3 rounded-lg">
                 <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">Días de trabajo</span>
+                  <CheckCircle className="h-4 w-4" />
+                  <span className="font-medium text-sm">Días de trabajo</span>
                 </div>
-                <div className="text-2xl font-bold text-green-800">{groupedPreview.size}</div>
-                <div className="text-sm text-green-600">{totalAssignments} asignaciones totales</div>
+                <div className="text-xl font-bold text-green-800">{groupedPreview.size}</div>
+                <div className="text-xs text-green-600">{totalAssignments} asignaciones totales</div>
               </div>
 
-              <div className="bg-red-50 p-4 rounded-lg">
+              <div className="bg-red-50 p-3 rounded-lg">
                 <div className="flex items-center gap-2 text-red-700">
-                  <AlertCircle className="h-5 w-5" />
-                  <span className="font-medium">Con errores</span>
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="font-medium text-sm">Con errores</span>
                 </div>
-                <div className="text-2xl font-bold text-red-800">{invalidRows.length}</div>
+                <div className="text-xl font-bold text-red-800">{invalidRows.length}</div>
               </div>
 
-              <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="bg-blue-50 p-3 rounded-lg">
                 <div className="flex items-center gap-2 text-blue-700">
-                  <Users className="h-5 w-5" />
-                  <span className="font-medium">Empleados únicos</span>
+                  <Users className="h-4 w-4" />
+                  <span className="font-medium text-sm">Empleados únicos</span>
                 </div>
-                <div className="text-2xl font-bold text-blue-800">
+                <div className="text-xl font-bold text-blue-800">
                   {new Set(validRows.map((row) => row.empleado.toLowerCase())).size}
                 </div>
               </div>
@@ -461,32 +477,28 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
                   {Array.from(groupedPreview.values())
                     .slice(0, 10)
                     .map((assignment, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 text-sm bg-green-50 p-3 rounded border border-green-200"
-                      >
-                        <Calendar className="h-4 w-4 text-green-600" />
-                        <span className="font-medium">{assignment.fecha}</span>
-                        <Badge variant="outline" className="border-green-300">
-                          {assignment.empleado}
-                        </Badge>
-                        <span className="text-gray-500">→</span>
-                        <div className="flex gap-1">
+                      <div key={index} className="bg-green-50 p-3 rounded border border-green-200 space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="h-4 w-4 text-green-600" />
+                          <span className="font-medium">{assignment.fecha}</span>
+                          <Badge variant="outline" className="border-green-300 text-xs">
+                            {assignment.empleado}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
                           {assignment.hoteles.map((hotel, hotelIndex) => (
                             <Badge key={hotelIndex} variant="secondary" className="text-xs">
                               {hotel}
                             </Badge>
                           ))}
                         </div>
-                        <div className="ml-auto text-xs">
-                          <span className="text-green-600 font-medium">
-                            ✅ Asignaciones + Semana pagada
-                            {assignment.hoteles.length > 1 && (
-                              <div className="text-xs text-blue-600">
-                                Tarifa dividida: ${(15000 / assignment.hoteles.length).toLocaleString()} c/u
-                              </div>
-                            )}
-                          </span>
+                        <div className="text-xs text-green-600 font-medium">
+                          ✅ Asignaciones + Semana pagada
+                          {assignment.hoteles.length > 1 && (
+                            <div className="text-xs text-blue-600">
+                              Tarifa dividida: ${(15000 / assignment.hoteles.length).toLocaleString()} c/u
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
