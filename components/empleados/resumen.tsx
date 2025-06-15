@@ -70,7 +70,11 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
   return date >= weekStart && date <= weekEnd
 }
 
-export default function EmpleadosResumen() {
+interface EmpleadosResumenProps {
+  onStatsChange?: () => void
+}
+
+export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProps) {
   const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
@@ -296,6 +300,15 @@ export default function EmpleadosResumen() {
     try {
       await loadData()
       console.log("✅ Datos recargados exitosamente")
+
+      // IMPORTANTE: Notificar al componente padre que las estadísticas han cambiado
+      console.log("📊 Notificando cambio de estadísticas al componente padre...")
+      if (onStatsChange) {
+        onStatsChange()
+        console.log("✅ Callback onStatsChange ejecutado")
+      } else {
+        console.log("⚠️ No hay callback onStatsChange disponible")
+      }
     } catch (error) {
       console.error("❌ Error recargando datos:", error)
     } finally {

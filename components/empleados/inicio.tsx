@@ -1,18 +1,31 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Users, UserPlus, Calendar, BarChart3, Upload, TrendingUp, Clock, DollarSign, AlertCircle } from "lucide-react"
+import {
+  Users,
+  UserPlus,
+  Calendar,
+  BarChart3,
+  Upload,
+  TrendingUp,
+  Clock,
+  DollarSign,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
+import { startOfWeek, endOfWeek, subWeeks } from "date-fns"
 
 interface EmpleadosInicioProps {
   onTabChange?: (tab: string) => void
+  refreshTrigger?: number // Prop para forzar actualización
 }
 
-export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
+export default function EmpleadosInicio({ onTabChange, refreshTrigger }: EmpleadosInicioProps) {
   const { toast } = useToast()
   const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
   const [stats, setStats] = useState({
@@ -22,82 +35,178 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
     pagosPendientes: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => {
-    const loadRealStats = async () => {
-      setLoading(true)
-      try {
-        // Obtener todos los empleados
-        const employees = await getEmployees()
+  const loadRealStats = useCallback(async () => {
+    console.log("🔄 Cargando estadísticas del inicio...")
+    try {
+      // Obtener todos los empleados
+      const employees = await getEmployees()
+      console.log("👥 Empleados encontrados:", employees.length)
 
-        // Obtener fecha de hoy
-        const today = new Date()
-        const todayStr = today.toISOString().split("T")[0]
+      // Obtener fecha de hoy
+      const today = new Date()
+      const todayStr = today.toISOString().split("T")[0]
 
-        // Obtener asignaciones de hoy
-        const todayAssignments = await getAssignments({
-          start_date: todayStr,
-          end_date: todayStr,
+      // Obtener asignaciones de hoy
+      const todayAssignments = await getAssignments({
+        start_date: todayStr,
+        end_date: todayStr,
+      })
+
+      // Obtener empleados únicos que trabajan hoy
+      const uniqueEmployeesToday = new Set(todayAssignments.map((a) => a.employee_id))
+      console.log("📅 Empleados trabajando hoy:", uniqueEmployeesToday.size)
+
+      // Calcular empleados activos (con asignaciones en los últimos 30 días)
+      const thirtyDaysAgo = new Date(today)
+      thirtyDaysAgo.setDate(today.getDate() - 30)
+
+      const recentAssignments = await getAssignments({
+        start_date: thirtyDaysAgo.toISOString().split("T")[0],
+        end_date: todayStr,
+      })
+
+      const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
+      console.log("🔥 Empleados activos (30 días):", activeEmployees.size)
+
+      // CÁLCULO MEJORADO DE PAGOS PENDIENTES
+      // Obtener todas las asignaciones de las últimas 12 semanas
+      const twelveWeeksAgo = subWeeks(today, 12)
+      const allRecentAssignments = await getAssignments({
+        start_date: twelveWeeksAgo.toISOString().split("T")[0],
+        end_date: todayStr,
+      })
+
+      // Obtener todas las semanas pagadas
+      const allPaidWeeks = await getPaidWeeks({
+        start_date: twelveWeeksAgo.toISOString().split("T")[0],
+        end_date: todayStr,
+      })
+
+      console.log("📊 Asignaciones recientes (12 semanas):", allRecentAssignments.length)
+      console.log("💰 Semanas pagadas encontradas:", allPaidWeeks.length)
+
+      // Agrupar asignaciones por empleado y semana
+      const weeklyAssignments = new Map<
+        string,
+        {
+          employeeId: number
+          employeeName: string
+          weekStart: string
+          weekEnd: string
+          assignmentCount: number
+        }
+      >()
+
+      allRecentAssignments.forEach((assignment) => {
+        const assignmentDate = new Date(assignment.assignment_date)
+        const weekStart = startOfWeek(assignmentDate, { weekStartsOn: 1 })
+        const weekEnd = endOfWeek(assignmentDate, { weekStartsOn: 1 })
+
+        const weekStartStr = weekStart.toISOString().split("T")[0]
+        const weekEndStr = weekEnd.toISOString().split("T")[0]
+        const weekKey = `${assignment.employee_id}-${weekStartStr}-${weekEndStr}`
+
+        if (!weeklyAssignments.has(weekKey)) {
+          weeklyAssignments.set(weekKey, {
+            employeeId: assignment.employee_id,
+            employeeName: assignment.employee_name || "Desconocido",
+            weekStart: weekStartStr,
+            weekEnd: weekEndStr,
+            assignmentCount: 0,
+          })
+        }
+        weeklyAssignments.get(weekKey)!.assignmentCount++
+      })
+
+      console.log("📅 Semanas con asignaciones encontradas:", weeklyAssignments.size)
+
+      // Crear set de semanas pagadas con el mismo formato
+      const paidWeeksSet = new Set<string>()
+      allPaidWeeks.forEach((paidWeek) => {
+        const weekKey = `${paidWeek.employee_id}-${paidWeek.week_start}-${paidWeek.week_end}`
+        paidWeeksSet.add(weekKey)
+        console.log("✅ Semana pagada:", {
+          employeeId: paidWeek.employee_id,
+          employeeName: paidWeek.employee_name,
+          weekStart: paidWeek.week_start,
+          weekEnd: paidWeek.week_end,
+          weekKey,
         })
+      })
 
-        // Obtener empleados únicos que trabajan hoy
-        const uniqueEmployeesToday = new Set(todayAssignments.map((a) => a.employee_id))
+      console.log("💰 Semanas pagadas (set):", paidWeeksSet.size)
 
-        // Obtener asignaciones de la semana actual para calcular pagos pendientes
-        const startOfWeek = new Date(today)
-        startOfWeek.setDate(today.getDate() - today.getDay())
-        const endOfWeek = new Date(startOfWeek)
-        endOfWeek.setDate(startOfWeek.getDate() + 6)
+      // Calcular semanas pendientes de pago
+      let pendingPayments = 0
+      const pendingDetails: any[] = []
 
-        const weekAssignments = await getAssignments({
-          start_date: startOfWeek.toISOString().split("T")[0],
-          end_date: endOfWeek.toISOString().split("T")[0],
-        })
+      weeklyAssignments.forEach((weekData, weekKey) => {
+        if (!paidWeeksSet.has(weekKey)) {
+          pendingPayments++
+          pendingDetails.push({
+            weekKey,
+            ...weekData,
+          })
+        }
+      })
 
-        // Obtener semanas pagadas para calcular pendientes
-        const paidWeeks = await getPaidWeeks({
-          start_date: startOfWeek.toISOString().split("T")[0],
-          end_date: endOfWeek.toISOString().split("T")[0],
-        })
+      console.log("🔴 Pagos pendientes calculados:", pendingPayments)
+      console.log("📋 Detalle de pagos pendientes:", pendingDetails)
 
-        // Calcular empleados con asignaciones pero sin pagos
-        const employeesWithAssignments = new Set(weekAssignments.map((a) => a.employee_id))
-        const employeesWithPayments = new Set(paidWeeks.map((p) => p.employee_id))
-        const pendingPayments = employeesWithAssignments.size - employeesWithPayments.size
+      setStats({
+        totalEmpleados: employees.length,
+        empleadosActivos: activeEmployees.size,
+        asignacionesHoy: uniqueEmployeesToday.size,
+        pagosPendientes: pendingPayments,
+      })
 
-        // Calcular empleados activos (con asignaciones en los últimos 30 días)
-        const thirtyDaysAgo = new Date(today)
-        thirtyDaysAgo.setDate(today.getDate() - 30)
-
-        const recentAssignments = await getAssignments({
-          start_date: thirtyDaysAgo.toISOString().split("T")[0],
-          end_date: todayStr,
-        })
-
-        const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
-
-        setStats({
-          totalEmpleados: employees.length,
-          empleadosActivos: activeEmployees.size,
-          asignacionesHoy: uniqueEmployeesToday.size,
-          pagosPendientes: Math.max(0, pendingPayments),
-        })
-      } catch (error) {
-        console.error("Error loading stats:", error)
-        // En caso de error, mostrar valores por defecto
-        setStats({
-          totalEmpleados: 0,
-          empleadosActivos: 0,
-          asignacionesHoy: 0,
-          pagosPendientes: 0,
-        })
-      } finally {
-        setLoading(false)
-      }
+      console.log("📊 Estadísticas finales:", {
+        totalEmpleados: employees.length,
+        empleadosActivos: activeEmployees.size,
+        asignacionesHoy: uniqueEmployeesToday.size,
+        pagosPendientes: pendingPayments,
+      })
+    } catch (error) {
+      console.error("❌ Error loading stats:", error)
+      setStats({
+        totalEmpleados: 0,
+        empleadosActivos: 0,
+        asignacionesHoy: 0,
+        pagosPendientes: 0,
+      })
     }
-
-    loadRealStats()
   }, [getEmployees, getAssignments, getPaidWeeks])
+
+  // Cargar estadísticas iniciales
+  useEffect(() => {
+    const loadInitialStats = async () => {
+      setLoading(true)
+      await loadRealStats()
+      setLoading(false)
+    }
+    loadInitialStats()
+  }, [loadRealStats])
+
+  // Recargar cuando cambie refreshTrigger
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      console.log("🔄 Recargando estadísticas por trigger:", refreshTrigger)
+      loadRealStats()
+    }
+  }, [refreshTrigger, loadRealStats])
+
+  // Función para refrescar manualmente
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await loadRealStats()
+    setRefreshing(false)
+    toast({
+      title: "✅ Estadísticas actualizadas",
+      description: "Los datos se han actualizado correctamente",
+    })
+  }
 
   const handleQuickAction = (action: string, tab: string) => {
     toast({
@@ -109,6 +218,21 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Header con botón de refresh */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Dashboard de Empleados</h2>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing || loading}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Actualizando..." : "Actualizar"}
+        </Button>
+      </div>
+
       {/* Estadísticas Rápidas */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card className="p-3 sm:p-4">
@@ -146,7 +270,7 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
             <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
             <div>
               <p className="text-xs sm:text-sm font-medium text-muted-foreground">Pendientes</p>
-              <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.pagosPendientes}</p>
+              <p className="text-lg sm:text-2xl font-bold text-red-600">{loading ? "..." : stats.pagosPendientes}</p>
             </div>
           </div>
         </Card>
@@ -256,7 +380,7 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
               <Badge variant="secondary">{loading ? "..." : stats.asignacionesHoy}</Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-xs sm:text-sm text-muted-foreground">Pagos pendientes</span>
+              <span className="text-xs sm:text-sm text-muted-foreground">Semanas pendientes de pago</span>
               <Badge variant={stats.pagosPendientes > 0 ? "destructive" : "secondary"}>
                 {loading ? "..." : stats.pagosPendientes}
               </Badge>
@@ -265,6 +389,25 @@ export default function EmpleadosInicio({ onTabChange }: EmpleadosInicioProps) {
               <span className="text-xs sm:text-sm text-muted-foreground">Empleados activos (30 días)</span>
               <Badge variant="default">{loading ? "..." : stats.empleadosActivos}</Badge>
             </div>
+            {stats.pagosPendientes > 0 && !loading && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    Hay {stats.pagosPendientes} semana{stats.pagosPendientes !== 1 ? "s" : ""} pendiente
+                    {stats.pagosPendientes !== 1 ? "s" : ""} de pago
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 text-red-700 border-red-300 hover:bg-red-100"
+                  onClick={() => handleQuickAction("Ver Pagos Pendientes", "resumen")}
+                >
+                  Ver Pagos Pendientes
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
