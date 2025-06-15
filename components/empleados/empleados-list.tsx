@@ -10,8 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee } from "@/lib/employee-types"
-import { Loader2, Pencil, Plus, Trash2, Search, UserCog } from "lucide-react"
+import { Loader2, Pencil, Plus, Trash2, Search, UserCog, MoreVertical } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
 export default function EmpleadosList() {
   const { getEmployees, saveEmployee, deleteEmployee } = useEmployeeDB()
@@ -19,6 +21,7 @@ export default function EmpleadosList() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const isMobile = useMediaQuery("(max-width: 768px)")
 
   // Estado para el formulario de edición
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -141,15 +144,45 @@ export default function EmpleadosList() {
     }
   }
 
+  // Componente de tarjeta para móvil
+  const MobileEmployeeCard = ({ employee }: { employee: Employee }) => (
+    <div className="border rounded-lg p-4 space-y-3 bg-white">
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <h3 className="font-semibold text-lg">{employee.name}</h3>
+          <p className="text-sm text-muted-foreground">{employee.role}</p>
+          <p className="text-lg font-bold text-green-600">${employee.daily_rate.toLocaleString()}</p>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleEditEmployee(employee)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDeleteEmployee(employee.id)} className="text-red-600">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  )
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <CardTitle className="flex items-center gap-2">
             <UserCog className="h-5 w-5" />
             Gestión de Empleados
           </CardTitle>
-          <Button onClick={handleNewEmployee}>
+          <Button onClick={handleNewEmployee} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             Nuevo Empleado
           </Button>
@@ -162,7 +195,7 @@ export default function EmpleadosList() {
             placeholder="Buscar empleados..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="w-full"
           />
         </div>
 
@@ -175,49 +208,61 @@ export default function EmpleadosList() {
             {searchTerm ? "No se encontraron empleados con ese criterio" : "No hay empleados registrados"}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead className="text-right">Tarifa Diaria</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+          <>
+            {/* Vista móvil - Tarjetas */}
+            {isMobile ? (
+              <div className="space-y-4">
                 {filteredEmployees.map((employee) => (
-                  <TableRow key={employee.id}>
-                    <TableCell className="font-medium">{employee.name}</TableCell>
-                    <TableCell>{employee.role}</TableCell>
-                    <TableCell className="text-right">${employee.daily_rate.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditEmployee(employee)}>
-                          <Pencil className="h-3 w-3 mr-1" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteEmployee(employee.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Eliminar
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  <MobileEmployeeCard key={employee.id} employee={employee} />
                 ))}
-              </TableBody>
-            </Table>
-          </div>
+              </div>
+            ) : (
+              /* Vista desktop - Tabla */
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead className="text-right">Tarifa Diaria</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredEmployees.map((employee) => (
+                      <TableRow key={employee.id}>
+                        <TableCell className="font-medium">{employee.name}</TableCell>
+                        <TableCell>{employee.role}</TableCell>
+                        <TableCell className="text-right">${employee.daily_rate.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => handleEditEmployee(employee)}>
+                              <Pencil className="h-3 w-3 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteEmployee(employee.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" />
+                              Eliminar
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </>
         )}
 
         {/* Diálogo para editar/crear empleado */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent>
+          <DialogContent className="w-[95vw] max-w-md">
             <DialogHeader>
               <DialogTitle>{currentEmployee.id ? "Editar Empleado" : "Nuevo Empleado"}</DialogTitle>
             </DialogHeader>
@@ -246,6 +291,7 @@ export default function EmpleadosList() {
                     <SelectItem value="Administración">Administración</SelectItem>
                     <SelectItem value="Recepción">Recepción</SelectItem>
                     <SelectItem value="Seguridad">Seguridad</SelectItem>
+                    <SelectItem value="Electricista">Electricista</SelectItem>
                     <SelectItem value="Otro">Otro</SelectItem>
                   </SelectContent>
                 </Select>
@@ -266,11 +312,11 @@ export default function EmpleadosList() {
                 />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                 Cancelar
               </Button>
-              <Button onClick={handleSaveEmployee} disabled={isSubmitting}>
+              <Button onClick={handleSaveEmployee} disabled={isSubmitting} className="w-full sm:w-auto">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
