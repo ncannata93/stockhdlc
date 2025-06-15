@@ -265,7 +265,7 @@ export default function CalendarioMobile() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[80px] border rounded-md p-1 relative
+                          min-h-[90px] border rounded-md p-1 relative
                           ${isToday ? "border-blue-500 bg-blue-50" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                         `}
@@ -279,11 +279,11 @@ export default function CalendarioMobile() {
 
                         {hasAssignments ? (
                           <div className="space-y-1">
-                            {dayAssignments.slice(0, 3).map((assignment) => (
+                            {dayAssignments.slice(0, 2).map((assignment) => (
                               <div
                                 key={assignment.id}
                                 className={`
-                                  text-xs font-bold px-1 py-0.5 rounded text-center
+                                  text-xs font-bold px-1 py-0.5 rounded text-center truncate
                                   ${getHotelColor(assignment.hotel_name)}
                                 `}
                                 title={`${assignment.hotel_name}: ${assignment.employee_name}`}
@@ -291,14 +291,16 @@ export default function CalendarioMobile() {
                                 {getHotelCode(assignment.hotel_name)}
                               </div>
                             ))}
-                            {dayAssignments.length > 3 && (
-                              <div className="text-xs text-center text-muted-foreground font-medium">
-                                +{dayAssignments.length - 3}
+                            {dayAssignments.length > 2 && (
+                              <div className="text-xs text-center text-muted-foreground font-medium bg-gray-100 rounded px-1">
+                                +{dayAssignments.length - 2}
                               </div>
                             )}
                           </div>
                         ) : (
-                          isCurrentMonth && <div className="text-center text-xs text-muted-foreground py-1">—</div>
+                          <div className="h-full flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full bg-gray-200"></div>
+                          </div>
                         )}
                       </div>
                     )

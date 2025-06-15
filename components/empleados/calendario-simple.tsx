@@ -255,7 +255,7 @@ export default function CalendarioSimple() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[140px] border rounded-md p-2 relative
+                          min-h-[120px] border rounded-md p-2 relative
                           ${isToday ? "border-blue-500 bg-blue-50" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                         `}
@@ -264,28 +264,32 @@ export default function CalendarioSimple() {
 
                         {hasAssignments ? (
                           <div className="space-y-1">
-                            {dayAssignments.map((assignment) => (
+                            {dayAssignments.slice(0, 3).map((assignment) => (
                               <div key={assignment.id} className="space-y-1">
                                 <div
                                   className={`
-                                    text-xs p-2 rounded border font-medium
+                                    text-xs p-1.5 rounded border font-medium text-center
                                     ${getHotelColor(assignment.hotel_name)}
                                   `}
                                   title={`${assignment.hotel_name}: ${assignment.employee_name}`}
                                 >
-                                  <div className="font-bold text-center mb-1">
-                                    {getHotelCode(assignment.hotel_name)}
+                                  <div className="font-bold text-xs mb-0.5">{getHotelCode(assignment.hotel_name)}</div>
+                                  <div className="text-xs truncate leading-tight">
+                                    {assignment.employee_name?.split(" ")[0] || "N/A"}
                                   </div>
-                                  <div className="text-xs text-center truncate">{assignment.employee_name}</div>
-                                  <div className="text-xs text-center opacity-90 truncate">{assignment.hotel_name}</div>
                                 </div>
                               </div>
                             ))}
+                            {dayAssignments.length > 3 && (
+                              <div className="text-xs text-center text-muted-foreground font-medium bg-gray-100 rounded p-1">
+                                +{dayAssignments.length - 3} más
+                              </div>
+                            )}
                           </div>
                         ) : (
-                          isCurrentMonth && (
-                            <div className="text-center text-xs text-muted-foreground py-4">Sin asignaciones</div>
-                          )
+                          <div className="h-full flex items-center justify-center opacity-30">
+                            <div className="w-3 h-3 rounded-full bg-gray-300"></div>
+                          </div>
                         )}
                       </div>
                     )
