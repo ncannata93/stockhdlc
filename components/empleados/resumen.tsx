@@ -403,32 +403,34 @@ export default function EmpleadosResumen() {
                             </Badge>
                           </div>
 
-                          {/* Estadísticas principales */}
-                          <div className="grid grid-cols-3 gap-3">
-                            <div className="bg-white p-3 rounded-lg border text-center">
-                              <div className="flex items-center justify-center gap-1 mb-1">
-                                <DollarSign className="h-4 w-4 text-green-600" />
+                          {/* Estadísticas principales - Móvil optimizado */}
+                          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                            <div className="bg-white p-2 sm:p-3 rounded-lg border shadow-sm">
+                              <div className="flex flex-col items-center text-center">
+                                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 mb-1" />
+                                <div className="text-base sm:text-lg font-bold text-green-600 leading-tight">
+                                  ${summary.totalAmount.toLocaleString()}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">Total</div>
                               </div>
-                              <div className="text-lg font-bold text-green-600">
-                                ${summary.totalAmount.toLocaleString()}
-                              </div>
-                              <div className="text-xs text-muted-foreground">Total</div>
                             </div>
-                            <div className="bg-white p-3 rounded-lg border text-center">
-                              <div className="flex items-center justify-center gap-1 mb-1">
-                                <Clock className="h-4 w-4 text-blue-600" />
+                            <div className="bg-white p-2 sm:p-3 rounded-lg border shadow-sm">
+                              <div className="flex flex-col items-center text-center">
+                                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 mb-1" />
+                                <div className="text-base sm:text-lg font-bold text-blue-600 leading-tight">
+                                  {summary.daysWorked}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">Días</div>
                               </div>
-                              <div className="text-lg font-bold text-blue-600">{summary.daysWorked}</div>
-                              <div className="text-xs text-muted-foreground">Días</div>
                             </div>
-                            <div className="bg-white p-3 rounded-lg border text-center">
-                              <div className="flex items-center justify-center gap-1 mb-1">
-                                <DollarSign className="h-4 w-4 text-gray-600" />
+                            <div className="bg-white p-2 sm:p-3 rounded-lg border shadow-sm">
+                              <div className="flex flex-col items-center text-center">
+                                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600 mb-1" />
+                                <div className="text-sm sm:text-base font-bold text-gray-600 leading-tight">
+                                  ${summary.employee.daily_rate.toLocaleString()}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">Tarifa</div>
                               </div>
-                              <div className="text-sm font-bold text-gray-600">
-                                ${summary.employee.daily_rate.toLocaleString()}
-                              </div>
-                              <div className="text-xs text-muted-foreground">Tarifa</div>
                             </div>
                           </div>
                         </div>
