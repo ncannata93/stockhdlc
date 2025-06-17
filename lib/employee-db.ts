@@ -216,9 +216,14 @@ export const getPaidWeeks = async (filters?: {
   end_date?: string
 }): Promise<any[]> => {
   const supabase = getSupabaseClient()
-  if (!supabase) return []
+  if (!supabase) {
+    console.log("❌ No hay cliente de Supabase")
+    return []
+  }
 
   try {
+    console.log("🔄 Cargando semanas pagadas con filtros:", filters)
+
     let query = supabase
       .from("paid_weeks")
       .select(`
@@ -236,13 +241,23 @@ export const getPaidWeeks = async (filters?: {
     }
 
     const { data, error } = await query
-    if (error) return []
 
-    return (data || []).map((item: any) => ({
+    if (error) {
+      console.error("❌ Error en consulta paid_weeks:", error)
+      return []
+    }
+
+    console.log("✅ Datos raw de paid_weeks:", data)
+
+    const result = (data || []).map((item: any) => ({
       ...item,
       employee_name: item.employees?.name,
     }))
+
+    console.log("✅ Semanas pagadas procesadas:", result)
+    return result
   } catch (err) {
+    console.error("❌ Error inesperado en getPaidWeeks:", err)
     return []
   }
 }

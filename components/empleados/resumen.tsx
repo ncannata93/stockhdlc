@@ -142,6 +142,21 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
 
       const paidWeeksData = await getPaidWeeks({})
       console.log("💰 Semanas pagadas cargadas:", paidWeeksData.length)
+
+      // DEBUGGING DETALLADO DE SEMANAS PAGADAS
+      console.log("🔍 DEBUGGING - Todas las semanas pagadas en la BD:")
+      paidWeeksData.forEach((pw) => {
+        console.log(`  📅 Empleado ${pw.employee_name} (ID: ${pw.employee_id}):`, {
+          week_start: pw.week_start,
+          week_end: pw.week_end,
+          amount: pw.amount,
+          paid_date: pw.paid_date,
+        })
+      })
+
+      console.log("🔍 DEBUGGING - Semana actual que estamos verificando:")
+      console.log(`  📅 Rango: ${startDateStr} al ${endDateStr}`)
+
       setPaidWeeks(paidWeeksData)
     } catch (error) {
       console.error("❌ Error cargando datos:", error)
@@ -234,15 +249,29 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
 
       // Verificar si la semana está pagada
-      const isPaid = paidWeeks.some(
-        (pw) => pw.employee_id === employee.id && pw.week_start === startDateStr && pw.week_end === endDateStr,
-      )
+      const isPaid = paidWeeks.some((pw) => {
+        const matches = pw.employee_id === employee.id && pw.week_start === startDateStr && pw.week_end === endDateStr
 
-      console.log(`💰 Estado de pago para ${employee.name}:`, {
+        if (pw.employee_id === employee.id) {
+          console.log(`🔍 Verificando pago para ${employee.name}:`, {
+            empleado_id: employee.id,
+            semana_bd: `${pw.week_start} al ${pw.week_end}`,
+            semana_actual: `${startDateStr} al ${endDateStr}`,
+            coincide_empleado: pw.employee_id === employee.id,
+            coincide_inicio: pw.week_start === startDateStr,
+            coincide_fin: pw.week_end === endDateStr,
+            resultado_final: matches,
+          })
+        }
+
+        return matches
+      })
+
+      console.log(`💰 Estado final para ${employee.name}:`, {
         isPaid,
-        weekStart: startDateStr,
-        weekEnd: endDateStr,
-        paidWeeksForEmployee: paidWeeks.filter((pw) => pw.employee_id === employee.id),
+        totalAmount,
+        daysWorked,
+        weekRange: `${startDateStr} al ${endDateStr}`,
       })
 
       return {

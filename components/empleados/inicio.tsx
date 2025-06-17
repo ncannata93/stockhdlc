@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Users,
   UserPlus,
@@ -13,16 +12,30 @@ import {
   TrendingUp,
   Clock,
   DollarSign,
-  AlertCircle,
   RefreshCw,
+  Eye,
+  AlertCircle,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
-import { startOfWeek, endOfWeek, subWeeks } from "date-fns"
+import { startOfWeek, endOfWeek, subWeeks, format } from "date-fns"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
 interface EmpleadosInicioProps {
   onTabChange?: (tab: string) => void
   refreshTrigger?: number
+}
+
+interface PendingPaymentDetail {
+  employeeId: number
+  employeeName: string
+  weekStart: string
+  weekEnd: string
+  assignmentCount: number
+  totalAmount: number
+  isPaid: boolean
+  paidAmount?: number
+  paidDate?: string
 }
 
 export default function EmpleadosInicio({ onTabChange, refreshTrigger }: EmpleadosInicioProps) {
@@ -32,8 +45,13 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
     totalEmpleados: 0,
     empleadosActivos: 0,
     asignacionesHoy: 0,
-    pagosPendientes: 0,
+    semanasConAsignaciones: 0,
+    semanasPagadas: 0,
+    semanasPendientes: 0,
+    empleadosConPagosPendientes: 0,
+    montoTotalPendiente: 0,
   })
+  const [pendingDetails, setPendingDetails] = useState<PendingPaymentDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -70,34 +88,34 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
       console.log("🔥 Empleados activos (30 días):", activeEmployees.size)
 
-      // CÁLCULO MEJORADO DE PAGOS PENDIENTES
-      // Obtener todas las asignaciones de las últimas 12 semanas
-      const twelveWeeksAgo = subWeeks(today, 12)
+      // CÁLCULO DETALLADO DE PAGOS PENDIENTES
+      // Obtener todas las asignaciones de las últimas 8 semanas
+      const eightWeeksAgo = subWeeks(today, 8)
       const allRecentAssignments = await getAssignments({
-        start_date: twelveWeeksAgo.toISOString().split("T")[0],
+        start_date: eightWeeksAgo.toISOString().split("T")[0],
         end_date: todayStr,
       })
 
       // Obtener todas las semanas pagadas
       const allPaidWeeks = await getPaidWeeks({
-        start_date: twelveWeeksAgo.toISOString().split("T")[0],
+        start_date: eightWeeksAgo.toISOString().split("T")[0],
         end_date: todayStr,
       })
 
-      console.log("📊 Asignaciones recientes (12 semanas):", allRecentAssignments.length)
+      console.log("📊 Asignaciones recientes (8 semanas):", allRecentAssignments.length)
       console.log("💰 Semanas pagadas encontradas:", allPaidWeeks.length)
 
+      // DEBUG: Mostrar todas las semanas pagadas
+      console.log("🔍 DEBUGGING - Semanas pagadas en detalle:")
+      allPaidWeeks.forEach((paidWeek, index) => {
+        console.log(`  ${index + 1}. Empleado ID: ${paidWeek.employee_id}, Nombre: ${paidWeek.employee_name}`)
+        console.log(`     Semana: ${paidWeek.week_start} al ${paidWeek.week_end}`)
+        console.log(`     Monto: $${paidWeek.amount}`)
+        console.log(`     Fecha pago: ${paidWeek.paid_date}`)
+      })
+
       // Agrupar asignaciones por empleado y semana
-      const weeklyAssignments = new Map<
-        string,
-        {
-          employeeId: number
-          employeeName: string
-          weekStart: string
-          weekEnd: string
-          assignmentCount: number
-        }
-      >()
+      const weeklyAssignments = new Map<string, PendingPaymentDetail>()
 
       allRecentAssignments.forEach((assignment) => {
         const assignmentDate = new Date(assignment.assignment_date)
@@ -115,59 +133,128 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
             weekStart: weekStartStr,
             weekEnd: weekEndStr,
             assignmentCount: 0,
+            totalAmount: 0,
+            isPaid: false,
           })
         }
-        weeklyAssignments.get(weekKey)!.assignmentCount++
+
+        const weekData = weeklyAssignments.get(weekKey)!
+        weekData.assignmentCount++
+        weekData.totalAmount += assignment.daily_rate_used || 0
       })
 
       console.log("📅 Semanas con asignaciones encontradas:", weeklyAssignments.size)
 
-      // Crear set de semanas pagadas con el mismo formato
-      const paidWeeksSet = new Set<string>()
-      allPaidWeeks.forEach((paidWeek) => {
-        const weekKey = `${paidWeek.employee_id}-${paidWeek.week_start}-${paidWeek.week_end}`
-        paidWeeksSet.add(weekKey)
+      // DEBUG: Mostrar todas las semanas con asignaciones
+      console.log("🔍 DEBUGGING - Semanas con asignaciones:")
+      weeklyAssignments.forEach((weekData, weekKey) => {
+        console.log(`  Key: ${weekKey}`)
+        console.log(`  Empleado: ${weekData.employeeName} (ID: ${weekData.employeeId})`)
+        console.log(`  Semana: ${weekData.weekStart} al ${weekData.weekEnd}`)
+        console.log(`  Días: ${weekData.assignmentCount}, Monto: $${weekData.totalAmount}`)
       })
 
-      console.log("💰 Semanas pagadas (set):", paidWeeksSet.size)
+      // Crear mapa de semanas pagadas con múltiples formatos de clave
+      const paidWeeksMap = new Map<string, any>()
+      allPaidWeeks.forEach((paidWeek) => {
+        // Formato original
+        const weekKey1 = `${paidWeek.employee_id}-${paidWeek.week_start}-${paidWeek.week_end}`
 
-      // Calcular semanas pendientes de pago
-      let pendingPayments = 0
-      const pendingDetails: any[] = []
+        // Formato alternativo (por si hay diferencias en fechas)
+        const startDate = new Date(paidWeek.week_start)
+        const endDate = new Date(paidWeek.week_end)
+        const weekKey2 = `${paidWeek.employee_id}-${startDate.toISOString().split("T")[0]}-${endDate.toISOString().split("T")[0]}`
+
+        paidWeeksMap.set(weekKey1, paidWeek)
+        paidWeeksMap.set(weekKey2, paidWeek)
+
+        console.log(`💰 Semana pagada registrada con claves:`)
+        console.log(`  - ${weekKey1}`)
+        console.log(`  - ${weekKey2}`)
+      })
+
+      // Marcar semanas como pagadas y calcular métricas
+      const pendingWeeks: PendingPaymentDetail[] = []
+      const paidWeeks: PendingPaymentDetail[] = []
+      const employeesWithPendingPayments = new Set<number>()
+      let totalPendingAmount = 0
+      let totalPaidWeeks = 0
 
       weeklyAssignments.forEach((weekData, weekKey) => {
-        if (!paidWeeksSet.has(weekKey)) {
-          pendingPayments++
-          pendingDetails.push({
-            weekKey,
-            ...weekData,
-          })
+        const paidWeekData = paidWeeksMap.get(weekKey)
+
+        if (paidWeekData) {
+          // Semana pagada
+          weekData.isPaid = true
+          weekData.paidAmount = paidWeekData.amount
+          weekData.paidDate = paidWeekData.paid_date
+          paidWeeks.push(weekData)
+          totalPaidWeeks++
+
+          console.log(`✅ Semana PAGADA encontrada:`)
+          console.log(`   ${weekData.employeeName}: ${weekData.weekStart} al ${weekData.weekEnd}`)
+          console.log(`   Monto trabajado: $${weekData.totalAmount}, Monto pagado: $${paidWeekData.amount}`)
+        } else {
+          // Semana pendiente
+          weekData.isPaid = false
+          pendingWeeks.push(weekData)
+          employeesWithPendingPayments.add(weekData.employeeId)
+          totalPendingAmount += weekData.totalAmount
+
+          console.log(`🔴 Semana PENDIENTE:`)
+          console.log(`   ${weekData.employeeName}: ${weekData.weekStart} al ${weekData.weekEnd}`)
+          console.log(`   Monto: $${weekData.totalAmount}`)
+          console.log(`   Clave buscada: ${weekKey}`)
         }
       })
 
-      console.log("🔴 Pagos pendientes calculados:", pendingPayments)
+      // Ordenar por empleado y fecha
+      pendingWeeks.sort((a, b) => {
+        if (a.employeeName !== b.employeeName) {
+          return a.employeeName.localeCompare(b.employeeName)
+        }
+        return a.weekStart.localeCompare(b.weekStart)
+      })
+
+      setPendingDetails(pendingWeeks)
 
       setStats({
         totalEmpleados: employees.length,
         empleadosActivos: activeEmployees.size,
         asignacionesHoy: uniqueEmployeesToday.size,
-        pagosPendientes: pendingPayments,
+        semanasConAsignaciones: weeklyAssignments.size,
+        semanasPagadas: totalPaidWeeks,
+        semanasPendientes: pendingWeeks.length,
+        empleadosConPagosPendientes: employeesWithPendingPayments.size,
+        montoTotalPendiente: totalPendingAmount,
       })
 
-      console.log("📊 Estadísticas finales:", {
-        totalEmpleados: employees.length,
-        empleadosActivos: activeEmployees.size,
-        asignacionesHoy: uniqueEmployeesToday.size,
-        pagosPendientes: pendingPayments,
-      })
+      console.log("📊 RESUMEN FINAL:")
+      console.log("- Total semanas con asignaciones:", weeklyAssignments.size)
+      console.log("- Semanas pagadas:", totalPaidWeeks)
+      console.log("- Semanas pendientes:", pendingWeeks.length)
+      console.log("- Empleados con pagos pendientes:", employeesWithPendingPayments.size)
+      console.log("- Monto total pendiente:", totalPendingAmount)
+
+      // DEBUG: Verificar si hay discrepancias
+      if (weeklyAssignments.size !== totalPaidWeeks + pendingWeeks.length) {
+        console.error("❌ DISCREPANCIA DETECTADA:")
+        console.error(`Total semanas: ${weeklyAssignments.size}`)
+        console.error(`Pagadas + Pendientes: ${totalPaidWeeks + pendingWeeks.length}`)
+      }
     } catch (error) {
       console.error("❌ Error loading stats:", error)
       setStats({
         totalEmpleados: 0,
         empleadosActivos: 0,
         asignacionesHoy: 0,
-        pagosPendientes: 0,
+        semanasConAsignaciones: 0,
+        semanasPagadas: 0,
+        semanasPendientes: 0,
+        empleadosConPagosPendientes: 0,
+        montoTotalPendiente: 0,
       })
+      setPendingDetails([])
     }
   }, [getEmployees, getAssignments, getPaidWeeks])
 
@@ -201,6 +288,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
   }
 
   const handleQuickAction = (action: string, tab: string) => {
+    console.log(`🔄 Navegando a: ${tab}`)
     toast({
       title: "Navegando...",
       description: `Abriendo ${action}`,
@@ -225,13 +313,13 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         </Button>
       </div>
 
-      {/* Estadísticas Rápidas */}
+      {/* Estadísticas Básicas */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card className="p-3 sm:p-4">
           <div className="flex items-center space-x-2">
             <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
             <div>
-              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Empleados</p>
               <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.totalEmpleados}</p>
             </div>
           </div>
@@ -241,7 +329,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
           <div className="flex items-center space-x-2">
             <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
             <div>
-              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Activos</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Activos (30d)</p>
               <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.empleadosActivos}</p>
             </div>
           </div>
@@ -251,7 +339,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
           <div className="flex items-center space-x-2">
             <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
             <div>
-              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Hoy</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Trabajando Hoy</p>
               <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.asignacionesHoy}</p>
             </div>
           </div>
@@ -259,14 +347,125 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
 
         <Card className="p-3 sm:p-4">
           <div className="flex items-center space-x-2">
-            <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
+            <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
             <div>
-              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Pendientes</p>
-              <p className="text-lg sm:text-2xl font-bold text-red-600">{loading ? "..." : stats.pagosPendientes}</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Con Pagos Pendientes</p>
+              <p className="text-lg sm:text-2xl font-bold">{loading ? "..." : stats.empleadosConPagosPendientes}</p>
             </div>
           </div>
         </Card>
       </div>
+
+      {/* Estadísticas de Pagos Detalladas */}
+      <Card>
+        <CardHeader className="pb-3 sm:pb-4">
+          <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Análisis de Pagos (Últimas 8 semanas)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{loading ? "..." : stats.semanasConAsignaciones}</div>
+              <div className="text-sm text-muted-foreground">Semanas con Trabajo</div>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{loading ? "..." : stats.semanasPagadas}</div>
+              <div className="text-sm text-muted-foreground">Semanas Pagadas</div>
+            </div>
+            <div className="text-center p-4 bg-red-50 rounded-lg">
+              <div className="text-2xl font-bold text-red-600">{loading ? "..." : stats.semanasPendientes}</div>
+              <div className="text-sm text-muted-foreground">Semanas Pendientes</div>
+            </div>
+            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">
+                ${loading ? "..." : stats.montoTotalPendiente.toLocaleString()}
+              </div>
+              <div className="text-sm text-muted-foreground">Monto Pendiente</div>
+            </div>
+          </div>
+
+          {/* Botón para ir al resumen de pagos */}
+          {stats.semanasPendientes > 0 && !loading && (
+            <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+              <Button
+                onClick={() => handleQuickAction("Ver Pagos Pendientes", "resumen")}
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white"
+              >
+                <DollarSign className="h-4 w-4" />
+                Gestionar Pagos Pendientes
+              </Button>
+
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Eye className="h-4 w-4" />
+                    Ver Detalle
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Detalle de Pagos Pendientes</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    {pendingDetails.map((detail, index) => (
+                      <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold">{detail.employeeName}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Semana: {format(new Date(detail.weekStart), "dd/MM/yyyy")} -{" "}
+                              {format(new Date(detail.weekEnd), "dd/MM/yyyy")}
+                            </p>
+                            <p className="text-sm">Días trabajados: {detail.assignmentCount}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-red-600">${detail.totalAmount.toLocaleString()}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="mt-6 pt-4 border-t">
+                      <Button
+                        onClick={() => {
+                          handleQuickAction("Ir a Gestionar Pagos", "resumen")
+                        }}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        Ir a Gestionar Estos Pagos
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {stats.semanasPendientes > 0 && !loading && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2 text-red-800 mb-2">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm font-medium">
+              Hay {stats.semanasPendientes} semana{stats.semanasPendientes !== 1 ? "s" : ""} pendiente
+              {stats.semanasPendientes !== 1 ? "s" : ""} de pago
+            </span>
+          </div>
+          <div className="text-xs text-red-700 mb-3">
+            {stats.empleadosConPagosPendientes} empleado{stats.empleadosConPagosPendientes !== 1 ? "s" : ""}
+            {stats.empleadosConPagosPendientes !== 1 ? " tienen" : " tiene"} pagos pendientes por $
+            {stats.montoTotalPendiente.toLocaleString()}
+          </div>
+          <Button
+            onClick={() => handleQuickAction("Gestionar Pagos Pendientes", "resumen")}
+            className="w-full bg-red-600 hover:bg-red-700 text-white text-sm"
+          >
+            Gestionar Pagos Pendientes
+          </Button>
+        </div>
+      )}
 
       {/* Acciones Rápidas */}
       <Card>
@@ -353,53 +552,6 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
                 Datos
               </span>
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Resumen del Día */}
-      <Card>
-        <CardHeader className="pb-3 sm:pb-4">
-          <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Resumen del Día
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-xs sm:text-sm text-muted-foreground">Empleados trabajando hoy</span>
-              <Badge variant="secondary">{loading ? "..." : stats.asignacionesHoy}</Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs sm:text-sm text-muted-foreground">Semanas pendientes de pago</span>
-              <Badge variant={stats.pagosPendientes > 0 ? "destructive" : "secondary"}>
-                {loading ? "..." : stats.pagosPendientes}
-              </Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs sm:text-sm text-muted-foreground">Empleados activos (30 días)</span>
-              <Badge variant="default">{loading ? "..." : stats.empleadosActivos}</Badge>
-            </div>
-            {stats.pagosPendientes > 0 && !loading && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center gap-2 text-red-800">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">
-                    Hay {stats.pagosPendientes} semana{stats.pagosPendientes !== 1 ? "s" : ""} pendiente
-                    {stats.pagosPendientes !== 1 ? "s" : ""} de pago
-                  </span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 text-red-700 border-red-300 hover:bg-red-100"
-                  onClick={() => handleQuickAction("Ver Pagos Pendientes", "resumen")}
-                >
-                  Ver Pagos Pendientes
-                </Button>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
