@@ -3,36 +3,39 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, UserPlus, Calendar, BarChart3, Clock } from "lucide-react"
+import { Settings, Users, Calendar, BarChart3, Upload, UserCog } from "lucide-react"
 
-// Importar componentes
-import Inicio from "./components/Inicio"
-import Agregar from "./components/Agregar"
-import EmpleadosList from "./components/EmpleadosList"
-import Calendario from "./components/Calendario"
-import Resumen from "./components/Resumen"
-import Historial from "./components/Historial"
+import EmpleadosInicio from "@/components/empleados/inicio"
+import EmpleadosAgregar from "@/components/empleados/agregar"
+import EmpleadosCalendario from "@/components/empleados/calendario"
+import EmpleadosHistorial from "@/components/empleados/historial"
+import EmpleadosResumen from "@/components/empleados/resumen"
+import ImportarAsignaciones from "@/components/empleados/importar-asignaciones"
+import EmpleadosList from "@/components/empleados/empleados-list"
 
 export default function EmpleadosPage() {
   const [activeTab, setActiveTab] = useState("inicio")
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const handleRefresh = () => {
+    setRefreshKey((prev) => prev + 1)
+  }
 
   const handleTabChange = (tab: string) => {
-    console.log("🔄 Cambiando a tab:", tab)
     setActiveTab(tab)
   }
 
   const handleStatsChange = () => {
     console.log("📊 Estadísticas cambiadas, actualizando inicio...")
-    setRefreshTrigger((prev) => {
+    setRefreshKey((prev) => {
       const newValue = prev + 1
-      console.log("🔄 Nuevo refreshTrigger:", newValue)
+      console.log("🔄 Nuevo refreshKey:", newValue)
       return newValue
     })
   }
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
+    <div className="container mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -41,56 +44,85 @@ export default function EmpleadosPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-6 lg:grid-cols-6">
-              <TabsTrigger value="inicio" className="flex items-center gap-1 text-xs sm:text-sm">
-                <Users className="h-4 w-4" />
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-7 lg:grid-cols-7 md:grid-cols-4 sm:grid-cols-2 gap-1 h-auto p-1 overflow-x-auto">
+              <TabsTrigger
+                value="inicio"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                 <span className="hidden sm:inline">Inicio</span>
               </TabsTrigger>
-              <TabsTrigger value="empleados" className="flex items-center gap-1 text-xs sm:text-sm">
-                <Users className="h-4 w-4" />
-                <span className="hidden sm:inline">Lista</span>
+              <TabsTrigger
+                value="empleados"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <UserCog className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Empleados</span>
               </TabsTrigger>
-              <TabsTrigger value="agregar" className="flex items-center gap-1 text-xs sm:text-sm">
-                <UserPlus className="h-4 w-4" />
-                <span className="hidden sm:inline">Asignar</span>
+              <TabsTrigger
+                value="agregar"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Settings className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Agregar</span>
               </TabsTrigger>
-              <TabsTrigger value="calendario" className="flex items-center gap-1 text-xs sm:text-sm">
-                <Calendar className="h-4 w-4" />
+              <TabsTrigger
+                value="calendario"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                 <span className="hidden sm:inline">Calendario</span>
               </TabsTrigger>
-              <TabsTrigger value="resumen" className="flex items-center gap-1 text-xs sm:text-sm">
-                <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">Pagos</span>
-              </TabsTrigger>
-              <TabsTrigger value="historial" className="flex items-center gap-1 text-xs sm:text-sm">
-                <Clock className="h-4 w-4" />
+              <TabsTrigger
+                value="historial"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
                 <span className="hidden sm:inline">Historial</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="resumen"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Resumen</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="importar"
+                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
+              >
+                <Upload className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Importar</span>
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="inicio" className="mt-6">
-              <Inicio onTabChange={handleTabChange} refreshTrigger={refreshTrigger} />
+              <EmpleadosInicio key={`inicio-${refreshKey}`} onTabChange={handleTabChange} refreshTrigger={refreshKey} />
             </TabsContent>
 
             <TabsContent value="empleados" className="mt-6">
-              <EmpleadosList />
+              <EmpleadosList key={`empleados-${refreshKey}`} />
             </TabsContent>
 
             <TabsContent value="agregar" className="mt-6">
-              <Agregar />
+              <EmpleadosAgregar onSuccess={handleRefresh} />
             </TabsContent>
 
             <TabsContent value="calendario" className="mt-6">
-              <Calendario />
-            </TabsContent>
-
-            <TabsContent value="resumen" className="mt-6">
-              <Resumen onStatsChange={handleStatsChange} />
+              <EmpleadosCalendario key={`calendario-${refreshKey}`} />
             </TabsContent>
 
             <TabsContent value="historial" className="mt-6">
-              <Historial />
+              <EmpleadosHistorial key={`historial-${refreshKey}`} />
+            </TabsContent>
+
+            <TabsContent value="resumen" className="mt-6">
+              <EmpleadosResumen key={`resumen-${refreshKey}`} onStatsChange={handleStatsChange} />
+            </TabsContent>
+
+            <TabsContent value="importar" className="mt-6">
+              <ImportarAsignaciones onSuccess={handleRefresh} />
             </TabsContent>
           </Tabs>
         </CardContent>

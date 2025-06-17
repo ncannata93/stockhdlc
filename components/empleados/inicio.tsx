@@ -22,7 +22,7 @@ import { startOfWeek, endOfWeek, subWeeks } from "date-fns"
 
 interface EmpleadosInicioProps {
   onTabChange?: (tab: string) => void
-  refreshTrigger?: number // Prop para forzar actualización
+  refreshTrigger?: number
 }
 
 export default function EmpleadosInicio({ onTabChange, refreshTrigger }: EmpleadosInicioProps) {
@@ -127,13 +127,6 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       allPaidWeeks.forEach((paidWeek) => {
         const weekKey = `${paidWeek.employee_id}-${paidWeek.week_start}-${paidWeek.week_end}`
         paidWeeksSet.add(weekKey)
-        console.log("✅ Semana pagada:", {
-          employeeId: paidWeek.employee_id,
-          employeeName: paidWeek.employee_name,
-          weekStart: paidWeek.week_start,
-          weekEnd: paidWeek.week_end,
-          weekKey,
-        })
       })
 
       console.log("💰 Semanas pagadas (set):", paidWeeksSet.size)
@@ -153,7 +146,6 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       })
 
       console.log("🔴 Pagos pendientes calculados:", pendingPayments)
-      console.log("📋 Detalle de pagos pendientes:", pendingDetails)
 
       setStats({
         totalEmpleados: employees.length,
