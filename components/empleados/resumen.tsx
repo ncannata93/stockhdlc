@@ -72,35 +72,63 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
   return date >= weekStart && date <= weekEnd
 }
 
-// FUNCIÓN MEJORADA: Verifica si una semana tiene solapamiento con semanas pagadas
+// FUNCIÓN CON DEBUGGING DETALLADO: Verifica si una semana tiene solapamiento con semanas pagadas
 const hasWeekOverlapWithPaidWeeks = (
   weekStart: string,
   weekEnd: string,
   paidWeeks: any[],
   employeeId: number,
 ): boolean => {
-  // PRIMERO: Buscar si hay un registro EXACTO para esta semana
-  const exactMatch = paidWeeks.find(
-    (pw) => pw.employee_id === employeeId && pw.week_start === weekStart && pw.week_end === weekEnd,
+  console.log(`🔍 DEBUGGING SOLAPAMIENTO para empleado ${employeeId}:`)
+  console.log(`  📅 Semana a verificar: ${weekStart} al ${weekEnd}`)
+
+  // Filtrar solo las semanas pagadas de este empleado
+  const employeePaidWeeks = paidWeeks.filter((pw) => pw.employee_id === employeeId)
+  console.log(
+    `  💰 Semanas pagadas del empleado ${employeeId}:`,
+    employeePaidWeeks.map((pw) => `${pw.week_start} al ${pw.week_end}`),
   )
 
+  // PRIMERO: Buscar si hay un registro EXACTO para esta semana
+  const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
+
   if (exactMatch) {
-    console.log(`🎯 Registro EXACTO encontrado para empleado ${employeeId}:`, exactMatch)
+    console.log(`  🎯 REGISTRO EXACTO encontrado:`, exactMatch)
     return true
+  } else {
+    console.log(`  ❌ NO hay registro exacto para ${weekStart} al ${weekEnd}`)
   }
 
-  // SEGUNDO: Si no hay registro exacto, buscar solapamientos
-  const overlap = paidWeeks.some((pw) => {
-    if (pw.employee_id !== employeeId) return false
+  // SEGUNDO: Si no hay registro exacto, buscar solapamientos con OTRAS semanas
+  const overlappingWeeks = employeePaidWeeks.filter((pw) => {
+    // Evitar el registro exacto que ya verificamos
     if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
-    return weekStart <= pw.week_end && weekEnd >= pw.week_start
+
+    // Verificar solapamiento con OTRAS semanas
+    const hasOverlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
+
+    if (hasOverlap) {
+      console.log(`  🔍 SOLAPAMIENTO con OTRA semana:`, {
+        semana_verificada: `${weekStart} al ${weekEnd}`,
+        semana_pagada: `${pw.week_start} al ${pw.week_end}`,
+        solapamiento: hasOverlap,
+      })
+    }
+
+    return hasOverlap
   })
 
-  if (overlap) {
-    console.log(`🔍 Solapamiento encontrado para empleado ${employeeId}`)
+  const hasOverlap = overlappingWeeks.length > 0
+  console.log(`  📊 RESULTADO FINAL: ${hasOverlap ? "PAGADO (por solapamiento)" : "PENDIENTE"}`)
+
+  if (hasOverlap) {
+    console.log(
+      `  ⚠️ SEMANAS QUE CAUSAN SOLAPAMIENTO:`,
+      overlappingWeeks.map((pw) => `${pw.week_start} al ${pw.week_end}`),
+    )
   }
 
-  return overlap
+  return hasOverlap
 }
 
 interface EmpleadosResumenProps {
