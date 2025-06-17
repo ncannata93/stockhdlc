@@ -72,63 +72,114 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
   return date >= weekStart && date <= weekEnd
 }
 
-// FUNCIÓN CON DEBUGGING DETALLADO: Verifica si una semana tiene solapamiento con semanas pagadas
-const hasWeekOverlapWithPaidWeeks = (
+// FUNCIÓN CON DEBUGGING SÚPER DETALLADO
+const hasSignificantWeekOverlap = (
   weekStart: string,
   weekEnd: string,
   paidWeeks: any[],
   employeeId: number,
 ): boolean => {
-  console.log(`🔍 DEBUGGING SOLAPAMIENTO para empleado ${employeeId}:`)
-  console.log(`  📅 Semana a verificar: ${weekStart} al ${weekEnd}`)
+  const employeeName = paidWeeks.find((pw) => pw.employee_id === employeeId)?.employee_name || `ID-${employeeId}`
+
+  console.log(`🔍 ===== ANÁLISIS DETALLADO PARA ${employeeName.toUpperCase()} =====`)
+  console.log(`  📅 Semana objetivo: ${weekStart} al ${weekEnd}`)
 
   // Filtrar solo las semanas pagadas de este empleado
   const employeePaidWeeks = paidWeeks.filter((pw) => pw.employee_id === employeeId)
-  console.log(
-    `  💰 Semanas pagadas del empleado ${employeeId}:`,
-    employeePaidWeeks.map((pw) => `${pw.week_start} al ${pw.week_end}`),
-  )
+  console.log(`  💰 Total semanas pagadas: ${employeePaidWeeks.length}`)
 
-  // PRIMERO: Buscar si hay un registro EXACTO para esta semana
+  if (employeePaidWeeks.length > 0) {
+    console.log(`  📋 Lista completa de semanas pagadas:`)
+    employeePaidWeeks.forEach((pw, index) => {
+      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end} (monto: $${pw.amount})`)
+    })
+  }
+
+  // PASO 1: Buscar registro EXACTO
   const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
-
   if (exactMatch) {
-    console.log(`  🎯 REGISTRO EXACTO encontrado:`, exactMatch)
+    console.log(`  🎯 ✅ REGISTRO EXACTO ENCONTRADO:`)
+    console.log(`     Semana: ${exactMatch.week_start} al ${exactMatch.week_end}`)
+    console.log(`     Monto: $${exactMatch.amount}`)
+    console.log(`     Fecha pago: ${exactMatch.paid_date}`)
+    console.log(`  📊 RESULTADO FINAL: PAGADO (registro exacto)`)
+    console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
     return true
   } else {
     console.log(`  ❌ NO hay registro exacto para ${weekStart} al ${weekEnd}`)
   }
 
-  // SEGUNDO: Si no hay registro exacto, buscar solapamientos con OTRAS semanas
-  const overlappingWeeks = employeePaidWeeks.filter((pw) => {
+  // PASO 2: Analizar cada semana pagada para solapamientos
+  console.log(`  🔍 Analizando solapamientos con cada semana pagada:`)
+
+  const significantOverlaps = []
+  const minorOverlaps = []
+
+  employeePaidWeeks.forEach((pw, index) => {
     // Evitar el registro exacto que ya verificamos
-    if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
-
-    // Verificar solapamiento con OTRAS semanas
-    const hasOverlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
-
-    if (hasOverlap) {
-      console.log(`  🔍 SOLAPAMIENTO con OTRA semana:`, {
-        semana_verificada: `${weekStart} al ${weekEnd}`,
-        semana_pagada: `${pw.week_start} al ${pw.week_end}`,
-        solapamiento: hasOverlap,
-      })
+    if (pw.week_start === weekStart && pw.week_end === weekEnd) {
+      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end} → EXACTO (ya verificado)`)
+      return
     }
 
-    return hasOverlap
+    // Calcular solapamiento
+    const overlapStart = weekStart > pw.week_start ? weekStart : pw.week_start
+    const overlapEnd = weekEnd < pw.week_end ? weekEnd : pw.week_end
+
+    if (overlapStart <= overlapEnd) {
+      // Calcular días de solapamiento
+      const startDate = new Date(overlapStart)
+      const endDate = new Date(overlapEnd)
+      const overlapDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+
+      const isSignificant = overlapDays > 1
+
+      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end}:`)
+      console.log(`       📊 Días de solapamiento: ${overlapDays}`)
+      console.log(`       📅 Rango solapamiento: ${overlapStart} al ${overlapEnd}`)
+      console.log(`       ⚖️ Es significativo: ${isSignificant ? "SÍ" : "NO"} (umbral: >1 día)`)
+      console.log(`       💰 Monto: $${pw.amount}`)
+
+      if (isSignificant) {
+        significantOverlaps.push({
+          week: `${pw.week_start} al ${pw.week_end}`,
+          days: overlapDays,
+          amount: pw.amount,
+        })
+      } else {
+        minorOverlaps.push({
+          week: `${pw.week_start} al ${pw.week_end}`,
+          days: overlapDays,
+          amount: pw.amount,
+        })
+      }
+    } else {
+      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end} → SIN solapamiento`)
+    }
   })
 
-  const hasOverlap = overlappingWeeks.length > 0
-  console.log(`  📊 RESULTADO FINAL: ${hasOverlap ? "PAGADO (por solapamiento)" : "PENDIENTE"}`)
+  // PASO 3: Resumen final
+  const hasSignificantOverlap = significantOverlaps.length > 0
 
-  if (hasOverlap) {
-    console.log(
-      `  ⚠️ SEMANAS QUE CAUSAN SOLAPAMIENTO:`,
-      overlappingWeeks.map((pw) => `${pw.week_start} al ${pw.week_end}`),
-    )
+  console.log(`  📊 RESUMEN DE SOLAPAMIENTOS:`)
+  console.log(`     🔴 Solapamientos significativos (>1 día): ${significantOverlaps.length}`)
+  if (significantOverlaps.length > 0) {
+    significantOverlaps.forEach((overlap, index) => {
+      console.log(`       ${index + 1}. ${overlap.week} (${overlap.days} días, $${overlap.amount})`)
+    })
   }
 
-  return hasOverlap
+  console.log(`     🟡 Solapamientos menores (≤1 día): ${minorOverlaps.length}`)
+  if (minorOverlaps.length > 0) {
+    minorOverlaps.forEach((overlap, index) => {
+      console.log(`       ${index + 1}. ${overlap.week} (${overlap.days} día, $${overlap.amount})`)
+    })
+  }
+
+  console.log(`  📊 RESULTADO FINAL: ${hasSignificantOverlap ? "PAGADO (solapamiento significativo)" : "PENDIENTE"}`)
+  console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
+
+  return hasSignificantOverlap
 }
 
 interface EmpleadosResumenProps {
@@ -279,7 +330,9 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       return
     }
 
-    console.log("🔄 INICIO handlePaymentStatusChange:", { employeeId, newStatus, amount, startDateStr, endDateStr })
+    const employeeName = employees.find((e) => e.id === employeeId)?.name || `ID-${employeeId}`
+    console.log(`🔄 ===== INICIO CAMBIO DE ESTADO PARA ${employeeName.toUpperCase()} =====`)
+    console.log(`📊 Datos del cambio:`, { employeeId, employeeName, newStatus, amount, startDateStr, endDateStr })
 
     setUpdatingPayment(employeeId)
     try {
@@ -292,16 +345,16 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
         `Estado cambiado a ${newStatus} el ${new Date().toLocaleDateString()}`,
       )
 
-      console.log("📊 Resultado updatePaymentStatus:", success)
+      console.log(`📊 Resultado updatePaymentStatus para ${employeeName}:`, success)
 
       if (success) {
         toast({
           title: "✅ Estado actualizado",
-          description: `Semana marcada como ${newStatus}`,
+          description: `${employeeName}: Semana marcada como ${newStatus}`,
         })
 
         // Esperar un momento y recargar datos
-        console.log("🔄 Recargando datos después del cambio...")
+        console.log(`🔄 Recargando datos después del cambio para ${employeeName}...`)
         setTimeout(async () => {
           await loadData(true)
           if (onStatsChange) {
@@ -310,22 +363,23 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           }
         }, 500)
       } else {
-        console.error("❌ updatePaymentStatus retornó false")
+        console.error(`❌ updatePaymentStatus retornó false para ${employeeName}`)
         toast({
           title: "❌ Error",
-          description: "No se pudo actualizar el estado",
+          description: `${employeeName}: No se pudo actualizar el estado`,
           variant: "destructive",
         })
       }
     } catch (error) {
-      console.error("❌ Error en handlePaymentStatusChange:", error)
+      console.error(`❌ Error en handlePaymentStatusChange para ${employeeName}:`, error)
       toast({
         title: "❌ Error",
-        description: "Error inesperado al actualizar",
+        description: `${employeeName}: Error inesperado al actualizar`,
         variant: "destructive",
       })
     } finally {
       setUpdatingPayment(null)
+      console.log(`🔄 ===== FIN CAMBIO DE ESTADO PARA ${employeeName.toUpperCase()} =====\n`)
     }
   }
 
@@ -360,14 +414,9 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       totalAmount = assignmentDetails.reduce((sum, detail) => sum + detail.totalForDay, 0)
 
       const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
-      const isPaid = hasWeekOverlapWithPaidWeeks(startDateStr, endDateStr, paidWeeks, employee.id)
 
-      console.log(`💰 Estado final para ${employee.name}:`, {
-        isPaid,
-        totalAmount,
-        daysWorked,
-        weekRange: `${startDateStr} al ${endDateStr}`,
-      })
+      // USAR LA NUEVA FUNCIÓN DE SOLAPAMIENTO SIGNIFICATIVO
+      const isPaid = hasSignificantWeekOverlap(startDateStr, endDateStr, paidWeeks, employee.id)
 
       return {
         employee,
