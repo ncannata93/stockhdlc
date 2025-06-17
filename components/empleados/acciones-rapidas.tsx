@@ -1,15 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
-import { CheckCircle, XCircle, User, Clock, CreditCard, Loader2 } from "lucide-react"
+import { CheckCircle, XCircle, User, Clock, AlertTriangle } from "lucide-react"
 import type { Employee } from "@/lib/employee-types"
 
 interface AccionesRapidasProps {
@@ -22,6 +19,9 @@ interface AccionesRapidasProps {
   onPaymentChange: () => void
 }
 
+// Tipos de estado
+type PaymentStatus = "pendiente" | "pagado" | "vencido"
+
 export default function AccionesRapidas({
   employee,
   totalAmount,
@@ -32,96 +32,82 @@ export default function AccionesRapidas({
   onPaymentChange,
 }: AccionesRapidasProps) {
   const { toast } = useToast()
-  const { markWeekAsPaid, unmarkWeekAsPaid } = useEmployeeDB()
+  const { updatePaymentStatus } = useEmployeeDB()
   const [loading, setLoading] = useState(false)
-  const [paymentNotes, setPaymentNotes] = useState("")
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
-  // Estado local para controlar la UI mientras se procesa
-  const [localIsPaid, setLocalIsPaid] = useState(isPaid)
-  // Flag para evitar recargas automáticas durante operaciones
-  const [operationInProgress, setOperationInProgress] = useState(false)
 
-  // Sincronizar el estado local con el prop cuando cambie (solo si no hay operación en progreso)
+  // Determinar estado actual basado en isPaid
+  const getCurrentStatus = (): PaymentStatus => {
+    if (isPaid) return "pagado"
+    // Aquí podrías agregar lógica para determinar si está vencido
+    // Por ejemplo, si la semana terminó hace más de X días
+    const weekEndDate = new Date(weekEnd)
+    const today = new Date()
+    const daysDiff = Math.floor((today.getTime() - weekEndDate.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (daysDiff > 7) return "vencido" // Vencido si pasaron más de 7 días
+    return "pendiente"
+  }
+
+  const [currentStatus, setCurrentStatus] = useState<PaymentStatus>(getCurrentStatus())
+
+  // Actualizar estado cuando cambie isPaid
   useEffect(() => {
-    if (!operationInProgress) {
-      setLocalIsPaid(isPaid)
-    }
-  }, [isPaid, operationInProgress])
+    setCurrentStatus(getCurrentStatus())
+  }, [isPaid, weekEnd])
 
-  useEffect(() => {
-    console.log("🔍 AccionesRapidas montado:", {
-      employee: employee.name,
-      isPaid,
-      localIsPaid,
-      operationInProgress,
-      daysWorked,
-      totalAmount,
-      weekStart,
-      weekEnd,
-    })
-  }, [employee.name, isPaid, localIsPaid, operationInProgress, daysWorked, totalAmount, weekStart, weekEnd])
-
-  const handleMarkAsPaid = async () => {
-    if (loading || daysWorked === 0 || operationInProgress) return
+  const handleStatusChange = async (newStatus: PaymentStatus) => {
+    if (loading || daysWorked === 0) return
 
     setLoading(true)
-    setOperationInProgress(true)
-    console.log("🔄 Iniciando proceso de pago:", {
+    console.log("🔄 Cambiando estado de pago:", {
       employee: employee.name,
-      employeeId: employee.id,
+      from: currentStatus,
+      to: newStatus,
       weekStart,
       weekEnd,
-      totalAmount,
-      notes: paymentNotes,
     })
 
     try {
       // Actualizar estado local inmediatamente para feedback visual
-      setLocalIsPaid(true)
+      setCurrentStatus(newStatus)
 
-      const success = await markWeekAsPaid(
+      const success = await updatePaymentStatus(
         employee.id,
         weekStart,
         weekEnd,
+        newStatus,
         totalAmount,
-        paymentNotes || `Pago semanal - ${daysWorked} días trabajados`,
+        `Estado cambiado a ${newStatus} - ${daysWorked} días trabajados`,
       )
 
       if (success) {
-        console.log("✅ Pago registrado exitosamente")
+        console.log("✅ Estado actualizado exitosamente")
         toast({
-          title: "✅ Semana marcada como pagada",
-          description: `Se registró el pago de $${totalAmount.toLocaleString()} para ${employee.name}`,
+          title: "✅ Estado actualizado",
+          description: `${employee.name}: ${getStatusLabel(newStatus)}`,
         })
 
-        setShowPaymentDialog(false)
-        setPaymentNotes("")
-
-        // Esperar más tiempo antes de recargar y permitir actualizaciones
+        // Recargar datos después de un breve delay
         setTimeout(() => {
-          console.log("🔄 Recargando datos después del pago...")
-          setOperationInProgress(false)
           onPaymentChange()
-        }, 2000)
+        }, 1000)
       } else {
         // Revertir estado local si falló
-        setLocalIsPaid(false)
-        setOperationInProgress(false)
-        console.error("❌ Error: markWeekAsPaid retornó false")
+        setCurrentStatus(getCurrentStatus())
+        console.error("❌ Error: updatePaymentStatus retornó false")
         toast({
-          title: "❌ Error al registrar el pago",
-          description: "No se pudo marcar la semana como pagada. Verifica la conexión a la base de datos.",
+          title: "❌ Error al actualizar estado",
+          description: "No se pudo cambiar el estado. Verifica la conexión a la base de datos.",
           variant: "destructive",
         })
       }
     } catch (error) {
       // Revertir estado local si hubo error
-      setLocalIsPaid(false)
-      setOperationInProgress(false)
-      console.error("❌ Error inesperado al marcar como pagada:", error)
+      setCurrentStatus(getCurrentStatus())
+      console.error("❌ Error inesperado:", error)
       toast({
         title: "❌ Error inesperado",
-        description: `Error al registrar el pago: ${error instanceof Error ? error.message : "Error desconocido"}`,
+        description: `Error: ${error instanceof Error ? error.message : "Error desconocido"}`,
         variant: "destructive",
       })
     } finally {
@@ -129,73 +115,42 @@ export default function AccionesRapidas({
     }
   }
 
-  const handleMarkAsUnpaid = async () => {
-    if (loading || operationInProgress) return
-
-    if (!confirm(`¿Estás seguro de que deseas desmarcar la semana como pagada para ${employee.name}?`)) {
-      return
+  const getStatusLabel = (status: PaymentStatus): string => {
+    switch (status) {
+      case "pendiente":
+        return "⏰ Pendiente"
+      case "pagado":
+        return "✅ Pagado"
+      case "vencido":
+        return "⚠️ Vencido"
+      default:
+        return "❓ Desconocido"
     }
+  }
 
-    setLoading(true)
-    setOperationInProgress(true)
-    console.log("🔄 INICIO - Desmarcando semana como pagada:", {
-      employee: employee.name,
-      employeeId: employee.id,
-      weekStart,
-      weekEnd,
-      isPaidAntes: isPaid,
-      localIsPaidAntes: localIsPaid,
-    })
+  const getStatusColor = (status: PaymentStatus): string => {
+    switch (status) {
+      case "pendiente":
+        return "bg-yellow-100 text-yellow-800 border-yellow-300"
+      case "pagado":
+        return "bg-green-100 text-green-800 border-green-300"
+      case "vencido":
+        return "bg-red-100 text-red-800 border-red-300"
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-300"
+    }
+  }
 
-    try {
-      // Actualizar estado local inmediatamente para feedback visual
-      console.log("🎨 Actualizando estado local a false...")
-      setLocalIsPaid(false)
-
-      console.log("🔄 Llamando a unmarkWeekAsPaid...")
-      const success = await unmarkWeekAsPaid(employee.id, weekStart, weekEnd)
-      console.log("📤 Resultado de unmarkWeekAsPaid:", success)
-
-      if (success) {
-        console.log("✅ Semana desmarcada exitosamente")
-        toast({
-          title: "🔄 Semana desmarcada",
-          description: `Se removió el registro de pago para ${employee.name}`,
-        })
-
-        // Esperar más tiempo antes de recargar y permitir actualizaciones
-        console.log("⏳ Esperando 3 segundos antes de recargar...")
-        setTimeout(() => {
-          console.log("🔄 Iniciando recarga de datos...")
-          setOperationInProgress(false)
-          onPaymentChange()
-        }, 3000)
-      } else {
-        // Revertir estado local si falló
-        console.log("❌ Revirtiendo estado local a true...")
-        setLocalIsPaid(true)
-        setOperationInProgress(false)
-        console.error("❌ Error: unmarkWeekAsPaid retornó false")
-        toast({
-          title: "❌ Error al desmarcar",
-          description: "No se pudo desmarcar la semana. Verifica la conexión a la base de datos.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      // Revertir estado local si hubo error
-      console.log("❌ Revirtiendo estado local por error...")
-      setLocalIsPaid(true)
-      setOperationInProgress(false)
-      console.error("❌ Error inesperado al desmarcar:", error)
-      toast({
-        title: "❌ Error inesperado",
-        description: `Error al desmarcar: ${error instanceof Error ? error.message : "Error desconocido"}`,
-        variant: "destructive",
-      })
-    } finally {
-      console.log("🏁 Finalizando handleMarkAsUnpaid, loading = false")
-      setLoading(false)
+  const getStatusIcon = (status: PaymentStatus) => {
+    switch (status) {
+      case "pendiente":
+        return <Clock className="h-5 w-5 text-yellow-600" />
+      case "pagado":
+        return <CheckCircle className="h-5 w-5 text-green-600" />
+      case "vencido":
+        return <AlertTriangle className="h-5 w-5 text-red-600" />
+      default:
+        return <XCircle className="h-5 w-5 text-gray-600" />
     }
   }
 
@@ -212,58 +167,12 @@ export default function AccionesRapidas({
     }
   }
 
-  const handleButtonClick = () => {
-    console.log("🔘 Botón de pago clickeado:", {
-      employee: employee.name,
-      isPaid,
-      localIsPaid,
-      operationInProgress,
-      daysWorked,
-      totalAmount,
-      loading,
-    })
-
-    if (daysWorked === 0) {
-      console.log("⚠️ No se puede procesar: días trabajados = 0")
-      return
-    }
-
-    if (loading || operationInProgress) {
-      console.log("⚠️ No se puede procesar: ya está cargando o hay operación en progreso")
-      return
-    }
-
-    console.log("✅ Abriendo diálogo de pago...")
-    setShowPaymentDialog(true)
-  }
-
-  // Usar el estado local durante operaciones, sino usar el prop
-  const displayIsPaid = operationInProgress ? localIsPaid : isPaid
-
-  console.log("🔍 AccionesRapidas - Estado actual:", {
-    employee: employee.name,
-    isPaid,
-    localIsPaid,
-    displayIsPaid,
-    operationInProgress,
-    loading,
-    weekStart,
-    weekEnd,
-    totalAmount,
-    daysWorked,
-  })
-
   return (
     <Card className="border-l-4 border-l-blue-500">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
           <User className="h-5 w-5 text-blue-600" />
           {employee.name}
-          {operationInProgress && (
-            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-              Procesando...
-            </Badge>
-          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -303,142 +212,48 @@ export default function AccionesRapidas({
             </div>
           </div>
 
-          {/* Estado de pago */}
+          {/* Estado de pago actual */}
           <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
             <div className="flex items-center gap-2">
-              {displayIsPaid ? (
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              ) : (
-                <Clock className="h-5 w-5 text-yellow-600" />
-              )}
-              <span className="font-medium">Estado del pago</span>
+              {getStatusIcon(currentStatus)}
+              <span className="font-medium">Estado actual</span>
             </div>
-            <Badge
-              variant={displayIsPaid ? "default" : "outline"}
-              className={`${
-                displayIsPaid
-                  ? "bg-green-100 text-green-800 border-green-300"
-                  : "bg-yellow-100 text-yellow-800 border-yellow-300"
-              }`}
-            >
-              {displayIsPaid ? "✅ Pagada" : "⏰ Pendiente"}
+            <Badge variant="outline" className={getStatusColor(currentStatus)}>
+              {getStatusLabel(currentStatus)}
             </Badge>
           </div>
         </div>
 
-        {/* Acciones */}
+        {/* Selector de estado */}
         <div className="space-y-2 pt-2 border-t">
-          {!displayIsPaid ? (
-            <>
-              <Button
-                className="w-full bg-green-600 hover:bg-green-700"
-                size="lg"
-                disabled={daysWorked === 0 || loading || operationInProgress}
-                onClick={handleButtonClick}
-              >
-                {loading || operationInProgress ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Procesando...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Marcar como Pagada
-                  </>
-                )}
-              </Button>
+          <label className="text-sm font-medium">Cambiar estado del pago:</label>
+          <Select value={currentStatus} onValueChange={handleStatusChange} disabled={daysWorked === 0 || loading}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Seleccionar estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pendiente">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-yellow-600" />
+                  <span>⏰ Pendiente</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="pagado">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>✅ Pagado</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="vencido">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <span>⚠️ Vencido</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
 
-              <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-                <DialogContent className="w-[95vw] max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5" />
-                      Confirmar Pago
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="bg-gray-50 p-3 rounded-lg space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Empleado:</span>
-                        <span className="font-medium">{employee.name}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Período:</span>
-                        <span className="font-medium text-sm">
-                          {formatDate(weekStart)} - {formatDate(weekEnd)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Días:</span>
-                        <span className="font-medium">{daysWorked}</span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span className="font-medium">Total:</span>
-                        <span className="font-bold text-green-600 text-lg">${totalAmount.toLocaleString()}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="payment-notes">Notas del pago (opcional)</Label>
-                      <Textarea
-                        id="payment-notes"
-                        placeholder="Ej: Pago en efectivo, transferencia bancaria, etc."
-                        value={paymentNotes}
-                        onChange={(e) => setPaymentNotes(e.target.value)}
-                        rows={3}
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowPaymentDialog(false)}
-                        className="flex-1"
-                        disabled={loading || operationInProgress}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        onClick={handleMarkAsPaid}
-                        disabled={loading || operationInProgress}
-                        className="flex-1 bg-green-600 hover:bg-green-700"
-                      >
-                        {loading || operationInProgress ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Procesando...
-                          </>
-                        ) : (
-                          "Confirmar Pago"
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={handleMarkAsUnpaid}
-              disabled={loading || operationInProgress}
-              className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50"
-              size="lg"
-            >
-              {loading || operationInProgress ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {operationInProgress ? "Desmarcando..." : "Procesando..."}
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Marcar como Pendiente
-                </>
-              )}
-            </Button>
-          )}
+          {loading && <div className="text-center text-sm text-muted-foreground">Actualizando estado...</div>}
         </div>
 
         {daysWorked === 0 && (
