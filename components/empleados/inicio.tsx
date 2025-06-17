@@ -39,28 +39,59 @@ interface PendingPaymentDetail {
 }
 
 // FUNCIÓN MEJORADA: Verifica si una semana tiene solapamiento con semanas pagadas
+// PERO respeta el estado explícito si existe
 const hasWeekOverlapWithPaidWeeks = (
   weekStart: string,
   weekEnd: string,
   paidWeeks: any[],
   employeeId: number,
 ): boolean => {
-  return paidWeeks.some((pw) => {
+  // PRIMERO: Buscar si hay un registro EXACTO para esta semana
+  const exactMatch = paidWeeks.find(
+    (pw) => pw.employee_id === employeeId && pw.week_start === weekStart && pw.week_end === weekEnd,
+  )
+
+  if (exactMatch) {
+    console.log(`🎯 INICIO - Registro EXACTO encontrado para empleado ${employeeId}:`, {
+      semana: `${weekStart} al ${weekEnd}`,
+      estado_explicito: "PAGADO",
+      registro: exactMatch,
+    })
+    return true
+  }
+
+  // SEGUNDO: Si no hay registro exacto, buscar solapamientos SOLO si no hay registro explícito para esta semana
+  const hasExplicitRecord = paidWeeks.some(
+    (pw) => pw.employee_id === employeeId && pw.week_start === weekStart && pw.week_end === weekEnd,
+  )
+
+  if (hasExplicitRecord) {
+    console.log(`🚫 INICIO - Hay registro explícito, no verificar solapamientos para empleado ${employeeId}`)
+    return false
+  }
+
+  // TERCERO: Solo si NO hay registro explícito, verificar solapamientos
+  const overlap = paidWeeks.some((pw) => {
     if (pw.employee_id !== employeeId) return false
 
-    // Verificar solapamiento: si hay cualquier día en común entre las dos semanas
-    const overlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
+    // Evitar el registro exacto que ya verificamos
+    if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
 
-    if (overlap) {
-      console.log(`🔍 SOLAPAMIENTO ENCONTRADO en Inicio para empleado ${employeeId}:`, {
+    // Verificar solapamiento con OTRAS semanas
+    const hasOverlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
+
+    if (hasOverlap) {
+      console.log(`🔍 INICIO - SOLAPAMIENTO con OTRA semana para empleado ${employeeId}:`, {
         semana_calculada: `${weekStart} al ${weekEnd}`,
         semana_pagada: `${pw.week_start} al ${pw.week_end}`,
-        solapamiento: overlap,
+        solapamiento: hasOverlap,
       })
     }
 
-    return overlap
+    return hasOverlap
   })
+
+  return overlap
 }
 
 export default function EmpleadosInicio({ onTabChange, refreshTrigger }: EmpleadosInicioProps) {

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Loader2,
   Calendar,
@@ -15,16 +16,17 @@ import {
   ChevronRight,
   CalendarDays,
   User,
-  DollarSign,
   Clock,
   RefreshCw,
+  CheckCircle,
+  AlertTriangle,
 } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment } from "@/lib/employee-types"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateForDisplay } from "@/lib/date-utils"
-import AccionesRapidas from "./acciones-rapidas"
+import { useToast } from "@/hooks/use-toast"
 
 const getHotelColor = (hotelName: string) => {
   const colors: Record<string, string> = {
@@ -77,22 +79,28 @@ const hasWeekOverlapWithPaidWeeks = (
   paidWeeks: any[],
   employeeId: number,
 ): boolean => {
-  return paidWeeks.some((pw) => {
+  // PRIMERO: Buscar si hay un registro EXACTO para esta semana
+  const exactMatch = paidWeeks.find(
+    (pw) => pw.employee_id === employeeId && pw.week_start === weekStart && pw.week_end === weekEnd,
+  )
+
+  if (exactMatch) {
+    console.log(`🎯 Registro EXACTO encontrado para empleado ${employeeId}:`, exactMatch)
+    return true
+  }
+
+  // SEGUNDO: Si no hay registro exacto, buscar solapamientos
+  const overlap = paidWeeks.some((pw) => {
     if (pw.employee_id !== employeeId) return false
-
-    // Verificar solapamiento: si hay cualquier día en común entre las dos semanas
-    const overlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
-
-    if (overlap) {
-      console.log(`🔍 SOLAPAMIENTO ENCONTRADO en Resumen para empleado ${employeeId}:`, {
-        semana_calculada: `${weekStart} al ${weekEnd}`,
-        semana_pagada: `${pw.week_start} al ${pw.week_end}`,
-        solapamiento: overlap,
-      })
-    }
-
-    return overlap
+    if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
+    return weekStart <= pw.week_end && weekEnd >= pw.week_start
   })
+
+  if (overlap) {
+    console.log(`🔍 Solapamiento encontrado para empleado ${employeeId}`)
+  }
+
+  return overlap
 }
 
 interface EmpleadosResumenProps {
@@ -100,7 +108,8 @@ interface EmpleadosResumenProps {
 }
 
 export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProps) {
-  const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
+  const { toast } = useToast()
+  const { getEmployees, getAssignments, getPaidWeeks, updatePaymentStatus } = useEmployeeDB()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
   const [yearlyAssignments, setYearlyAssignments] = useState<EmployeeAssignment[]>([])
@@ -108,6 +117,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   const [loading, setLoading] = useState(true)
   const [loadingYearly, setLoadingYearly] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [updatingPayment, setUpdatingPayment] = useState<number | null>(null)
   const [selectedEmployee, setSelectedEmployee] = useState<string>("todos")
   const [selectedWeek, setSelectedWeek] = useState<string>(() => {
     const today = new Date()
@@ -115,9 +125,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     return monday.toISOString().split("T")[0]
   })
   const [activeTab, setActiveTab] = useState("semanal")
-  // Agregar un timestamp para forzar re-renders
   const [lastUpdate, setLastUpdate] = useState(Date.now())
-  // Ref para evitar múltiples recargas simultáneas
   const reloadInProgress = useRef(false)
 
   const startDate = parseISO(selectedWeek)
@@ -148,7 +156,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   }
 
   const loadData = async (forceRefresh = false) => {
-    console.log("🔄 Cargando datos del resumen...", forceRefresh ? "(forzado)" : "")
+    console.log("🔄 Cargando datos del resumen...")
     setLoading(true)
     try {
       const employeesData = await getEmployees()
@@ -169,34 +177,17 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       console.log("📊 Asignaciones filtradas:", finalAssignments.length)
       setAssignments(finalAssignments)
 
-      // Siempre recargar las semanas pagadas para obtener el estado más reciente
       const paidWeeksData = await getPaidWeeks({})
       console.log("💰 Semanas pagadas cargadas:", paidWeeksData.length)
-
-      // DEBUGGING DETALLADO DE SEMANAS PAGADAS
-      console.log("🔍 DEBUGGING - Todas las semanas pagadas en la BD:")
-      paidWeeksData.forEach((pw) => {
-        console.log(`  📅 Empleado ${pw.employee_name} (ID: ${pw.employee_id}):`, {
-          week_start: pw.week_start,
-          week_end: pw.week_end,
-          amount: pw.amount,
-          paid_date: pw.paid_date,
-        })
-      })
-
-      console.log("🔍 DEBUGGING RESUMEN - Semana actual que estamos verificando:")
-      console.log(`  📅 Rango: ${startDateStr} al ${endDateStr}`)
-      console.log(
-        `  📊 Empleados con asignaciones en esta semana:`,
-        finalAssignments.map((a) => a.employee_name).filter((name, index, arr) => arr.indexOf(name) === index),
-      )
-
       setPaidWeeks(paidWeeksData)
-
-      // Actualizar timestamp para forzar re-render
       setLastUpdate(Date.now())
     } catch (error) {
       console.error("❌ Error cargando datos:", error)
+      toast({
+        title: "❌ Error",
+        description: "Error al cargar los datos",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
@@ -253,6 +244,63 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     }
   }
 
+  // FUNCIÓN MEJORADA: Cambiar estado de pago con mejor manejo de errores
+  const handlePaymentStatusChange = async (employeeId: number, newStatus: "pendiente" | "pagado", amount: number) => {
+    if (updatingPayment === employeeId) {
+      console.log("⚠️ Ya hay una actualización en progreso para este empleado")
+      return
+    }
+
+    console.log("🔄 INICIO handlePaymentStatusChange:", { employeeId, newStatus, amount, startDateStr, endDateStr })
+
+    setUpdatingPayment(employeeId)
+    try {
+      const success = await updatePaymentStatus(
+        employeeId,
+        startDateStr,
+        endDateStr,
+        newStatus,
+        amount,
+        `Estado cambiado a ${newStatus} el ${new Date().toLocaleDateString()}`,
+      )
+
+      console.log("📊 Resultado updatePaymentStatus:", success)
+
+      if (success) {
+        toast({
+          title: "✅ Estado actualizado",
+          description: `Semana marcada como ${newStatus}`,
+        })
+
+        // Esperar un momento y recargar datos
+        console.log("🔄 Recargando datos después del cambio...")
+        setTimeout(async () => {
+          await loadData(true)
+          if (onStatsChange) {
+            console.log("📊 Ejecutando callback onStatsChange...")
+            onStatsChange()
+          }
+        }, 500)
+      } else {
+        console.error("❌ updatePaymentStatus retornó false")
+        toast({
+          title: "❌ Error",
+          description: "No se pudo actualizar el estado",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("❌ Error en handlePaymentStatusChange:", error)
+      toast({
+        title: "❌ Error",
+        description: "Error inesperado al actualizar",
+        variant: "destructive",
+      })
+    } finally {
+      setUpdatingPayment(null)
+    }
+  }
+
   const employeeSummary = employees
     .map((employee) => {
       const employeeAssignments = assignments.filter((a) => a.employee_id === employee.id)
@@ -284,18 +332,13 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       totalAmount = assignmentDetails.reduce((sum, detail) => sum + detail.totalForDay, 0)
 
       const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
-
-      // NUEVA LÓGICA: Verificar si la semana tiene solapamiento con semanas pagadas
       const isPaid = hasWeekOverlapWithPaidWeeks(startDateStr, endDateStr, paidWeeks, employee.id)
 
-      console.log(`💰 RESUMEN - Estado final para ${employee.name} (${lastUpdate}):`, {
+      console.log(`💰 Estado final para ${employee.name}:`, {
         isPaid,
         totalAmount,
         daysWorked,
         weekRange: `${startDateStr} al ${endDateStr}`,
-        semanasPagadasDelEmpleado: paidWeeks
-          .filter((pw) => pw.employee_id === employee.id)
-          .map((pw) => `${pw.week_start} al ${pw.week_end}`),
       })
 
       return {
@@ -348,80 +391,14 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   const maxAmount = sortedHotels.length > 0 ? sortedHotels[0].amount : 0
 
   const reloadData = async () => {
-    // Evitar múltiples recargas simultáneas
-    if (reloadInProgress.current) {
-      console.log("⚠️ Recarga ya en progreso, ignorando...")
-      return
-    }
-
+    if (reloadInProgress.current) return
     reloadInProgress.current = true
-    console.log("🔄 INICIO - Recargando datos después de cambio de pago...")
     setRefreshing(true)
 
     try {
-      // Esperar un momento para que la BD procese los cambios
-      console.log("⏳ Esperando 2 segundos para sincronización...")
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-
-      // Limpiar estados antes de recargar
-      console.log("🧹 Limpiando estados...")
-      setPaidWeeks([])
-      setAssignments([])
-
-      // Recargar empleados
-      const employeesData = await getEmployees()
-      console.log("📊 Empleados recargados:", employeesData.length)
-      setEmployees(employeesData)
-
-      // Recargar asignaciones
-      const allAssignmentsData = await getAssignments({})
-      const filteredAssignments = allAssignmentsData.filter((assignment) => {
-        const assignmentDate = assignment.assignment_date
-        return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
-      })
-
-      let finalAssignments = filteredAssignments
-      if (selectedEmployee !== "todos") {
-        finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
-      }
-
-      console.log("📊 Asignaciones recargadas:", finalAssignments.length)
-      setAssignments(finalAssignments)
-
-      // CRÍTICO: Recargar semanas pagadas con logging detallado
-      console.log("💰 RECARGANDO semanas pagadas...")
-      const paidWeeksData = await getPaidWeeks({})
-      console.log("💰 Semanas pagadas RECARGADAS:", paidWeeksData.length)
-
-      // Log detallado de las semanas pagadas
-      console.log("🔍 DESPUÉS DE RECARGAR - Semanas pagadas por empleado:")
-      const employeesPaidWeeks = {}
-      paidWeeksData.forEach((pw) => {
-        if (!employeesPaidWeeks[pw.employee_id]) {
-          employeesPaidWeeks[pw.employee_id] = []
-        }
-        employeesPaidWeeks[pw.employee_id].push(`${pw.week_start} al ${pw.week_end}`)
-      })
-
-      Object.entries(employeesPaidWeeks).forEach(([empId, weeks]) => {
-        const emp = employeesData.find((e) => e.id.toString() === empId)
-        console.log(`  👤 ${emp?.name || "ID:" + empId}: ${weeks.join(", ")}`)
-      })
-
-      setPaidWeeks(paidWeeksData)
-
-      // Forzar actualización del timestamp
-      const newTimestamp = Date.now()
-      console.log("🕐 Actualizando timestamp:", newTimestamp)
-      setLastUpdate(newTimestamp)
-
-      console.log("✅ ÉXITO - Datos recargados completamente")
-
-      // Notificar al componente padre
-      if (onStatsChange) {
-        console.log("📊 Ejecutando callback onStatsChange...")
-        onStatsChange()
-      }
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await loadData(true)
+      if (onStatsChange) onStatsChange()
     } catch (error) {
       console.error("❌ Error recargando datos:", error)
     } finally {
@@ -431,13 +408,13 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4">
       <Card>
         <CardHeader className="pb-4">
           <div className="flex justify-between items-center">
             <div>
-              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                <CalendarDays className="h-5 w-5 sm:h-6 sm:w-6" />
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <CalendarDays className="h-5 w-5" />
                 Resumen de Empleados
               </CardTitle>
               <CardDescription className="text-sm">Gestión semanal de pagos y asignaciones</CardDescription>
@@ -446,7 +423,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
               variant="outline"
               size="sm"
               onClick={reloadData}
-              disabled={refreshing || reloadInProgress.current}
+              disabled={refreshing}
               className="flex items-center gap-2"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -455,68 +432,73 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Navegación de semanas - Móvil optimizado */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">📅 Navegación de Semanas</Label>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={goToPreviousWeek} className="px-2 sm:px-3">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Input
-                type="date"
-                value={selectedWeek}
-                onChange={(e) => setSelectedWeek(e.target.value)}
-                className="flex-1 text-sm"
-              />
-              <Button variant="outline" size="sm" onClick={goToNextWeek} className="px-2 sm:px-3">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={goToCurrentWeek} className="px-2 sm:px-3">
-                <CalendarDays className="h-4 w-4" />
-              </Button>
+          {/* Controles compactos */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Navegación de semanas */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">📅 Semana</Label>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={goToPreviousWeek} className="px-2">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Input
+                  type="date"
+                  value={selectedWeek}
+                  onChange={(e) => setSelectedWeek(e.target.value)}
+                  className="flex-1 text-sm"
+                />
+                <Button variant="outline" size="sm" onClick={goToNextWeek} className="px-2">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={goToCurrentWeek} className="px-2">
+                  <CalendarDays className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground p-2 bg-blue-50 rounded-md border border-blue-200">
-              📍 <strong>Semana:</strong> {safeFormatDate(startDateStr)} al {safeFormatDate(endDateStr)}
-            </div>
-          </div>
 
-          {/* Filtro de empleado */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">👥 Filtrar por Empleado</Label>
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder="Todos los empleados" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">🏢 Todos los empleados</SelectItem>
-                {employees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id.toString()}>
-                    👤 {employee.name} - {employee.role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Filtro de empleado */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">👥 Empleado</Label>
+              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">🏢 Todos los empleados</SelectItem>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id.toString()}>
+                      👤 {employee.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Info de la semana */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">📍 Período</Label>
+              <div className="text-sm p-2 bg-blue-50 rounded border border-blue-200">
+                {safeFormatDate(startDateStr)} al {safeFormatDate(endDateStr)}
+              </div>
+            </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="semanal" className="flex items-center gap-2 text-sm">
                 <Calendar className="h-4 w-4" />
-                <span className="hidden sm:inline">Resumen </span>Semanal
+                Semanal
               </TabsTrigger>
               <TabsTrigger value="anual" className="flex items-center gap-2 text-sm">
                 <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">Resumen </span>Anual
+                Anual
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="semanal" className="mt-4">
               {loading ? (
                 <div className="flex justify-center items-center py-12">
-                  <div className="text-center">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-                    <p className="text-muted-foreground">Cargando información...</p>
-                  </div>
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : employeeSummary.length === 0 ? (
                 <Card className="border-yellow-200 bg-yellow-50">
@@ -530,124 +512,138 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-4">
-                  {employeeSummary.map((summary) => (
-                    <Card key={`${summary.employee.id}-${lastUpdate}`} className="overflow-hidden">
-                      {/* Header del empleado - Móvil optimizado */}
-                      <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 pb-3">
-                        <div className="space-y-3">
-                          {/* Nombre y estado */}
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-2">
-                              <User className="h-5 w-5 text-blue-600" />
-                              <div>
-                                <h3 className="font-semibold text-lg">{summary.employee.name}</h3>
-                                <p className="text-sm text-muted-foreground">{summary.employee.role}</p>
+                <Card>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[200px]">Empleado</TableHead>
+                          <TableHead className="text-center w-[80px]">Días</TableHead>
+                          <TableHead className="text-center w-[120px]">Total</TableHead>
+                          <TableHead className="w-[200px]">Hoteles</TableHead>
+                          <TableHead className="text-center w-[100px]">Estado</TableHead>
+                          <TableHead className="text-center w-[120px]">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {employeeSummary.map((summary) => (
+                          <TableRow key={`${summary.employee.id}-${lastUpdate}`}>
+                            {/* Empleado */}
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <User className="h-4 w-4 text-blue-600" />
+                                <div>
+                                  <div className="font-medium">{summary.employee.name}</div>
+                                  <div className="text-xs text-muted-foreground">{summary.employee.role}</div>
+                                </div>
                               </div>
-                            </div>
-                            <Badge
-                              variant={summary.isPaid ? "default" : "outline"}
-                              className={`text-xs ${
-                                summary.isPaid
-                                  ? "bg-green-100 text-green-800 border-green-300"
-                                  : "bg-yellow-100 text-yellow-800 border-yellow-300"
-                              }`}
-                            >
-                              {summary.isPaid ? "✅ Pagada" : "⏰ Pendiente"}
-                            </Badge>
-                          </div>
+                            </TableCell>
 
-                          {/* Estadísticas principales - Móvil optimizado */}
-                          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                            <div className="bg-white p-2 sm:p-3 rounded-lg border shadow-sm">
-                              <div className="flex flex-col items-center text-center">
-                                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 mb-1" />
-                                <div className="text-base sm:text-lg font-bold text-green-600 leading-tight">
-                                  ${summary.totalAmount.toLocaleString()}
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">Total</div>
-                              </div>
-                            </div>
-                            <div className="bg-white p-2 sm:p-3 rounded-lg border shadow-sm">
-                              <div className="flex flex-col items-center text-center">
-                                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 mb-1" />
-                                <div className="text-base sm:text-lg font-bold text-blue-600 leading-tight">
-                                  {summary.daysWorked}
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">Días</div>
-                              </div>
-                            </div>
-                            <div className="bg-white p-2 sm:p-3 rounded-lg border shadow-sm">
-                              <div className="flex flex-col items-center text-center">
-                                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600 mb-1" />
-                                <div className="text-sm sm:text-base font-bold text-gray-600 leading-tight">
-                                  ${summary.employee.daily_rate.toLocaleString()}
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">Tarifa</div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </CardHeader>
-
-                      <CardContent className="p-4 space-y-4">
-                        {/* Hoteles visitados */}
-                        <div>
-                          <h4 className="text-sm font-medium mb-2">🏨 Hoteles visitados</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {summary.hotels.map((hotel) => (
-                              <Badge key={hotel} className={`${getHotelColor(hotel)} text-xs`}>
-                                {hotel}
+                            {/* Días trabajados */}
+                            <TableCell className="text-center">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                                {summary.daysWorked}
                               </Badge>
-                            ))}
-                          </div>
-                        </div>
+                            </TableCell>
 
-                        {/* Detalle por días - Vista móvil */}
-                        <div>
-                          <h4 className="text-sm font-medium mb-3">📊 Detalle por días</h4>
-                          <div className="space-y-3">
-                            {summary.assignmentDetails.map((detail) => (
-                              <div key={detail.date} className="bg-gray-50 rounded-lg p-3 border">
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-sm font-medium">📅 {safeFormatDate(detail.date)}</span>
-                                  <span className="text-lg font-bold text-green-600">
-                                    ${detail.totalForDay.toLocaleString()}
-                                  </span>
-                                </div>
-                                <div className="space-y-2">
-                                  {detail.assignments.map((assignment, idx) => (
-                                    <div key={idx} className="flex justify-between items-center text-sm">
-                                      <Badge className={`${getHotelColor(assignment.hotel_name)} text-xs`}>
-                                        🏨 {assignment.hotel_name}
-                                      </Badge>
-                                      <span className="font-medium text-green-600">
-                                        ${assignment.daily_rate_used.toLocaleString()}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
+                            {/* Total */}
+                            <TableCell className="text-center">
+                              <div className="font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
+                              <div className="text-xs text-muted-foreground">
+                                ${summary.employee.daily_rate.toLocaleString()}/día
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                            </TableCell>
 
-                        {/* Acciones rápidas */}
-                        <div className="pt-4 border-t">
-                          <AccionesRapidas
-                            employee={summary.employee}
-                            totalAmount={summary.totalAmount}
-                            daysWorked={summary.daysWorked}
-                            weekStart={startDateStr}
-                            weekEnd={endDateStr}
-                            isPaid={summary.isPaid}
-                            onPaymentChange={reloadData}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                            {/* Hoteles */}
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {summary.hotels.slice(0, 3).map((hotel) => (
+                                  <Badge key={hotel} className={`${getHotelColor(hotel)} text-xs`}>
+                                    {hotel}
+                                  </Badge>
+                                ))}
+                                {summary.hotels.length > 3 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{summary.hotels.length - 3}
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            {/* Estado */}
+                            <TableCell className="text-center">
+                              <Badge
+                                variant={summary.isPaid ? "default" : "outline"}
+                                className={`text-xs ${
+                                  summary.isPaid
+                                    ? "bg-green-100 text-green-800 border-green-300"
+                                    : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                }`}
+                              >
+                                {summary.isPaid ? (
+                                  <>
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Pagada
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    Pendiente
+                                  </>
+                                )}
+                              </Badge>
+                            </TableCell>
+
+                            {/* Acciones */}
+                            <TableCell className="text-center">
+                              <div className="flex gap-1 justify-center">
+                                {summary.isPaid ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      handlePaymentStatusChange(summary.employee.id, "pendiente", summary.totalAmount)
+                                    }
+                                    disabled={updatingPayment === summary.employee.id}
+                                    className="text-xs px-2 py-1 h-7"
+                                  >
+                                    {updatingPayment === summary.employee.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                        Pendiente
+                                      </>
+                                    )}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() =>
+                                      handlePaymentStatusChange(summary.employee.id, "pagado", summary.totalAmount)
+                                    }
+                                    disabled={updatingPayment === summary.employee.id || summary.daysWorked === 0}
+                                    className="text-xs px-2 py-1 h-7 bg-green-600 hover:bg-green-700"
+                                  >
+                                    {updatingPayment === summary.employee.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Pagar
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
 
@@ -666,10 +662,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                 <CardContent>
                   {loadingYearly ? (
                     <div className="flex justify-center items-center py-12">
-                      <div className="text-center">
-                        <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-                        <p className="text-muted-foreground">Cargando datos anuales...</p>
-                      </div>
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
                   ) : sortedHotels.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
@@ -721,7 +714,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                               📈 {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales
                             </div>
                           </div>
-                          <span className="text-2xl sm:text-3xl font-bold text-green-600">
+                          <span className="text-2xl font-bold text-green-600">
                             ${sortedHotels.reduce((sum, hotel) => sum + hotel.amount, 0).toLocaleString()}
                           </span>
                         </div>

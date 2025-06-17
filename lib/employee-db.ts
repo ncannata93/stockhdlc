@@ -5,6 +5,9 @@ import type { Employee, EmployeeAssignment, Hotel } from "./employee-types"
 import { HOTELS } from "./employee-types"
 import { useAuth } from "./auth-context"
 
+// Tipos de estado de pago
+export type PaymentStatus = "pendiente" | "pagado" | "vencido"
+
 // Singleton para el cliente de Supabase
 let supabaseClient: ReturnType<typeof createClient> | null = null
 
@@ -209,7 +212,7 @@ export const deleteAssignment = async (id: number): Promise<boolean> => {
   }
 }
 
-// Funciones para semanas pagadas - SIMPLIFICADAS
+// Funciones para semanas pagadas - SIMPLIFICADAS Y CON DEBUG
 export const getPaidWeeks = async (filters?: {
   employee_id?: number
   start_date?: string
@@ -252,6 +255,7 @@ export const getPaidWeeks = async (filters?: {
       employee_name: item.employees?.name,
     }))
 
+    console.log("✅ Semanas pagadas cargadas:", result.length)
     return result
   } catch (err) {
     console.error("❌ Error inesperado en getPaidWeeks:", err)
@@ -259,61 +263,114 @@ export const getPaidWeeks = async (filters?: {
   }
 }
 
-// NUEVA FUNCIÓN SIMPLIFICADA: Actualizar estado de pago
-export const updatePaymentStatus = async (
+// FUNCIÓN SIMPLIFICADA: Marcar como pagada
+export const markWeekAsPaid = async (
   employeeId: number,
   weekStart: string,
   weekEnd: string,
-  status: "pendiente" | "pagado" | "vencido",
   amount: number,
   notes?: string,
 ): Promise<boolean> => {
   const supabase = getSupabaseClient()
-  if (!supabase) return false
+  if (!supabase) {
+    console.error("❌ No hay cliente de Supabase")
+    return false
+  }
 
   try {
-    console.log("🔄 Actualizando estado de pago:", { employeeId, weekStart, weekEnd, status, amount })
+    console.log("🔄 Marcando semana como pagada:", { employeeId, weekStart, weekEnd, amount })
 
-    if (status === "pendiente") {
-      // Si es pendiente, eliminar el registro de paid_weeks
-      const { error } = await supabase
-        .from("paid_weeks")
-        .delete()
-        .eq("employee_id", employeeId)
-        .eq("week_start", weekStart)
-        .eq("week_end", weekEnd)
+    const { data, error } = await supabase.from("paid_weeks").upsert(
+      {
+        employee_id: employeeId,
+        week_start: weekStart,
+        week_end: weekEnd,
+        amount,
+        notes: notes || `Pago registrado el ${new Date().toLocaleDateString()}`,
+        paid_date: new Date().toISOString().split("T")[0],
+      },
+      { onConflict: "employee_id,week_start,week_end" },
+    )
 
-      if (error) {
-        console.error("❌ Error al marcar como pendiente:", error)
-        return false
-      }
-    } else {
-      // Si es pagado o vencido, crear/actualizar el registro
-      const { error } = await supabase.from("paid_weeks").upsert(
-        {
-          employee_id: employeeId,
-          week_start: weekStart,
-          week_end: weekEnd,
-          amount: amount,
-          status: status,
-          notes: notes || `Estado: ${status} - ${new Date().toLocaleDateString()}`,
-          paid_date: new Date().toISOString().split("T")[0],
-        },
-        {
-          onConflict: "employee_id,week_start,week_end",
-        },
-      )
-
-      if (error) {
-        console.error("❌ Error al actualizar estado:", error)
-        return false
-      }
+    if (error) {
+      console.error("❌ Error al marcar como pagada:", error)
+      return false
     }
 
-    console.log("✅ Estado actualizado exitosamente")
+    console.log("✅ Semana marcada como pagada exitosamente:", data)
     return true
   } catch (err) {
-    console.error("❌ Error inesperado:", err)
+    console.error("❌ Error inesperado al marcar como pagada:", err)
+    return false
+  }
+}
+
+// FUNCIÓN SIMPLIFICADA: Desmarcar como pagada
+export const unmarkWeekAsPaid = async (employeeId: number, weekStart: string, weekEnd: string): Promise<boolean> => {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    console.error("❌ No hay cliente de Supabase")
+    return false
+  }
+
+  try {
+    console.log("🔄 Desmarcando semana como pagada:", { employeeId, weekStart, weekEnd })
+
+    const { data, error } = await supabase
+      .from("paid_weeks")
+      .delete()
+      .eq("employee_id", employeeId)
+      .eq("week_start", weekStart)
+      .eq("week_end", weekEnd)
+
+    if (error) {
+      console.error("❌ Error al desmarcar como pagada:", error)
+      return false
+    }
+
+    console.log("✅ Semana desmarcada como pagada exitosamente:", data)
+    return true
+  } catch (err) {
+    console.error("❌ Error inesperado al desmarcar como pagada:", err)
+    return false
+  }
+}
+
+// FUNCIÓN PRINCIPAL: Actualizar estado de pago con logging detallado
+export const updatePaymentStatus = async (
+  employeeId: number,
+  weekStart: string,
+  weekEnd: string,
+  status: PaymentStatus,
+  amount: number,
+  notes?: string,
+): Promise<boolean> => {
+  console.log("🔄 INICIO updatePaymentStatus:", { employeeId, weekStart, weekEnd, status, amount })
+
+  try {
+    let result = false
+
+    switch (status) {
+      case "pagado":
+        console.log("💰 Ejecutando markWeekAsPaid...")
+        result = await markWeekAsPaid(employeeId, weekStart, weekEnd, amount, notes)
+        break
+
+      case "pendiente":
+      case "vencido":
+        console.log("⏰ Ejecutando unmarkWeekAsPaid...")
+        result = await unmarkWeekAsPaid(employeeId, weekStart, weekEnd)
+        break
+
+      default:
+        console.error("❌ Estado no válido:", status)
+        return false
+    }
+
+    console.log(`${result ? "✅" : "❌"} updatePaymentStatus resultado:`, result)
+    return result
+  } catch (error) {
+    console.error("❌ Error en updatePaymentStatus:", error)
     return false
   }
 }
@@ -372,7 +429,9 @@ export const useEmployeeDB = () => {
     addEmployeeAssignment,
     deleteAssignment,
     getPaidWeeks,
-    updatePaymentStatus, // Nueva función simplificada
+    markWeekAsPaid,
+    unmarkWeekAsPaid,
+    updatePaymentStatus,
     getHotels,
   }
 }
