@@ -70,6 +70,39 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
   return date >= weekStart && date <= weekEnd
 }
 
+// FUNCIÓN MEJORADA: Verifica si una fecha está dentro de cualquier rango de semana pagada
+const isDateInAnyPaidWeek = (date: string, paidWeeks: any[], employeeId: number): boolean => {
+  return paidWeeks.some((pw) => {
+    if (pw.employee_id !== employeeId) return false
+    return date >= pw.week_start && date <= pw.week_end
+  })
+}
+
+// FUNCIÓN MEJORADA: Verifica si una semana tiene solapamiento con semanas pagadas
+const hasWeekOverlapWithPaidWeeks = (
+  weekStart: string,
+  weekEnd: string,
+  paidWeeks: any[],
+  employeeId: number,
+): boolean => {
+  return paidWeeks.some((pw) => {
+    if (pw.employee_id !== employeeId) return false
+
+    // Verificar solapamiento: si hay cualquier día en común entre las dos semanas
+    const overlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
+
+    if (overlap) {
+      console.log(`🔍 SOLAPAMIENTO ENCONTRADO para empleado ${employeeId}:`, {
+        semana_actual: `${weekStart} al ${weekEnd}`,
+        semana_pagada: `${pw.week_start} al ${pw.week_end}`,
+        solapamiento: overlap,
+      })
+    }
+
+    return overlap
+  })
+}
+
 interface EmpleadosResumenProps {
   onStatsChange?: () => void
 }
@@ -248,30 +281,17 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
 
       const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
 
-      // Verificar si la semana está pagada
-      const isPaid = paidWeeks.some((pw) => {
-        const matches = pw.employee_id === employee.id && pw.week_start === startDateStr && pw.week_end === endDateStr
-
-        if (pw.employee_id === employee.id) {
-          console.log(`🔍 Verificando pago para ${employee.name}:`, {
-            empleado_id: employee.id,
-            semana_bd: `${pw.week_start} al ${pw.week_end}`,
-            semana_actual: `${startDateStr} al ${endDateStr}`,
-            coincide_empleado: pw.employee_id === employee.id,
-            coincide_inicio: pw.week_start === startDateStr,
-            coincide_fin: pw.week_end === endDateStr,
-            resultado_final: matches,
-          })
-        }
-
-        return matches
-      })
+      // NUEVA LÓGICA: Verificar si la semana tiene solapamiento con semanas pagadas
+      const isPaid = hasWeekOverlapWithPaidWeeks(startDateStr, endDateStr, paidWeeks, employee.id)
 
       console.log(`💰 Estado final para ${employee.name}:`, {
         isPaid,
         totalAmount,
         daysWorked,
         weekRange: `${startDateStr} al ${endDateStr}`,
+        semanasPagadasDelEmpleado: paidWeeks
+          .filter((pw) => pw.employee_id === employee.id)
+          .map((pw) => `${pw.week_start} al ${pw.week_end}`),
       })
 
       return {
