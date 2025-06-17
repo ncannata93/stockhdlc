@@ -36,23 +36,36 @@ export default function AccionesRapidas({
   const [loading, setLoading] = useState(false)
   const [paymentNotes, setPaymentNotes] = useState("")
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
+  // Estado local para controlar la UI mientras se procesa
+  const [localIsPaid, setLocalIsPaid] = useState(isPaid)
+  // Flag para evitar recargas automáticas durante operaciones
+  const [operationInProgress, setOperationInProgress] = useState(false)
 
-  // Add this useEffect after the state declarations
+  // Sincronizar el estado local con el prop cuando cambie (solo si no hay operación en progreso)
+  useEffect(() => {
+    if (!operationInProgress) {
+      setLocalIsPaid(isPaid)
+    }
+  }, [isPaid, operationInProgress])
+
   useEffect(() => {
     console.log("🔍 AccionesRapidas montado:", {
       employee: employee.name,
       isPaid,
+      localIsPaid,
+      operationInProgress,
       daysWorked,
       totalAmount,
       weekStart,
       weekEnd,
     })
-  }, [employee.name, isPaid, daysWorked, totalAmount, weekStart, weekEnd])
+  }, [employee.name, isPaid, localIsPaid, operationInProgress, daysWorked, totalAmount, weekStart, weekEnd])
 
   const handleMarkAsPaid = async () => {
-    if (loading || daysWorked === 0) return
+    if (loading || daysWorked === 0 || operationInProgress) return
 
     setLoading(true)
+    setOperationInProgress(true)
     console.log("🔄 Iniciando proceso de pago:", {
       employee: employee.name,
       employeeId: employee.id,
@@ -63,6 +76,9 @@ export default function AccionesRapidas({
     })
 
     try {
+      // Actualizar estado local inmediatamente para feedback visual
+      setLocalIsPaid(true)
+
       const success = await markWeekAsPaid(
         employee.id,
         weekStart,
@@ -81,12 +97,16 @@ export default function AccionesRapidas({
         setShowPaymentDialog(false)
         setPaymentNotes("")
 
-        // Esperar un momento antes de recargar para asegurar que la BD se actualice
+        // Esperar más tiempo antes de recargar y permitir actualizaciones
         setTimeout(() => {
           console.log("🔄 Recargando datos después del pago...")
+          setOperationInProgress(false)
           onPaymentChange()
-        }, 500)
+        }, 2000)
       } else {
+        // Revertir estado local si falló
+        setLocalIsPaid(false)
+        setOperationInProgress(false)
         console.error("❌ Error: markWeekAsPaid retornó false")
         toast({
           title: "❌ Error al registrar el pago",
@@ -95,6 +115,9 @@ export default function AccionesRapidas({
         })
       }
     } catch (error) {
+      // Revertir estado local si hubo error
+      setLocalIsPaid(false)
+      setOperationInProgress(false)
       console.error("❌ Error inesperado al marcar como pagada:", error)
       toast({
         title: "❌ Error inesperado",
@@ -107,22 +130,31 @@ export default function AccionesRapidas({
   }
 
   const handleMarkAsUnpaid = async () => {
-    if (loading) return
+    if (loading || operationInProgress) return
 
     if (!confirm(`¿Estás seguro de que deseas desmarcar la semana como pagada para ${employee.name}?`)) {
       return
     }
 
     setLoading(true)
-    console.log("🔄 Desmarcando semana como pagada:", {
+    setOperationInProgress(true)
+    console.log("🔄 INICIO - Desmarcando semana como pagada:", {
       employee: employee.name,
       employeeId: employee.id,
       weekStart,
       weekEnd,
+      isPaidAntes: isPaid,
+      localIsPaidAntes: localIsPaid,
     })
 
     try {
+      // Actualizar estado local inmediatamente para feedback visual
+      console.log("🎨 Actualizando estado local a false...")
+      setLocalIsPaid(false)
+
+      console.log("🔄 Llamando a unmarkWeekAsPaid...")
       const success = await unmarkWeekAsPaid(employee.id, weekStart, weekEnd)
+      console.log("📤 Resultado de unmarkWeekAsPaid:", success)
 
       if (success) {
         console.log("✅ Semana desmarcada exitosamente")
@@ -131,12 +163,18 @@ export default function AccionesRapidas({
           description: `Se removió el registro de pago para ${employee.name}`,
         })
 
-        // Esperar un momento antes de recargar
+        // Esperar más tiempo antes de recargar y permitir actualizaciones
+        console.log("⏳ Esperando 3 segundos antes de recargar...")
         setTimeout(() => {
-          console.log("🔄 Recargando datos después de desmarcar...")
+          console.log("🔄 Iniciando recarga de datos...")
+          setOperationInProgress(false)
           onPaymentChange()
-        }, 500)
+        }, 3000)
       } else {
+        // Revertir estado local si falló
+        console.log("❌ Revirtiendo estado local a true...")
+        setLocalIsPaid(true)
+        setOperationInProgress(false)
         console.error("❌ Error: unmarkWeekAsPaid retornó false")
         toast({
           title: "❌ Error al desmarcar",
@@ -145,6 +183,10 @@ export default function AccionesRapidas({
         })
       }
     } catch (error) {
+      // Revertir estado local si hubo error
+      console.log("❌ Revirtiendo estado local por error...")
+      setLocalIsPaid(true)
+      setOperationInProgress(false)
       console.error("❌ Error inesperado al desmarcar:", error)
       toast({
         title: "❌ Error inesperado",
@@ -152,6 +194,7 @@ export default function AccionesRapidas({
         variant: "destructive",
       })
     } finally {
+      console.log("🏁 Finalizando handleMarkAsUnpaid, loading = false")
       setLoading(false)
     }
   }
@@ -169,11 +212,12 @@ export default function AccionesRapidas({
     }
   }
 
-  // Add this function before the return statement
   const handleButtonClick = () => {
     console.log("🔘 Botón de pago clickeado:", {
       employee: employee.name,
       isPaid,
+      localIsPaid,
+      operationInProgress,
       daysWorked,
       totalAmount,
       loading,
@@ -184,8 +228,8 @@ export default function AccionesRapidas({
       return
     }
 
-    if (loading) {
-      console.log("⚠️ No se puede procesar: ya está cargando")
+    if (loading || operationInProgress) {
+      console.log("⚠️ No se puede procesar: ya está cargando o hay operación en progreso")
       return
     }
 
@@ -193,10 +237,16 @@ export default function AccionesRapidas({
     setShowPaymentDialog(true)
   }
 
-  // Debug info
+  // Usar el estado local durante operaciones, sino usar el prop
+  const displayIsPaid = operationInProgress ? localIsPaid : isPaid
+
   console.log("🔍 AccionesRapidas - Estado actual:", {
     employee: employee.name,
     isPaid,
+    localIsPaid,
+    displayIsPaid,
+    operationInProgress,
+    loading,
     weekStart,
     weekEnd,
     totalAmount,
@@ -209,6 +259,11 @@ export default function AccionesRapidas({
         <CardTitle className="flex items-center gap-2 text-lg">
           <User className="h-5 w-5 text-blue-600" />
           {employee.name}
+          {operationInProgress && (
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+              Procesando...
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -251,7 +306,7 @@ export default function AccionesRapidas({
           {/* Estado de pago */}
           <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
             <div className="flex items-center gap-2">
-              {isPaid ? (
+              {displayIsPaid ? (
                 <CheckCircle className="h-5 w-5 text-green-600" />
               ) : (
                 <Clock className="h-5 w-5 text-yellow-600" />
@@ -259,30 +314,39 @@ export default function AccionesRapidas({
               <span className="font-medium">Estado del pago</span>
             </div>
             <Badge
-              variant={isPaid ? "default" : "outline"}
+              variant={displayIsPaid ? "default" : "outline"}
               className={`${
-                isPaid
+                displayIsPaid
                   ? "bg-green-100 text-green-800 border-green-300"
                   : "bg-yellow-100 text-yellow-800 border-yellow-300"
               }`}
             >
-              {isPaid ? "✅ Pagada" : "⏰ Pendiente"}
+              {displayIsPaid ? "✅ Pagada" : "⏰ Pendiente"}
             </Badge>
           </div>
         </div>
 
         {/* Acciones */}
         <div className="space-y-2 pt-2 border-t">
-          {!isPaid ? (
+          {!displayIsPaid ? (
             <>
               <Button
                 className="w-full bg-green-600 hover:bg-green-700"
                 size="lg"
-                disabled={daysWorked === 0 || loading}
+                disabled={daysWorked === 0 || loading || operationInProgress}
                 onClick={handleButtonClick}
               >
-                <CreditCard className="h-4 w-4 mr-2" />
-                Marcar como Pagada
+                {loading || operationInProgress ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Marcar como Pagada
+                  </>
+                )}
               </Button>
 
               <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
@@ -331,16 +395,16 @@ export default function AccionesRapidas({
                         variant="outline"
                         onClick={() => setShowPaymentDialog(false)}
                         className="flex-1"
-                        disabled={loading}
+                        disabled={loading || operationInProgress}
                       >
                         Cancelar
                       </Button>
                       <Button
                         onClick={handleMarkAsPaid}
-                        disabled={loading}
+                        disabled={loading || operationInProgress}
                         className="flex-1 bg-green-600 hover:bg-green-700"
                       >
-                        {loading ? (
+                        {loading || operationInProgress ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Procesando...
@@ -358,14 +422,14 @@ export default function AccionesRapidas({
             <Button
               variant="outline"
               onClick={handleMarkAsUnpaid}
-              disabled={loading}
+              disabled={loading || operationInProgress}
               className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50"
               size="lg"
             >
-              {loading ? (
+              {loading || operationInProgress ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Procesando...
+                  {operationInProgress ? "Desmarcando..." : "Procesando..."}
                 </>
               ) : (
                 <>

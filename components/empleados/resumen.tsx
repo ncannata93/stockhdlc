@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { parseISO, startOfYear, endOfYear, addWeeks, subWeeks, startOfWeek } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -70,14 +70,6 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
   return date >= weekStart && date <= weekEnd
 }
 
-// FUNCIÓN MEJORADA: Verifica si una fecha está dentro de cualquier rango de semana pagada
-const isDateInAnyPaidWeek = (date: string, paidWeeks: any[], employeeId: number): boolean => {
-  return paidWeeks.some((pw) => {
-    if (pw.employee_id !== employeeId) return false
-    return date >= pw.week_start && date <= pw.week_end
-  })
-}
-
 // FUNCIÓN MEJORADA: Verifica si una semana tiene solapamiento con semanas pagadas
 const hasWeekOverlapWithPaidWeeks = (
   weekStart: string,
@@ -92,8 +84,8 @@ const hasWeekOverlapWithPaidWeeks = (
     const overlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
 
     if (overlap) {
-      console.log(`🔍 SOLAPAMIENTO ENCONTRADO para empleado ${employeeId}:`, {
-        semana_actual: `${weekStart} al ${weekEnd}`,
+      console.log(`🔍 SOLAPAMIENTO ENCONTRADO en Resumen para empleado ${employeeId}:`, {
+        semana_calculada: `${weekStart} al ${weekEnd}`,
         semana_pagada: `${pw.week_start} al ${pw.week_end}`,
         solapamiento: overlap,
       })
@@ -123,6 +115,10 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     return monday.toISOString().split("T")[0]
   })
   const [activeTab, setActiveTab] = useState("semanal")
+  // Agregar un timestamp para forzar re-renders
+  const [lastUpdate, setLastUpdate] = useState(Date.now())
+  // Ref para evitar múltiples recargas simultáneas
+  const reloadInProgress = useRef(false)
 
   const startDate = parseISO(selectedWeek)
   const endDate = new Date(startDate)
@@ -151,8 +147,8 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     setSelectedWeek(monday.toISOString().split("T")[0])
   }
 
-  const loadData = async () => {
-    console.log("🔄 Cargando datos del resumen...")
+  const loadData = async (forceRefresh = false) => {
+    console.log("🔄 Cargando datos del resumen...", forceRefresh ? "(forzado)" : "")
     setLoading(true)
     try {
       const employeesData = await getEmployees()
@@ -173,6 +169,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       console.log("📊 Asignaciones filtradas:", finalAssignments.length)
       setAssignments(finalAssignments)
 
+      // Siempre recargar las semanas pagadas para obtener el estado más reciente
       const paidWeeksData = await getPaidWeeks({})
       console.log("💰 Semanas pagadas cargadas:", paidWeeksData.length)
 
@@ -187,10 +184,17 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
         })
       })
 
-      console.log("🔍 DEBUGGING - Semana actual que estamos verificando:")
+      console.log("🔍 DEBUGGING RESUMEN - Semana actual que estamos verificando:")
       console.log(`  📅 Rango: ${startDateStr} al ${endDateStr}`)
+      console.log(
+        `  📊 Empleados con asignaciones en esta semana:`,
+        finalAssignments.map((a) => a.employee_name).filter((name, index, arr) => arr.indexOf(name) === index),
+      )
 
       setPaidWeeks(paidWeeksData)
+
+      // Actualizar timestamp para forzar re-render
+      setLastUpdate(Date.now())
     } catch (error) {
       console.error("❌ Error cargando datos:", error)
     } finally {
@@ -284,7 +288,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       // NUEVA LÓGICA: Verificar si la semana tiene solapamiento con semanas pagadas
       const isPaid = hasWeekOverlapWithPaidWeeks(startDateStr, endDateStr, paidWeeks, employee.id)
 
-      console.log(`💰 Estado final para ${employee.name}:`, {
+      console.log(`💰 RESUMEN - Estado final para ${employee.name} (${lastUpdate}):`, {
         isPaid,
         totalAmount,
         daysWorked,
@@ -344,24 +348,85 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   const maxAmount = sortedHotels.length > 0 ? sortedHotels[0].amount : 0
 
   const reloadData = async () => {
-    console.log("🔄 Recargando datos después de cambio de pago...")
-    setRefreshing(true)
-    try {
-      await loadData()
-      console.log("✅ Datos recargados exitosamente")
+    // Evitar múltiples recargas simultáneas
+    if (reloadInProgress.current) {
+      console.log("⚠️ Recarga ya en progreso, ignorando...")
+      return
+    }
 
-      // IMPORTANTE: Notificar al componente padre que las estadísticas han cambiado
-      console.log("📊 Notificando cambio de estadísticas al componente padre...")
+    reloadInProgress.current = true
+    console.log("🔄 INICIO - Recargando datos después de cambio de pago...")
+    setRefreshing(true)
+
+    try {
+      // Esperar un momento para que la BD procese los cambios
+      console.log("⏳ Esperando 2 segundos para sincronización...")
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      // Limpiar estados antes de recargar
+      console.log("🧹 Limpiando estados...")
+      setPaidWeeks([])
+      setAssignments([])
+
+      // Recargar empleados
+      const employeesData = await getEmployees()
+      console.log("📊 Empleados recargados:", employeesData.length)
+      setEmployees(employeesData)
+
+      // Recargar asignaciones
+      const allAssignmentsData = await getAssignments({})
+      const filteredAssignments = allAssignmentsData.filter((assignment) => {
+        const assignmentDate = assignment.assignment_date
+        return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
+      })
+
+      let finalAssignments = filteredAssignments
+      if (selectedEmployee !== "todos") {
+        finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
+      }
+
+      console.log("📊 Asignaciones recargadas:", finalAssignments.length)
+      setAssignments(finalAssignments)
+
+      // CRÍTICO: Recargar semanas pagadas con logging detallado
+      console.log("💰 RECARGANDO semanas pagadas...")
+      const paidWeeksData = await getPaidWeeks({})
+      console.log("💰 Semanas pagadas RECARGADAS:", paidWeeksData.length)
+
+      // Log detallado de las semanas pagadas
+      console.log("🔍 DESPUÉS DE RECARGAR - Semanas pagadas por empleado:")
+      const employeesPaidWeeks = {}
+      paidWeeksData.forEach((pw) => {
+        if (!employeesPaidWeeks[pw.employee_id]) {
+          employeesPaidWeeks[pw.employee_id] = []
+        }
+        employeesPaidWeeks[pw.employee_id].push(`${pw.week_start} al ${pw.week_end}`)
+      })
+
+      Object.entries(employeesPaidWeeks).forEach(([empId, weeks]) => {
+        const emp = employeesData.find((e) => e.id.toString() === empId)
+        console.log(`  👤 ${emp?.name || "ID:" + empId}: ${weeks.join(", ")}`)
+      })
+
+      setPaidWeeks(paidWeeksData)
+
+      // Forzar actualización del timestamp
+      const newTimestamp = Date.now()
+      console.log("🕐 Actualizando timestamp:", newTimestamp)
+      setLastUpdate(newTimestamp)
+
+      console.log("✅ ÉXITO - Datos recargados completamente")
+
+      // Notificar al componente padre
       if (onStatsChange) {
+        console.log("📊 Ejecutando callback onStatsChange...")
         onStatsChange()
-        console.log("✅ Callback onStatsChange ejecutado")
-      } else {
-        console.log("⚠️ No hay callback onStatsChange disponible")
       }
     } catch (error) {
       console.error("❌ Error recargando datos:", error)
     } finally {
       setRefreshing(false)
+      reloadInProgress.current = false
     }
   }
 
@@ -381,7 +446,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
               variant="outline"
               size="sm"
               onClick={reloadData}
-              disabled={refreshing}
+              disabled={refreshing || reloadInProgress.current}
               className="flex items-center gap-2"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -467,7 +532,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
               ) : (
                 <div className="space-y-4">
                   {employeeSummary.map((summary) => (
-                    <Card key={summary.employee.id} className="overflow-hidden">
+                    <Card key={`${summary.employee.id}-${lastUpdate}`} className="overflow-hidden">
                       {/* Header del empleado - Móvil optimizado */}
                       <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 pb-3">
                         <div className="space-y-3">

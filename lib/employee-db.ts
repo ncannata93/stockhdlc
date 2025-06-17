@@ -308,24 +308,68 @@ export const unmarkWeekAsPaid = async (employeeId: number, weekStart: string, we
   if (!supabase) return false
 
   try {
-    console.log("🔄 Desmarcando semana como pagada:", { employeeId, weekStart, weekEnd })
+    console.log("🔄 INICIO - Desmarcando semana como pagada:", { employeeId, weekStart, weekEnd })
 
-    const { error } = await supabase
+    // Primero verificar qué registros existen ANTES de eliminar
+    const { data: beforeRecords, error: beforeError } = await supabase
+      .from("paid_weeks")
+      .select("*")
+      .eq("employee_id", employeeId)
+      .eq("week_start", weekStart)
+      .eq("week_end", weekEnd)
+
+    if (beforeError) {
+      console.error("❌ Error verificando registros ANTES de eliminar:", beforeError)
+      return false
+    }
+
+    console.log(`📋 ANTES: ${beforeRecords?.length || 0} registro(s) encontrado(s):`, beforeRecords)
+
+    if (!beforeRecords || beforeRecords.length === 0) {
+      console.log("⚠️ No se encontró registro para desmarcar - ya está pendiente")
+      return true
+    }
+
+    // Eliminar todos los registros que coincidan
+    const { data: deleteData, error: deleteError } = await supabase
       .from("paid_weeks")
       .delete()
       .eq("employee_id", employeeId)
       .eq("week_start", weekStart)
       .eq("week_end", weekEnd)
+      .select()
 
-    if (error) {
-      console.error("❌ Error al desmarcar:", error)
+    if (deleteError) {
+      console.error("❌ Error al eliminar registros:", deleteError)
       return false
     }
 
-    console.log("✅ Semana desmarcada exitosamente")
+    console.log("🗑️ Registros eliminados:", deleteData)
+
+    // Verificar que se eliminó correctamente DESPUÉS
+    const { data: afterRecords, error: afterError } = await supabase
+      .from("paid_weeks")
+      .select("*")
+      .eq("employee_id", employeeId)
+      .eq("week_start", weekStart)
+      .eq("week_end", weekEnd)
+
+    if (afterError) {
+      console.error("❌ Error verificando registros DESPUÉS de eliminar:", afterError)
+      return false
+    }
+
+    console.log(`📋 DESPUÉS: ${afterRecords?.length || 0} registro(s) restantes:`, afterRecords)
+
+    if (afterRecords && afterRecords.length > 0) {
+      console.error("❌ FALLO: Aún quedan registros después de eliminar")
+      return false
+    }
+
+    console.log("✅ ÉXITO: Semana desmarcada correctamente")
     return true
   } catch (err) {
-    console.error("❌ Error inesperado:", err)
+    console.error("❌ Error inesperado en unmarkWeekAsPaid:", err)
     return false
   }
 }
