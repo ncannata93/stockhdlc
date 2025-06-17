@@ -305,8 +305,13 @@ export const markWeekAsPaid = async (
   }
 }
 
-// FUNCIÓN SIMPLIFICADA: Desmarcar como pagada
-export const unmarkWeekAsPaid = async (employeeId: number, weekStart: string, weekEnd: string): Promise<boolean> => {
+// FUNCIÓN MEJORADA: Marcar como pendiente (crear registro explícito)
+export const markWeekAsPending = async (
+  employeeId: number,
+  weekStart: string,
+  weekEnd: string,
+  notes?: string,
+): Promise<boolean> => {
   const supabase = getSupabaseClient()
   if (!supabase) {
     console.error("❌ No hay cliente de Supabase")
@@ -314,7 +319,48 @@ export const unmarkWeekAsPaid = async (employeeId: number, weekStart: string, we
   }
 
   try {
-    console.log("🔄 Desmarcando semana como pagada:", { employeeId, weekStart, weekEnd })
+    console.log("🔄 Marcando semana como PENDIENTE (registro explícito):", { employeeId, weekStart, weekEnd })
+
+    // Crear registro especial con amount=0 para indicar "explícitamente pendiente"
+    const { data, error } = await supabase.from("paid_weeks").upsert(
+      {
+        employee_id: employeeId,
+        week_start: weekStart,
+        week_end: weekEnd,
+        amount: 0, // ⭐ CLAVE: amount=0 indica "explícitamente pendiente"
+        notes: notes || `⏰ PENDIENTE EXPLÍCITO - Marcado el ${new Date().toLocaleDateString()}`,
+        paid_date: new Date().toISOString().split("T")[0],
+      },
+      { onConflict: "employee_id,week_start,week_end" },
+    )
+
+    if (error) {
+      console.error("❌ Error al marcar como pendiente:", error)
+      return false
+    }
+
+    console.log("✅ Semana marcada como PENDIENTE EXPLÍCITO exitosamente:", data)
+    return true
+  } catch (err) {
+    console.error("❌ Error inesperado al marcar como pendiente:", err)
+    return false
+  }
+}
+
+// FUNCIÓN SIMPLIFICADA: Desmarcar completamente (eliminar registro)
+export const unmarkWeekCompletely = async (
+  employeeId: number,
+  weekStart: string,
+  weekEnd: string,
+): Promise<boolean> => {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    console.error("❌ No hay cliente de Supabase")
+    return false
+  }
+
+  try {
+    console.log("🔄 Eliminando registro completamente:", { employeeId, weekStart, weekEnd })
 
     const { data, error } = await supabase
       .from("paid_weeks")
@@ -324,19 +370,19 @@ export const unmarkWeekAsPaid = async (employeeId: number, weekStart: string, we
       .eq("week_end", weekEnd)
 
     if (error) {
-      console.error("❌ Error al desmarcar como pagada:", error)
+      console.error("❌ Error al eliminar registro:", error)
       return false
     }
 
-    console.log("✅ Semana desmarcada como pagada exitosamente:", data)
+    console.log("✅ Registro eliminado completamente:", data)
     return true
   } catch (err) {
-    console.error("❌ Error inesperado al desmarcar como pagada:", err)
+    console.error("❌ Error inesperado al eliminar registro:", err)
     return false
   }
 }
 
-// FUNCIÓN PRINCIPAL: Actualizar estado de pago con logging detallado
+// FUNCIÓN PRINCIPAL MEJORADA: Actualizar estado de pago
 export const updatePaymentStatus = async (
   employeeId: number,
   weekStart: string,
@@ -357,9 +403,13 @@ export const updatePaymentStatus = async (
         break
 
       case "pendiente":
+        console.log("⏰ Ejecutando markWeekAsPending (registro explícito)...")
+        result = await markWeekAsPending(employeeId, weekStart, weekEnd, notes)
+        break
+
       case "vencido":
-        console.log("⏰ Ejecutando unmarkWeekAsPaid...")
-        result = await unmarkWeekAsPaid(employeeId, weekStart, weekEnd)
+        console.log("⚠️ Ejecutando markWeekAsPending para vencido...")
+        result = await markWeekAsPending(employeeId, weekStart, weekEnd, `⚠️ VENCIDO - ${notes}`)
         break
 
       default:
@@ -430,7 +480,8 @@ export const useEmployeeDB = () => {
     deleteAssignment,
     getPaidWeeks,
     markWeekAsPaid,
-    unmarkWeekAsPaid,
+    markWeekAsPending,
+    unmarkWeekCompletely,
     updatePaymentStatus,
     getHotels,
   }

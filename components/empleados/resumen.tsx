@@ -72,7 +72,7 @@ const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): bo
   return date >= weekStart && date <= weekEnd
 }
 
-// FUNCIÓN CON DEBUGGING SÚPER DETALLADO
+// FUNCIÓN MEJORADA: Verifica estado con prioridad a decisiones explícitas
 const hasSignificantWeekOverlap = (
   weekStart: string,
   weekEnd: string,
@@ -98,18 +98,29 @@ const hasSignificantWeekOverlap = (
   // PASO 1: Buscar registro EXACTO
   const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
   if (exactMatch) {
-    console.log(`  🎯 ✅ REGISTRO EXACTO ENCONTRADO:`)
-    console.log(`     Semana: ${exactMatch.week_start} al ${exactMatch.week_end}`)
-    console.log(`     Monto: $${exactMatch.amount}`)
-    console.log(`     Fecha pago: ${exactMatch.paid_date}`)
-    console.log(`  📊 RESULTADO FINAL: PAGADO (registro exacto)`)
-    console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
-    return true
+    // ⭐ NUEVA LÓGICA: Si amount=0, es "pendiente explícito"
+    if (exactMatch.amount === 0) {
+      console.log(`  🚫 REGISTRO EXPLÍCITO DE PENDIENTE ENCONTRADO:`)
+      console.log(`     Semana: ${exactMatch.week_start} al ${exactMatch.week_end}`)
+      console.log(`     Monto: $${exactMatch.amount} (PENDIENTE EXPLÍCITO)`)
+      console.log(`     Notas: ${exactMatch.notes}`)
+      console.log(`  📊 RESULTADO FINAL: PENDIENTE (decisión explícita del usuario)`)
+      console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
+      return false
+    } else {
+      console.log(`  🎯 ✅ REGISTRO EXACTO ENCONTRADO:`)
+      console.log(`     Semana: ${exactMatch.week_start} al ${exactMatch.week_end}`)
+      console.log(`     Monto: $${exactMatch.amount}`)
+      console.log(`     Fecha pago: ${exactMatch.paid_date}`)
+      console.log(`  📊 RESULTADO FINAL: PAGADO (registro exacto)`)
+      console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
+      return true
+    }
   } else {
     console.log(`  ❌ NO hay registro exacto para ${weekStart} al ${weekEnd}`)
   }
 
-  // PASO 2: Analizar cada semana pagada para solapamientos
+  // PASO 2: Analizar solapamientos solo si no hay decisión explícita
   console.log(`  🔍 Analizando solapamientos con cada semana pagada:`)
 
   const significantOverlaps = []
@@ -119,6 +130,14 @@ const hasSignificantWeekOverlap = (
     // Evitar el registro exacto que ya verificamos
     if (pw.week_start === weekStart && pw.week_end === weekEnd) {
       console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end} → EXACTO (ya verificado)`)
+      return
+    }
+
+    // Ignorar registros de "pendiente explícito" (amount=0) para solapamientos
+    if (pw.amount === 0) {
+      console.log(
+        `    ${index + 1}. ${pw.week_start} al ${pw.week_end} → PENDIENTE EXPLÍCITO (ignorado para solapamientos)`,
+      )
       return
     }
 
@@ -206,6 +225,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   const [activeTab, setActiveTab] = useState("semanal")
   const [lastUpdate, setLastUpdate] = useState(Date.now())
   const reloadInProgress = useRef(false)
+  const updatingState = useRef(false) // NUEVO: Controlar actualizaciones de estado
 
   const startDate = parseISO(selectedWeek)
   const endDate = new Date(startDate)
@@ -273,6 +293,11 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   }
 
   useEffect(() => {
+    // 🚫 NO recargar si estamos actualizando estado
+    if (updatingState.current) {
+      console.log("⏸️ Saltando useEffect - actualización de estado en progreso")
+      return
+    }
     loadData()
   }, [selectedEmployee, selectedWeek, startDateStr, endDateStr])
 
@@ -331,10 +356,15 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     }
 
     const employeeName = employees.find((e) => e.id === employeeId)?.name || `ID-${employeeId}`
+
     console.log(`🔄 ===== INICIO CAMBIO DE ESTADO PARA ${employeeName.toUpperCase()} =====`)
     console.log(`📊 Datos del cambio:`, { employeeId, employeeName, newStatus, amount, startDateStr, endDateStr })
+    console.log(`🔒 Semana actual preservada: ${selectedWeek}`)
 
+    // 🔒 BLOQUEAR useEffect durante la actualización
+    updatingState.current = true
     setUpdatingPayment(employeeId)
+
     try {
       const success = await updatePaymentStatus(
         employeeId,
@@ -353,15 +383,35 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           description: `${employeeName}: Semana marcada como ${newStatus}`,
         })
 
-        // Esperar un momento y recargar datos
-        console.log(`🔄 Recargando datos después del cambio para ${employeeName}...`)
-        setTimeout(async () => {
-          await loadData(true)
-          if (onStatsChange) {
-            console.log("📊 Ejecutando callback onStatsChange...")
-            onStatsChange()
-          }
-        }, 500)
+        // 🔄 RECARGA MANUAL SIN TRIGGERAR useEffect
+        console.log(`🔄 Recargando datos manualmente para ${employeeName}...`)
+
+        const employeesData = await getEmployees()
+        const allAssignmentsData = await getAssignments({})
+        const filteredAssignments = allAssignmentsData.filter((assignment) => {
+          const assignmentDate = assignment.assignment_date
+          return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
+        })
+
+        let finalAssignments = filteredAssignments
+        if (selectedEmployee !== "todos") {
+          finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
+        }
+
+        const paidWeeksData = await getPaidWeeks({})
+
+        // 🔄 ACTUALIZAR ESTADO SIN TRIGGERAR useEffect
+        setEmployees(employeesData)
+        setAssignments(finalAssignments)
+        setPaidWeeks(paidWeeksData)
+        setLastUpdate(Date.now())
+
+        if (onStatsChange) {
+          console.log("📊 Ejecutando callback onStatsChange...")
+          onStatsChange()
+        }
+
+        console.log(`✅ Datos actualizados SIN cambiar la semana ${selectedWeek}`)
       } else {
         console.error(`❌ updatePaymentStatus retornó false para ${employeeName}`)
         toast({
@@ -378,6 +428,8 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
         variant: "destructive",
       })
     } finally {
+      // 🔓 DESBLOQUEAR useEffect
+      updatingState.current = false
       setUpdatingPayment(null)
       console.log(`🔄 ===== FIN CAMBIO DE ESTADO PARA ${employeeName.toUpperCase()} =====\n`)
     }
@@ -472,10 +524,14 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     reloadInProgress.current = true
     setRefreshing(true)
 
+    console.log(`🔄 Recarga manual - Semana actual: ${selectedWeek}`)
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await new Promise((resolve) => setTimeout(resolve, 500))
       await loadData(true)
+
       if (onStatsChange) onStatsChange()
+      console.log(`✅ Recarga completada manteniendo semana ${selectedWeek}`)
     } catch (error) {
       console.error("❌ Error recargando datos:", error)
     } finally {
