@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
-import { startOfWeek, endOfWeek, subWeeks, format } from "date-fns"
+import { startOfWeek, subWeeks, format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
 interface EmpleadosInicioProps {
@@ -187,9 +187,11 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       allRecentAssignments.forEach((assignment) => {
         const assignmentDate = new Date(assignment.assignment_date)
 
-        // 🔧 USAR EXACTAMENTE LA MISMA LÓGICA QUE EN RESUMEN
+        // 🔧 CRÍTICO: Usar exactamente la misma lógica que en Resumen
+        // Calcular el lunes de la semana (inicio) y el domingo siguiente (fin)
         const weekStart = startOfWeek(assignmentDate, { weekStartsOn: 1 }) // 1 = Lunes
-        const weekEnd = endOfWeek(assignmentDate, { weekStartsOn: 1 })
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekStart.getDate() + 6) // Lunes + 6 días = Domingo
 
         const weekStartStr = weekStart.toISOString().split("T")[0]
         const weekEndStr = weekEnd.toISOString().split("T")[0]
