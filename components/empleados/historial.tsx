@@ -196,6 +196,7 @@ export default function EmpleadosHistorial() {
                   <TableHead>Fecha</TableHead>
                   <TableHead>Empleado</TableHead>
                   <TableHead>Hotel</TableHead>
+                  <TableHead>Tarifa Histórica</TableHead>
                   <TableHead>Notas</TableHead>
                   <TableHead>Creado por</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
@@ -209,6 +210,9 @@ export default function EmpleadosHistorial() {
                     </TableCell>
                     <TableCell>{assignment.employee_name}</TableCell>
                     <TableCell>{assignment.hotel_name}</TableCell>
+                    <TableCell className="font-mono text-green-600">
+                      ${assignment.daily_rate_used?.toLocaleString() || 0}
+                    </TableCell>
                     <TableCell className="max-w-[120px] truncate text-sm" title={assignment.notes || "-"}>
                       {assignment.notes || "-"}
                     </TableCell>

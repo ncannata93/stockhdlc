@@ -144,28 +144,42 @@ export const saveAssignment = async (
   try {
     let dailyRateUsed = assignment.daily_rate_used
 
-    if (dailyRateUsed === undefined && assignment.employee_id) {
+    // 🔒 SOLO obtener la tarifa actual si es una NUEVA asignación Y no se especificó una tarifa
+    if (dailyRateUsed === undefined && assignment.employee_id && !assignment.id) {
+      console.log("📊 Nueva asignación: obteniendo tarifa actual del empleado")
       const { data: employeeData, error: employeeError } = await supabase
         .from("employees")
         .select("daily_rate")
         .eq("id", assignment.employee_id)
         .single()
 
-      if (employeeError) return null
+      if (employeeError) {
+        console.error("❌ Error al obtener tarifa del empleado:", employeeError)
+        return null
+      }
       dailyRateUsed = employeeData.daily_rate
+      console.log(`💰 Tarifa histórica guardada: $${dailyRateUsed}`)
     }
 
     if (assignment.id) {
+      // 🔒 ACTUALIZACIÓN: NO cambiar daily_rate_used, mantener el histórico
+      const updateData: any = {
+        employee_id: assignment.employee_id,
+        hotel_name: assignment.hotel_name,
+        assignment_date: assignment.assignment_date,
+        notes: assignment.notes,
+        created_by: username,
+      }
+
+      // ⚠️ SOLO actualizar daily_rate_used si se proporciona explícitamente
+      if (assignment.daily_rate_used !== undefined) {
+        updateData.daily_rate_used = assignment.daily_rate_used
+        console.log(`⚠️ Actualizando tarifa histórica explícitamente: $${assignment.daily_rate_used}`)
+      }
+
       const { data, error } = await supabase
         .from("employee_assignments")
-        .update({
-          employee_id: assignment.employee_id,
-          hotel_name: assignment.hotel_name,
-          assignment_date: assignment.assignment_date,
-          daily_rate_used: dailyRateUsed,
-          notes: assignment.notes,
-          created_by: username,
-        })
+        .update(updateData)
         .eq("id", assignment.id)
         .select(`
           *,
@@ -173,16 +187,20 @@ export const saveAssignment = async (
         `)
         .single()
 
-      if (error) return null
+      if (error) {
+        console.error("❌ Error al actualizar asignación:", error)
+        return null
+      }
       return { ...data, employee_name: data.employees?.name }
     } else {
+      // 🆕 NUEVA ASIGNACIÓN: Siempre guardar la tarifa histórica
       const { data, error } = await supabase
         .from("employee_assignments")
         .insert({
           employee_id: assignment.employee_id,
           hotel_name: assignment.hotel_name,
           assignment_date: assignment.assignment_date,
-          daily_rate_used: dailyRateUsed,
+          daily_rate_used: dailyRateUsed, // 🔒 Tarifa histórica fija
           notes: assignment.notes,
           created_by: username,
         })
@@ -192,10 +210,16 @@ export const saveAssignment = async (
         `)
         .single()
 
-      if (error) return null
+      if (error) {
+        console.error("❌ Error al crear asignación:", error)
+        return null
+      }
+
+      console.log(`✅ Asignación creada con tarifa histórica: $${dailyRateUsed}`)
       return { ...data, employee_name: data.employees?.name }
     }
   } catch (err) {
+    console.error("❌ Error inesperado en saveAssignment:", err)
     return null
   }
 }

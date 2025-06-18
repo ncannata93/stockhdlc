@@ -115,23 +115,26 @@ export default function EmpleadosAgregar() {
       const dividedRate = Math.round(employee.daily_rate / formData.hotel_names.length)
       const assignmentDate = formData.assignment_date
 
-      console.log(`Empleado: ${employee.name}`)
-      console.log(`Tarifa diaria original: ${employee.daily_rate}`)
-      console.log(`Número de hoteles: ${formData.hotel_names.length}`)
-      console.log(`Tarifa dividida calculada: ${dividedRate}`)
-      console.log(`Hoteles seleccionados: ${formData.hotel_names.join(", ")}`)
+      console.log(`📊 TARIFA HISTÓRICA - Empleado: ${employee.name}`)
+      console.log(`💰 Tarifa diaria original: $${employee.daily_rate}`)
+      console.log(`🏨 Número de hoteles: ${formData.hotel_names.length}`)
+      console.log(`🔒 Tarifa dividida FIJA: $${dividedRate}`)
+      console.log(`📅 Fecha: ${assignmentDate}`)
 
       // Crear una asignación por cada hotel seleccionado con la tarifa ya dividida
       const promises = formData.hotel_names.map((hotelName, index) => {
-        console.log(`Creando asignación ${index + 1} para hotel: ${hotelName} con tarifa: ${dividedRate}`)
+        console.log(`🆕 Creando asignación ${index + 1}/${formData.hotel_names.length}:`)
+        console.log(`   🏨 Hotel: ${hotelName}`)
+        console.log(`   💰 Tarifa histórica: $${dividedRate}`)
+
         return saveAssignment({
           employee_id: Number.parseInt(formData.employee_id),
           hotel_name: hotelName,
           assignment_date: assignmentDate,
-          daily_rate_used: dividedRate, // IMPORTANTE: Pasar la tarifa ya dividida
+          daily_rate_used: dividedRate, // 🔒 CRÍTICO: Tarifa histórica fija
           notes: formData.notes
-            ? `${formData.notes} | Tarifa dividida entre ${formData.hotel_names.length} hoteles`
-            : `Tarifa dividida entre ${formData.hotel_names.length} hoteles`,
+            ? `${formData.notes} | Tarifa histórica: $${dividedRate} (dividida entre ${formData.hotel_names.length} hoteles)`
+            : `Tarifa histórica: $${dividedRate} (dividida entre ${formData.hotel_names.length} hoteles el ${new Date().toLocaleDateString()})`,
         })
       })
 
