@@ -38,7 +38,7 @@ interface PendingPaymentDetail {
   paidDate?: string
 }
 
-// 🎯 FUNCIÓN UNIFICADA: Exactamente igual que en Resumen
+// 🎯 FUNCIÓN CORREGIDA: Detecta solapamientos correctamente
 const hasSignificantWeekOverlap = (
   weekStart: string,
   weekEnd: string,
@@ -50,44 +50,66 @@ const hasSignificantWeekOverlap = (
 
     const employeePaidWeeks = paidWeeks.filter((pw) => pw.employee_id === employeeId)
 
-    // PASO 1: Buscar registro EXACTO
+    console.log(`🔍 INICIO - Verificando solapamientos para empleado ${employeeId}:`)
+    console.log(`   Semana calculada: ${weekStart} - ${weekEnd}`)
+    console.log(`   Registros pagados del empleado: ${employeePaidWeeks.length}`)
+
+    // PASO 1: Buscar registro EXACTO (mismas fechas)
     const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
     if (exactMatch) {
-      console.log(
-        `🎯 INICIO - Registro EXACTO para ${employeeId}: ${weekStart}-${weekEnd}, amount: ${exactMatch.amount}`,
-      )
+      console.log(`🎯 INICIO - Registro EXACTO encontrado:`, exactMatch)
       return exactMatch.amount > 0
     }
 
-    // PASO 2: Analizar solapamientos significativos
+    // PASO 2: Buscar registros con solapamiento significativo
     const significantOverlaps = employeePaidWeeks.filter((pw) => {
-      // Evitar el registro exacto que ya verificamos
-      if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
       // Ignorar registros de "pendiente explícito" (amount=0)
-      if (pw.amount === 0) return false
+      if (pw.amount === 0) {
+        console.log(`⏰ INICIO - Ignorando registro pendiente explícito:`, pw)
+        return false
+      }
 
-      // Calcular solapamiento
-      const overlapStart = weekStart > pw.week_start ? weekStart : pw.week_start
-      const overlapEnd = weekEnd < pw.week_end ? weekEnd : pw.week_end
+      // 🔧 CORRECCIÓN: Usar lógica de solapamiento más flexible
+      // Verificar si hay cualquier solapamiento entre las fechas
+      const hasOverlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
 
-      if (overlapStart <= overlapEnd) {
+      if (hasOverlap) {
         // Calcular días de solapamiento
+        const overlapStart = weekStart > pw.week_start ? weekStart : pw.week_start
+        const overlapEnd = weekEnd < pw.week_end ? weekEnd : pw.week_end
+
         const startDate = new Date(overlapStart)
         const endDate = new Date(overlapEnd)
         const overlapDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
 
-        if (overlapDays > 1) {
-          console.log(`🔍 INICIO - Solapamiento significativo para ${employeeId}:`)
-          console.log(`   Semana calculada: ${weekStart} - ${weekEnd}`)
-          console.log(`   Semana pagada: ${pw.week_start} - ${pw.week_end}`)
-          console.log(`   Días solapamiento: ${overlapDays}`)
-          return true
-        }
+        console.log(`🔍 INICIO - Solapamiento encontrado para empleado ${employeeId}:`)
+        console.log(`   Semana calculada: ${weekStart} - ${weekEnd}`)
+        console.log(`   Semana pagada: ${pw.week_start} - ${pw.week_end}`)
+        console.log(`   Días solapamiento: ${overlapDays}`)
+        console.log(`   Monto: $${pw.amount}`)
+
+        // 🎯 CRITERIO FLEXIBLE: Cualquier solapamiento > 0 días es significativo
+        return overlapDays > 0
       }
+
       return false
     })
 
-    return significantOverlaps.length > 0
+    const hasSignificantOverlap = significantOverlaps.length > 0
+
+    if (hasSignificantOverlap) {
+      console.log(
+        `✅ INICIO - Empleado ${employeeId} tiene ${significantOverlaps.length} solapamiento(s) significativo(s)`,
+      )
+    } else {
+      console.log(`❌ INICIO - Empleado ${employeeId} NO tiene solapamientos significativos`)
+      // Debug: mostrar todos los registros del empleado
+      employeePaidWeeks.forEach((pw, index) => {
+        console.log(`   ${index + 1}. ${pw.week_start} - ${pw.week_end} ($${pw.amount})`)
+      })
+    }
+
+    return hasSignificantOverlap
   } catch (error) {
     console.error("hasSignificantWeekOverlap error:", error)
     return false
@@ -159,27 +181,19 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       console.log("📊 INICIO - Asignaciones recientes (8 semanas):", allRecentAssignments.length)
       console.log("💰 INICIO - Semanas pagadas encontradas:", allPaidWeeks.length)
 
-      // 🗓️ AGRUPAR ASIGNACIONES POR EMPLEADO Y SEMANA - 🔧 USANDO LUNES COMO INICIO
+      // 🗓️ AGRUPAR ASIGNACIONES POR EMPLEADO Y SEMANA
       const weeklyAssignments = new Map<string, PendingPaymentDetail>()
 
       allRecentAssignments.forEach((assignment) => {
         const assignmentDate = new Date(assignment.assignment_date)
 
-        // 🔧 CRÍTICO: Usar exactamente la misma lógica que en Resumen
+        // 🔧 USAR EXACTAMENTE LA MISMA LÓGICA QUE EN RESUMEN
         const weekStart = startOfWeek(assignmentDate, { weekStartsOn: 1 }) // 1 = Lunes
         const weekEnd = endOfWeek(assignmentDate, { weekStartsOn: 1 })
 
         const weekStartStr = weekStart.toISOString().split("T")[0]
         const weekEndStr = weekEnd.toISOString().split("T")[0]
         const weekKey = `${assignment.employee_id}-${weekStartStr}-${weekEndStr}`
-
-        // 🔍 DEBUG para la semana problemática
-        if (weekStartStr.includes("2025-04-2") || weekStartStr.includes("2024-04-2")) {
-          console.log(`🔍 INICIO - DEBUG semana abril:`)
-          console.log(`   Fecha asignación: ${assignment.assignment_date}`)
-          console.log(`   Empleado: ${assignment.employee_name}`)
-          console.log(`   Semana calculada: ${weekStartStr} - ${weekEndStr}`)
-        }
 
         if (!weeklyAssignments.has(weekKey)) {
           weeklyAssignments.set(weekKey, {
@@ -200,7 +214,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
 
       console.log("📅 INICIO - Semanas con asignaciones encontradas:", weeklyAssignments.size)
 
-      // 🎯 APLICAR LÓGICA UNIFICADA DE SOLAPAMIENTO
+      // 🎯 APLICAR LÓGICA CORREGIDA DE SOLAPAMIENTO
       const pendingWeeks: PendingPaymentDetail[] = []
       const paidWeeks: PendingPaymentDetail[] = []
       const employeesWithPendingPayments = new Set<number>()
@@ -211,12 +225,12 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         // 🔍 DEBUG específico para semanas de abril
         if (weekData.weekStart.includes("2025-04-2") || weekData.weekStart.includes("2024-04-2")) {
           console.log(`🔍 INICIO - Analizando semana abril:`)
-          console.log(`   Empleado: ${weekData.employeeName}`)
+          console.log(`   Empleado: ${weekData.employeeName} (ID: ${weekData.employeeId})`)
           console.log(`   Semana: ${weekData.weekStart} - ${weekData.weekEnd}`)
           console.log(`   Monto: $${weekData.totalAmount}`)
         }
 
-        // 🎯 USAR LA MISMA FUNCIÓN QUE EN RESUMEN
+        // 🎯 USAR LA FUNCIÓN CORREGIDA
         const isPaid = hasSignificantWeekOverlap(
           weekData.weekStart,
           weekData.weekEnd,
@@ -231,7 +245,8 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
             return (
               pw.employee_id === weekData.employeeId &&
               weekData.weekStart <= pw.week_end &&
-              weekData.weekEnd >= pw.week_start
+              weekData.weekEnd >= pw.week_start &&
+              pw.amount > 0
             )
           })
 
