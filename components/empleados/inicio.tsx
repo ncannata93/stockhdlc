@@ -18,9 +18,9 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
-import { subWeeks, format } from "date-fns"
+import { subWeeks, format, startOfWeek, endOfWeek } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { getWeekRange, hasSignificantWeekOverlap } from "@/lib/week-utils"
+import { hasSignificantWeekOverlap } from "@/lib/week-utils"
 
 interface EmpleadosInicioProps {
   onTabChange?: (tab: string) => void
@@ -89,7 +89,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
       console.log("🔥 INICIO - Empleados activos (30 días):", activeEmployees.size)
 
-      // 🎯 CÁLCULO UNIFICADO DE PAGOS PENDIENTES
+      // 🎯 ANÁLISIS CORRECTO DE PAGOS PENDIENTES
       const eightWeeksAgo = subWeeks(today, 8)
       const allRecentAssignments = await getAssignments({
         start_date: eightWeeksAgo.toISOString().split("T")[0],
@@ -104,50 +104,61 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       console.log("📊 INICIO - Asignaciones recientes (8 semanas):", allRecentAssignments.length)
       console.log("💰 INICIO - Semanas pagadas encontradas:", allPaidWeeks.length)
 
-      // 🗓️ AGRUPAR ASIGNACIONES POR EMPLEADO Y SEMANA - USANDO FUNCIÓN UNIFICADA
-      const weeklyAssignments = new Map<string, PendingPaymentDetail>()
+      // 🗓️ LÓGICA CORREGIDA: Agrupar por empleado y semana CORRECTAMENTE
+      const weeklyData = new Map<string, PendingPaymentDetail>()
 
+      // Procesar cada asignación
       allRecentAssignments.forEach((assignment) => {
-        // 🔧 USAR LA FUNCIÓN UNIFICADA
-        const { weekStart, weekEnd } = getWeekRange(assignment.assignment_date)
-        const weekKey = `${assignment.employee_id}-${weekStart}-${weekEnd}`
+        const assignmentDate = new Date(assignment.assignment_date)
 
-        if (!weeklyAssignments.has(weekKey)) {
-          weeklyAssignments.set(weekKey, {
+        // 🔧 CALCULAR SEMANA CORRECTAMENTE (Lunes a Domingo)
+        const weekStart = startOfWeek(assignmentDate, { weekStartsOn: 1 }) // Lunes
+        const weekEnd = endOfWeek(assignmentDate, { weekStartsOn: 1 }) // Domingo
+
+        const weekStartStr = weekStart.toISOString().split("T")[0]
+        const weekEndStr = weekEnd.toISOString().split("T")[0]
+        const weekKey = `${assignment.employee_id}-${weekStartStr}`
+
+        console.log(`📅 INICIO - Procesando asignación:`)
+        console.log(`   Empleado: ${assignment.employee_name} (ID: ${assignment.employee_id})`)
+        console.log(`   Fecha asignación: ${assignment.assignment_date}`)
+        console.log(`   Semana calculada: ${weekStartStr} - ${weekEndStr}`)
+        console.log(`   Tarifa histórica: $${assignment.daily_rate_used}`)
+
+        if (!weeklyData.has(weekKey)) {
+          weeklyData.set(weekKey, {
             employeeId: assignment.employee_id,
             employeeName: assignment.employee_name || "Desconocido",
-            weekStart,
-            weekEnd,
+            weekStart: weekStartStr,
+            weekEnd: weekEndStr,
             assignmentCount: 0,
             totalAmount: 0,
             isPaid: false,
           })
         }
 
-        const weekData = weeklyAssignments.get(weekKey)!
-        weekData.assignmentCount++
-        weekData.totalAmount += assignment.daily_rate_used || 0
+        const weekData = weeklyData.get(weekKey)!
+        weekData.assignmentCount++ // Contar días trabajados
+        weekData.totalAmount += assignment.daily_rate_used || 0 // Sumar tarifa histórica
       })
 
-      console.log("📅 INICIO - Semanas con asignaciones encontradas:", weeklyAssignments.size)
+      console.log("📅 INICIO - Semanas únicas encontradas:", weeklyData.size)
 
-      // 🎯 APLICAR LÓGICA UNIFICADA DE SOLAPAMIENTO
+      // 🎯 DETERMINAR ESTADO DE PAGO PARA CADA SEMANA
       const pendingWeeks: PendingPaymentDetail[] = []
       const paidWeeks: PendingPaymentDetail[] = []
       const employeesWithPendingPayments = new Set<number>()
       let totalPendingAmount = 0
       let totalPaidWeeks = 0
 
-      weeklyAssignments.forEach((weekData, weekKey) => {
-        // 🔍 DEBUG específico para semanas problemáticas
-        if (weekData.weekStart.includes("2025-04-2") || weekData.weekStart.includes("2025-06-")) {
-          console.log(`🔍 INICIO - Analizando semana:`)
-          console.log(`   Empleado: ${weekData.employeeName} (ID: ${weekData.employeeId})`)
-          console.log(`   Semana: ${weekData.weekStart} - ${weekData.weekEnd}`)
-          console.log(`   Monto: $${weekData.totalAmount}`)
-        }
+      weeklyData.forEach((weekData, weekKey) => {
+        console.log(`🔍 INICIO - Analizando semana:`)
+        console.log(`   Empleado: ${weekData.employeeName} (ID: ${weekData.employeeId})`)
+        console.log(`   Semana: ${weekData.weekStart} - ${weekData.weekEnd}`)
+        console.log(`   Días trabajados: ${weekData.assignmentCount}`)
+        console.log(`   Monto total: $${weekData.totalAmount}`)
 
-        // 🎯 USAR LA FUNCIÓN UNIFICADA
+        // 🎯 VERIFICAR SI ESTÁ PAGADA
         const isPaid = hasSignificantWeekOverlap(
           weekData.weekStart,
           weekData.weekEnd,
@@ -156,7 +167,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         )
 
         if (isPaid) {
-          // Semana pagada
+          // ✅ Semana PAGADA
           weekData.isPaid = true
           const matchingPaidWeek = allPaidWeeks.find((pw) => {
             return (
@@ -175,22 +186,21 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
           paidWeeks.push(weekData)
           totalPaidWeeks++
 
-          console.log(`✅ INICIO - Semana PAGADA:`)
-          console.log(`   ${weekData.employeeName}: ${weekData.weekStart} al ${weekData.weekEnd}`)
+          console.log(`✅ INICIO - Semana PAGADA: ${weekData.employeeName} (${weekData.weekStart})`)
         } else {
-          // Semana pendiente
+          // 🔴 Semana PENDIENTE
           weekData.isPaid = false
           pendingWeeks.push(weekData)
           employeesWithPendingPayments.add(weekData.employeeId)
           totalPendingAmount += weekData.totalAmount
 
-          console.log(`🔴 INICIO - Semana PENDIENTE:`)
-          console.log(`   ${weekData.employeeName}: ${weekData.weekStart} al ${weekData.weekEnd}`)
-          console.log(`   Monto: $${weekData.totalAmount}`)
+          console.log(
+            `🔴 INICIO - Semana PENDIENTE: ${weekData.employeeName} (${weekData.weekStart}) - $${weekData.totalAmount}`,
+          )
         }
       })
 
-      // Ordenar por empleado y fecha
+      // Ordenar pendientes por empleado y fecha
       pendingWeeks.sort((a, b) => {
         if (a.employeeName !== b.employeeName) {
           return a.employeeName.localeCompare(b.employeeName)
@@ -204,29 +214,34 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         totalEmpleados: employees.length,
         empleadosActivos: activeEmployees.size,
         asignacionesHoy: uniqueEmployeesToday.size,
-        semanasConAsignaciones: weeklyAssignments.size,
+        semanasConAsignaciones: weeklyData.size,
         semanasPagadas: totalPaidWeeks,
         semanasPendientes: pendingWeeks.length,
         empleadosConPagosPendientes: employeesWithPendingPayments.size,
         montoTotalPendiente: totalPendingAmount,
       })
 
-      console.log("📊 INICIO - RESUMEN FINAL:")
-      console.log("- Total semanas con asignaciones:", weeklyAssignments.size)
+      console.log("📊 INICIO - RESUMEN FINAL CORREGIDO:")
+      console.log("- Total semanas con trabajo:", weeklyData.size)
       console.log("- Semanas pagadas:", totalPaidWeeks)
       console.log("- Semanas pendientes:", pendingWeeks.length)
+      console.log("- Empleados con pagos pendientes:", employeesWithPendingPayments.size)
+      console.log("- Monto total pendiente: $", totalPendingAmount.toLocaleString())
 
       // 🔍 DEBUG: Mostrar detalles de semanas pendientes
       console.log("🔍 INICIO - DETALLE DE SEMANAS PENDIENTES:")
       pendingWeeks.forEach((week, index) => {
-        console.log(`  ${index + 1}. ${week.employeeName}: ${week.weekStart} al ${week.weekEnd} - $${week.totalAmount}`)
+        console.log(`  ${index + 1}. ${week.employeeName}: ${week.weekStart} al ${week.weekEnd}`)
+        console.log(`     - Días trabajados: ${week.assignmentCount}`)
+        console.log(`     - Monto: $${week.totalAmount.toLocaleString()}`)
       })
 
-      // 🔍 DEBUG: Verificar coherencia
-      if (weeklyAssignments.size !== totalPaidWeeks + pendingWeeks.length) {
+      // 🔍 VALIDACIÓN: Verificar coherencia
+      const totalWeeks = totalPaidWeeks + pendingWeeks.length
+      if (weeklyData.size !== totalWeeks) {
         console.error("❌ INICIO - DISCREPANCIA DETECTADA:")
-        console.error(`Total semanas: ${weeklyAssignments.size}`)
-        console.error(`Pagadas + Pendientes: ${totalPaidWeeks + pendingWeeks.length}`)
+        console.error(`Total semanas calculadas: ${weeklyData.size}`)
+        console.error(`Pagadas + Pendientes: ${totalWeeks}`)
       } else {
         console.log("✅ INICIO - Cálculos coherentes")
       }
