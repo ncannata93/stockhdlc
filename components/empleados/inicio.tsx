@@ -38,60 +38,51 @@ interface PendingPaymentDetail {
   paidDate?: string
 }
 
-// FUNCIÓN MEJORADA: Verifica si una semana tiene solapamiento con semanas pagadas
-// PERO respeta el estado explícito si existe
-const hasWeekOverlapWithPaidWeeks = (
+// 🎯 FUNCIÓN UNIFICADA: Misma lógica que en Resumen
+const hasSignificantWeekOverlap = (
   weekStart: string,
   weekEnd: string,
   paidWeeks: any[],
   employeeId: number,
 ): boolean => {
-  // PRIMERO: Buscar si hay un registro EXACTO para esta semana
-  const exactMatch = paidWeeks.find(
-    (pw) => pw.employee_id === employeeId && pw.week_start === weekStart && pw.week_end === weekEnd,
-  )
+  try {
+    if (!weekStart || !weekEnd || !Array.isArray(paidWeeks) || !employeeId) return false
 
-  if (exactMatch) {
-    console.log(`🎯 INICIO - Registro EXACTO encontrado para empleado ${employeeId}:`, {
-      semana: `${weekStart} al ${weekEnd}`,
-      estado_explicito: "PAGADO",
-      registro: exactMatch,
-    })
-    return true
-  }
+    const employeePaidWeeks = paidWeeks.filter((pw) => pw.employee_id === employeeId)
 
-  // SEGUNDO: Si no hay registro exacto, buscar solapamientos SOLO si no hay registro explícito para esta semana
-  const hasExplicitRecord = paidWeeks.some(
-    (pw) => pw.employee_id === employeeId && pw.week_start === weekStart && pw.week_end === weekEnd,
-  )
-
-  if (hasExplicitRecord) {
-    console.log(`🚫 INICIO - Hay registro explícito, no verificar solapamientos para empleado ${employeeId}`)
-    return false
-  }
-
-  // TERCERO: Solo si NO hay registro explícito, verificar solapamientos
-  const overlap = paidWeeks.some((pw) => {
-    if (pw.employee_id !== employeeId) return false
-
-    // Evitar el registro exacto que ya verificamos
-    if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
-
-    // Verificar solapamiento con OTRAS semanas
-    const hasOverlap = weekStart <= pw.week_end && weekEnd >= pw.week_start
-
-    if (hasOverlap) {
-      console.log(`🔍 INICIO - SOLAPAMIENTO con OTRA semana para empleado ${employeeId}:`, {
-        semana_calculada: `${weekStart} al ${weekEnd}`,
-        semana_pagada: `${pw.week_start} al ${pw.week_end}`,
-        solapamiento: hasOverlap,
-      })
+    // PASO 1: Buscar registro EXACTO
+    const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
+    if (exactMatch) {
+      // Si amount=0, es "pendiente explícito"
+      return exactMatch.amount > 0
     }
 
-    return hasOverlap
-  })
+    // PASO 2: Analizar solapamientos solo si no hay decisión explícita
+    const significantOverlaps = employeePaidWeeks.filter((pw) => {
+      // Evitar el registro exacto que ya verificamos
+      if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
+      // Ignorar registros de "pendiente explícito" (amount=0) para solapamientos
+      if (pw.amount === 0) return false
 
-  return overlap
+      // Calcular solapamiento
+      const overlapStart = weekStart > pw.week_start ? weekStart : pw.week_start
+      const overlapEnd = weekEnd < pw.week_end ? weekEnd : pw.week_end
+
+      if (overlapStart <= overlapEnd) {
+        // Calcular días de solapamiento
+        const startDate = new Date(overlapStart)
+        const endDate = new Date(overlapEnd)
+        const overlapDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        return overlapDays > 1 // Significativo si > 1 día
+      }
+      return false
+    })
+
+    return significantOverlaps.length > 0
+  } catch (error) {
+    console.error("hasSignificantWeekOverlap error:", error)
+    return false
+  }
 }
 
 export default function EmpleadosInicio({ onTabChange, refreshTrigger }: EmpleadosInicioProps) {
@@ -112,11 +103,11 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
   const [refreshing, setRefreshing] = useState(false)
 
   const loadRealStats = useCallback(async () => {
-    console.log("🔄 Cargando estadísticas del inicio...")
+    console.log("🔄 INICIO - Cargando estadísticas...")
     try {
       // Obtener todos los empleados
       const employees = await getEmployees()
-      console.log("👥 Empleados encontrados:", employees.length)
+      console.log("👥 INICIO - Empleados encontrados:", employees.length)
 
       // Obtener fecha de hoy
       const today = new Date()
@@ -130,7 +121,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
 
       // Obtener empleados únicos que trabajan hoy
       const uniqueEmployeesToday = new Set(todayAssignments.map((a) => a.employee_id))
-      console.log("📅 Empleados trabajando hoy:", uniqueEmployeesToday.size)
+      console.log("📅 INICIO - Empleados trabajando hoy:", uniqueEmployeesToday.size)
 
       // Calcular empleados activos (con asignaciones en los últimos 30 días)
       const thirtyDaysAgo = new Date(today)
@@ -142,9 +133,9 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       })
 
       const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
-      console.log("🔥 Empleados activos (30 días):", activeEmployees.size)
+      console.log("🔥 INICIO - Empleados activos (30 días):", activeEmployees.size)
 
-      // CÁLCULO DETALLADO DE PAGOS PENDIENTES CON NUEVA LÓGICA
+      // 🎯 CÁLCULO UNIFICADO DE PAGOS PENDIENTES
       // Obtener todas las asignaciones de las últimas 8 semanas
       const eightWeeksAgo = subWeeks(today, 8)
       const allRecentAssignments = await getAssignments({
@@ -158,19 +149,10 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         end_date: todayStr,
       })
 
-      console.log("📊 Asignaciones recientes (8 semanas):", allRecentAssignments.length)
-      console.log("💰 Semanas pagadas encontradas:", allPaidWeeks.length)
+      console.log("📊 INICIO - Asignaciones recientes (8 semanas):", allRecentAssignments.length)
+      console.log("💰 INICIO - Semanas pagadas encontradas:", allPaidWeeks.length)
 
-      // DEBUG: Mostrar todas las semanas pagadas
-      console.log("🔍 DEBUGGING INICIO - Semanas pagadas en detalle:")
-      allPaidWeeks.forEach((paidWeek, index) => {
-        console.log(`  ${index + 1}. Empleado ID: ${paidWeek.employee_id}, Nombre: ${paidWeek.employee_name}`)
-        console.log(`     Semana: ${paidWeek.week_start} al ${paidWeek.week_end}`)
-        console.log(`     Monto: $${paidWeek.amount}`)
-        console.log(`     Fecha pago: ${paidWeek.paid_date}`)
-      })
-
-      // Agrupar asignaciones por empleado y semana
+      // 🗓️ AGRUPAR ASIGNACIONES POR EMPLEADO Y SEMANA (LÓGICA UNIFICADA)
       const weeklyAssignments = new Map<string, PendingPaymentDetail>()
 
       allRecentAssignments.forEach((assignment) => {
@@ -199,18 +181,9 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         weekData.totalAmount += assignment.daily_rate_used || 0
       })
 
-      console.log("📅 Semanas con asignaciones encontradas:", weeklyAssignments.size)
+      console.log("📅 INICIO - Semanas con asignaciones encontradas:", weeklyAssignments.size)
 
-      // DEBUG: Mostrar todas las semanas con asignaciones
-      console.log("🔍 DEBUGGING INICIO - Semanas con asignaciones:")
-      weeklyAssignments.forEach((weekData, weekKey) => {
-        console.log(`  Key: ${weekKey}`)
-        console.log(`  Empleado: ${weekData.employeeName} (ID: ${weekData.employeeId})`)
-        console.log(`  Semana: ${weekData.weekStart} al ${weekData.weekEnd}`)
-        console.log(`  Días: ${weekData.assignmentCount}, Monto: $${weekData.totalAmount}`)
-      })
-
-      // NUEVA LÓGICA: Marcar semanas como pagadas usando solapamiento
+      // 🎯 APLICAR LÓGICA UNIFICADA DE SOLAPAMIENTO
       const pendingWeeks: PendingPaymentDetail[] = []
       const paidWeeks: PendingPaymentDetail[] = []
       const employeesWithPendingPayments = new Set<number>()
@@ -218,8 +191,8 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
       let totalPaidWeeks = 0
 
       weeklyAssignments.forEach((weekData, weekKey) => {
-        // Usar la misma lógica de solapamiento que en el componente Resumen
-        const isPaid = hasWeekOverlapWithPaidWeeks(
+        // 🎯 USAR LA MISMA FUNCIÓN QUE EN RESUMEN
+        const isPaid = hasSignificantWeekOverlap(
           weekData.weekStart,
           weekData.weekEnd,
           allPaidWeeks,
@@ -227,7 +200,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         )
 
         if (isPaid) {
-          // Semana pagada (con solapamiento)
+          // Semana pagada
           weekData.isPaid = true
 
           // Buscar la semana pagada específica para obtener detalles
@@ -247,7 +220,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
           paidWeeks.push(weekData)
           totalPaidWeeks++
 
-          console.log(`✅ INICIO - Semana PAGADA (solapamiento) encontrada:`)
+          console.log(`✅ INICIO - Semana PAGADA:`)
           console.log(`   ${weekData.employeeName}: ${weekData.weekStart} al ${weekData.weekEnd}`)
           console.log(`   Monto trabajado: $${weekData.totalAmount}, Monto pagado: $${weekData.paidAmount || "N/A"}`)
         } else {
@@ -284,23 +257,29 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         montoTotalPendiente: totalPendingAmount,
       })
 
-      console.log("📊 RESUMEN FINAL INICIO:")
+      console.log("📊 INICIO - RESUMEN FINAL:")
       console.log("- Total semanas con asignaciones:", weeklyAssignments.size)
-      console.log("- Semanas pagadas (con solapamiento):", totalPaidWeeks)
+      console.log("- Semanas pagadas:", totalPaidWeeks)
       console.log("- Semanas pendientes:", pendingWeeks.length)
       console.log("- Empleados con pagos pendientes:", employeesWithPendingPayments.size)
       console.log("- Monto total pendiente:", totalPendingAmount)
 
-      // DEBUG: Verificar si hay discrepancias
+      // 🔍 DEBUG: Mostrar detalles de semanas pendientes
+      console.log("🔍 INICIO - DETALLE DE SEMANAS PENDIENTES:")
+      pendingWeeks.forEach((week, index) => {
+        console.log(`  ${index + 1}. ${week.employeeName}: ${week.weekStart} al ${week.weekEnd} - $${week.totalAmount}`)
+      })
+
+      // 🔍 DEBUG: Verificar coherencia
       if (weeklyAssignments.size !== totalPaidWeeks + pendingWeeks.length) {
-        console.error("❌ DISCREPANCIA DETECTADA EN INICIO:")
+        console.error("❌ INICIO - DISCREPANCIA DETECTADA:")
         console.error(`Total semanas: ${weeklyAssignments.size}`)
         console.error(`Pagadas + Pendientes: ${totalPaidWeeks + pendingWeeks.length}`)
       } else {
-        console.log("✅ Cálculos coherentes en Inicio")
+        console.log("✅ INICIO - Cálculos coherentes")
       }
     } catch (error) {
-      console.error("❌ Error loading stats:", error)
+      console.error("❌ INICIO - Error loading stats:", error)
       setStats({
         totalEmpleados: 0,
         empleadosActivos: 0,
@@ -328,7 +307,7 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
   // Recargar cuando cambie refreshTrigger
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
-      console.log("🔄 Recargando estadísticas por trigger:", refreshTrigger)
+      console.log("🔄 INICIO - Recargando estadísticas por trigger:", refreshTrigger)
       loadRealStats()
     }
   }, [refreshTrigger, loadRealStats])
@@ -458,12 +437,12 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
                 <DialogTrigger asChild>
                   <Button variant="outline" className="flex items-center gap-2">
                     <Eye className="h-4 w-4" />
-                    Ver Detalle
+                    Ver Detalle ({stats.semanasPendientes})
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>Detalle de Pagos Pendientes</DialogTitle>
+                    <DialogTitle>Detalle de Pagos Pendientes ({stats.semanasPendientes} semanas)</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4">
                     {pendingDetails.map((detail, index) => (
@@ -484,6 +463,15 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
                       </div>
                     ))}
                     <div className="mt-6 pt-4 border-t">
+                      <div className="text-center mb-4">
+                        <div className="text-2xl font-bold text-red-600">
+                          Total: ${stats.montoTotalPendiente.toLocaleString()}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {stats.empleadosConPagosPendientes} empleado
+                          {stats.empleadosConPagosPendientes !== 1 ? "s" : ""} con pagos pendientes
+                        </div>
+                      </div>
                       <Button
                         onClick={() => {
                           handleQuickAction("Ir a Gestionar Pagos", "resumen")
