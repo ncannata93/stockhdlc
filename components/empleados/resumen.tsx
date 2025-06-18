@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateForDisplay } from "@/lib/date-utils"
 import { useToast } from "@/hooks/use-toast"
+import { getWeekRange, hasSignificantWeekOverlap } from "@/lib/week-utils"
 
 const getHotelColor = (hotelName: string) => {
   const colors: Record<string, string> = {
@@ -142,42 +143,7 @@ const safeFormatDateString = (dateString: any): string => {
   }
 }
 
-const hasSignificantWeekOverlap = (
-  weekStart: string,
-  weekEnd: string,
-  paidWeeks: any[],
-  employeeId: number,
-): boolean => {
-  try {
-    if (!weekStart || !weekEnd || !Array.isArray(paidWeeks) || !employeeId) return false
-
-    const employeePaidWeeks = paidWeeks.filter((pw) => pw.employee_id === employeeId)
-    const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
-
-    if (exactMatch) return exactMatch.amount > 0
-
-    const significantOverlaps = employeePaidWeeks.filter((pw) => {
-      if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
-      if (pw.amount === 0) return false
-
-      const overlapStart = weekStart > pw.week_start ? weekStart : pw.week_start
-      const overlapEnd = weekEnd < pw.week_end ? weekEnd : pw.week_end
-
-      if (overlapStart <= overlapEnd) {
-        const startDate = new Date(overlapStart)
-        const endDate = new Date(overlapEnd)
-        const overlapDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-        return overlapDays > 1
-      }
-      return false
-    })
-
-    return significantOverlaps.length > 0
-  } catch (error) {
-    console.error("hasSignificantWeekOverlap error:", error)
-    return false
-  }
-}
+// 🎯 USAR FUNCIÓN UNIFICADA - eliminar la función local y usar la importada
 
 interface EmpleadosResumenProps {
   onStatsChange?: () => void
@@ -492,8 +458,8 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       })()
     : null
 
-  const startDateStr = persistentWeek
-  const endDateStr = currentEndDate ? currentEndDate.toISOString().split("T")[0] : ""
+  // Reemplazar las líneas que calculan weekStart y weekEnd con:
+  const { weekStart: startDateStr, weekEnd: endDateStr } = getWeekRange(persistentWeek)
 
   // 📊 CALCULAR RESUMEN DE EMPLEADOS - 🔒 USANDO TARIFAS HISTÓRICAS
   const employeeSummary = employees
@@ -533,6 +499,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           employeeAssignments.length > 0 ? totalHistoricalRates / employeeAssignments.length : employee.daily_rate
 
         const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
+        // Reemplazar la line:
         const isPaid = hasSignificantWeekOverlap(startDateStr, endDateStr, paidWeeks, employee.id)
 
         console.log(`📊 RESUMEN - ${employee.name}:`)
