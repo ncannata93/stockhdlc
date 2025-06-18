@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { parseISO, startOfYear, endOfYear, addWeeks, subWeeks, startOfWeek } from "date-fns"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { parseISO, addWeeks, subWeeks, startOfWeek, isValid } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   Loader2,
   Calendar,
-  BarChart3,
   ChevronLeft,
   ChevronRight,
   CalendarDays,
@@ -48,157 +47,136 @@ const getHotelColor = (hotelName: string) => {
   return colors[hotelName] || "bg-gray-100 text-gray-800 border-gray-200"
 }
 
-const getHotelSolidColor = (hotelName: string) => {
-  const colors: Record<string, string> = {
-    Jaguel: "bg-red-500",
-    Monaco: "bg-blue-500",
-    Mallak: "bg-green-500",
-    Argentina: "bg-purple-500",
-    Falkner: "bg-yellow-500",
-    Stromboli: "bg-pink-500",
-    "San Miguel": "bg-indigo-500",
-    Colores: "bg-orange-500",
-    Puntarenas: "bg-teal-500",
-    Tupe: "bg-cyan-500",
-    Munich: "bg-amber-500",
-    Tiburones: "bg-slate-500",
-    Barlovento: "bg-emerald-500",
-    Carama: "bg-violet-500",
+// 🏪 CLASE PARA MANEJAR PERSISTENCIA
+class WeekPersistence {
+  private static readonly STORAGE_KEY = "empleados-resumen-week"
+  private static readonly EMPLOYEE_KEY = "empleados-resumen-employee"
+
+  static getStoredWeek(): string {
+    try {
+      if (typeof window === "undefined") return this.getDefaultWeek()
+
+      const stored = localStorage.getItem(this.STORAGE_KEY)
+      if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) {
+        console.log("📦 Semana recuperada de localStorage:", stored)
+        return stored
+      }
+
+      const defaultWeek = this.getDefaultWeek()
+      this.setStoredWeek(defaultWeek)
+      return defaultWeek
+    } catch (error) {
+      console.error("Error getting stored week:", error)
+      return this.getDefaultWeek()
+    }
   }
-  return colors[hotelName] || "bg-gray-500"
+
+  static setStoredWeek(week: string): void {
+    try {
+      if (typeof window === "undefined") return
+
+      console.log("💾 Guardando semana en localStorage:", week)
+      localStorage.setItem(this.STORAGE_KEY, week)
+    } catch (error) {
+      console.error("Error setting stored week:", error)
+    }
+  }
+
+  static getStoredEmployee(): string {
+    try {
+      if (typeof window === "undefined") return "todos"
+
+      const stored = localStorage.getItem(this.EMPLOYEE_KEY)
+      return stored || "todos"
+    } catch (error) {
+      console.error("Error getting stored employee:", error)
+      return "todos"
+    }
+  }
+
+  static setStoredEmployee(employee: string): void {
+    try {
+      if (typeof window === "undefined") return
+
+      localStorage.setItem(this.EMPLOYEE_KEY, employee)
+    } catch (error) {
+      console.error("Error setting stored employee:", error)
+    }
+  }
+
+  private static getDefaultWeek(): string {
+    try {
+      const today = new Date()
+      const monday = startOfWeek(today, { weekStartsOn: 1 })
+      return monday.toISOString().split("T")[0]
+    } catch (error) {
+      console.error("Error getting default week:", error)
+      return "2024-01-01"
+    }
+  }
 }
 
 const isDateInWeekRange = (date: string, weekStart: string, weekEnd: string): boolean => {
   return date >= weekStart && date <= weekEnd
 }
 
-// FUNCIÓN MEJORADA: Verifica estado con prioridad a decisiones explícitas
+const safeParseDateString = (dateString: any): Date | null => {
+  try {
+    if (!dateString || typeof dateString !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return null
+    }
+    const parsed = parseISO(dateString)
+    return isValid(parsed) ? parsed : null
+  } catch (error) {
+    console.error("safeParseDateString error:", error)
+    return null
+  }
+}
+
+const safeFormatDateString = (dateString: any): string => {
+  try {
+    const parsed = safeParseDateString(dateString)
+    return parsed ? formatDateForDisplay(parsed) : ""
+  } catch (error) {
+    return ""
+  }
+}
+
 const hasSignificantWeekOverlap = (
   weekStart: string,
   weekEnd: string,
   paidWeeks: any[],
   employeeId: number,
 ): boolean => {
-  const employeeName = paidWeeks.find((pw) => pw.employee_id === employeeId)?.employee_name || `ID-${employeeId}`
+  try {
+    if (!weekStart || !weekEnd || !Array.isArray(paidWeeks) || !employeeId) return false
 
-  console.log(`🔍 ===== ANÁLISIS DETALLADO PARA ${employeeName.toUpperCase()} =====`)
-  console.log(`  📅 Semana objetivo: ${weekStart} al ${weekEnd}`)
+    const employeePaidWeeks = paidWeeks.filter((pw) => pw.employee_id === employeeId)
+    const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
 
-  // Filtrar solo las semanas pagadas de este empleado
-  const employeePaidWeeks = paidWeeks.filter((pw) => pw.employee_id === employeeId)
-  console.log(`  💰 Total semanas pagadas: ${employeePaidWeeks.length}`)
+    if (exactMatch) return exactMatch.amount > 0
 
-  if (employeePaidWeeks.length > 0) {
-    console.log(`  📋 Lista completa de semanas pagadas:`)
-    employeePaidWeeks.forEach((pw, index) => {
-      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end} (monto: $${pw.amount})`)
-    })
-  }
+    const significantOverlaps = employeePaidWeeks.filter((pw) => {
+      if (pw.week_start === weekStart && pw.week_end === weekEnd) return false
+      if (pw.amount === 0) return false
 
-  // PASO 1: Buscar registro EXACTO
-  const exactMatch = employeePaidWeeks.find((pw) => pw.week_start === weekStart && pw.week_end === weekEnd)
-  if (exactMatch) {
-    // ⭐ NUEVA LÓGICA: Si amount=0, es "pendiente explícito"
-    if (exactMatch.amount === 0) {
-      console.log(`  🚫 REGISTRO EXPLÍCITO DE PENDIENTE ENCONTRADO:`)
-      console.log(`     Semana: ${exactMatch.week_start} al ${exactMatch.week_end}`)
-      console.log(`     Monto: $${exactMatch.amount} (PENDIENTE EXPLÍCITO)`)
-      console.log(`     Notas: ${exactMatch.notes}`)
-      console.log(`  📊 RESULTADO FINAL: PENDIENTE (decisión explícita del usuario)`)
-      console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
-      return false
-    } else {
-      console.log(`  🎯 ✅ REGISTRO EXACTO ENCONTRADO:`)
-      console.log(`     Semana: ${exactMatch.week_start} al ${exactMatch.week_end}`)
-      console.log(`     Monto: $${exactMatch.amount}`)
-      console.log(`     Fecha pago: ${exactMatch.paid_date}`)
-      console.log(`  📊 RESULTADO FINAL: PAGADO (registro exacto)`)
-      console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
-      return true
-    }
-  } else {
-    console.log(`  ❌ NO hay registro exacto para ${weekStart} al ${weekEnd}`)
-  }
+      const overlapStart = weekStart > pw.week_start ? weekStart : pw.week_start
+      const overlapEnd = weekEnd < pw.week_end ? weekEnd : pw.week_end
 
-  // PASO 2: Analizar solapamientos solo si no hay decisión explícita
-  console.log(`  🔍 Analizando solapamientos con cada semana pagada:`)
-
-  const significantOverlaps = []
-  const minorOverlaps = []
-
-  employeePaidWeeks.forEach((pw, index) => {
-    // Evitar el registro exacto que ya verificamos
-    if (pw.week_start === weekStart && pw.week_end === weekEnd) {
-      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end} → EXACTO (ya verificado)`)
-      return
-    }
-
-    // Ignorar registros de "pendiente explícito" (amount=0) para solapamientos
-    if (pw.amount === 0) {
-      console.log(
-        `    ${index + 1}. ${pw.week_start} al ${pw.week_end} → PENDIENTE EXPLÍCITO (ignorado para solapamientos)`,
-      )
-      return
-    }
-
-    // Calcular solapamiento
-    const overlapStart = weekStart > pw.week_start ? weekStart : pw.week_start
-    const overlapEnd = weekEnd < pw.week_end ? weekEnd : pw.week_end
-
-    if (overlapStart <= overlapEnd) {
-      // Calcular días de solapamiento
-      const startDate = new Date(overlapStart)
-      const endDate = new Date(overlapEnd)
-      const overlapDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-
-      const isSignificant = overlapDays > 1
-
-      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end}:`)
-      console.log(`       📊 Días de solapamiento: ${overlapDays}`)
-      console.log(`       📅 Rango solapamiento: ${overlapStart} al ${overlapEnd}`)
-      console.log(`       ⚖️ Es significativo: ${isSignificant ? "SÍ" : "NO"} (umbral: >1 día)`)
-      console.log(`       💰 Monto: $${pw.amount}`)
-
-      if (isSignificant) {
-        significantOverlaps.push({
-          week: `${pw.week_start} al ${pw.week_end}`,
-          days: overlapDays,
-          amount: pw.amount,
-        })
-      } else {
-        minorOverlaps.push({
-          week: `${pw.week_start} al ${pw.week_end}`,
-          days: overlapDays,
-          amount: pw.amount,
-        })
+      if (overlapStart <= overlapEnd) {
+        const startDate = new Date(overlapStart)
+        const endDate = new Date(overlapEnd)
+        const overlapDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        return overlapDays > 1
       }
-    } else {
-      console.log(`    ${index + 1}. ${pw.week_start} al ${pw.week_end} → SIN solapamiento`)
-    }
-  })
-
-  // PASO 3: Resumen final
-  const hasSignificantOverlap = significantOverlaps.length > 0
-
-  console.log(`  📊 RESUMEN DE SOLAPAMIENTOS:`)
-  console.log(`     🔴 Solapamientos significativos (>1 día): ${significantOverlaps.length}`)
-  if (significantOverlaps.length > 0) {
-    significantOverlaps.forEach((overlap, index) => {
-      console.log(`       ${index + 1}. ${overlap.week} (${overlap.days} días, $${overlap.amount})`)
+      return false
     })
+
+    return significantOverlaps.length > 0
+  } catch (error) {
+    console.error("hasSignificantWeekOverlap error:", error)
+    return false
   }
-
-  console.log(`     🟡 Solapamientos menores (≤1 día): ${minorOverlaps.length}`)
-  if (minorOverlaps.length > 0) {
-    minorOverlaps.forEach((overlap, index) => {
-      console.log(`       ${index + 1}. ${overlap.week} (${overlap.days} día, $${overlap.amount})`)
-    })
-  }
-
-  console.log(`  📊 RESULTADO FINAL: ${hasSignificantOverlap ? "PAGADO (solapamiento significativo)" : "PENDIENTE"}`)
-  console.log(`🔍 ===== FIN ANÁLISIS ${employeeName.toUpperCase()} =====\n`)
-
-  return hasSignificantOverlap
 }
 
 interface EmpleadosResumenProps {
@@ -208,337 +186,361 @@ interface EmpleadosResumenProps {
 export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProps) {
   const { toast } = useToast()
   const { getEmployees, getAssignments, getPaidWeeks, updatePaymentStatus } = useEmployeeDB()
+
+  // 🏪 ESTADO PERSISTENTE - LA ÚNICA FUENTE DE VERDAD
+  const [persistentWeek, setPersistentWeek] = useState<string>(() => WeekPersistence.getStoredWeek())
+  const [persistentEmployee, setPersistentEmployee] = useState<string>(() => WeekPersistence.getStoredEmployee())
+
+  // Estado de datos
   const [employees, setEmployees] = useState<Employee[]>([])
   const [assignments, setAssignments] = useState<EmployeeAssignment[]>([])
-  const [yearlyAssignments, setYearlyAssignments] = useState<EmployeeAssignment[]>([])
   const [paidWeeks, setPaidWeeks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingYearly, setLoadingYearly] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [updatingPayment, setUpdatingPayment] = useState<number | null>(null)
-  const [selectedEmployee, setSelectedEmployee] = useState<string>("todos")
-  const [selectedWeek, setSelectedWeek] = useState<string>(() => {
-    const today = new Date()
-    const monday = startOfWeek(today, { weekStartsOn: 1 })
-    return monday.toISOString().split("T")[0]
-  })
-  const [activeTab, setActiveTab] = useState("semanal")
   const [lastUpdate, setLastUpdate] = useState(Date.now())
-  const reloadInProgress = useRef(false)
-  const updatingState = useRef(false) // NUEVO: Controlar actualizaciones de estado
 
-  const startDate = parseISO(selectedWeek)
-  const endDate = new Date(startDate)
-  endDate.setDate(startDate.getDate() + 6)
+  // 🔒 REFS PARA PREVENIR CAMBIOS DURANTE OPERACIONES
+  const operationInProgress = useRef(false)
+  const mountedRef = useRef(false)
 
-  const startDateStr = startDate.toISOString().split("T")[0]
-  const endDateStr = endDate.toISOString().split("T")[0]
-
-  const currentYear = new Date().getFullYear()
-  const yearStart = startOfYear(new Date(currentYear, 0, 1))
-  const yearEnd = endOfYear(new Date(currentYear, 11, 31))
-
-  const goToPreviousWeek = () => {
-    const previousWeek = subWeeks(startDate, 1)
-    setSelectedWeek(previousWeek.toISOString().split("T")[0])
-  }
-
-  const goToNextWeek = () => {
-    const nextWeek = addWeeks(startDate, 1)
-    setSelectedWeek(nextWeek.toISOString().split("T")[0])
-  }
-
-  const goToCurrentWeek = () => {
-    const today = new Date()
-    const monday = startOfWeek(today, { weekStartsOn: 1 })
-    setSelectedWeek(monday.toISOString().split("T")[0])
-  }
-
-  const loadData = async (forceRefresh = false) => {
-    console.log("🔄 Cargando datos del resumen...")
-    setLoading(true)
-    try {
-      const employeesData = await getEmployees()
-      console.log("📊 Empleados cargados:", employeesData.length)
-      setEmployees(employeesData)
-
-      const allAssignmentsData = await getAssignments({})
-      const filteredAssignments = allAssignmentsData.filter((assignment) => {
-        const assignmentDate = assignment.assignment_date
-        return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
-      })
-
-      let finalAssignments = filteredAssignments
-      if (selectedEmployee !== "todos") {
-        finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
+  // 🎯 FUNCIÓN PARA CAMBIAR SEMANA DE FORMA SEGURA
+  const changeWeekSafely = useCallback(
+    (newWeek: string, source: string) => {
+      if (operationInProgress.current) {
+        console.log(`🔒 OPERACIÓN EN PROGRESO - Ignorando cambio de semana desde ${source}`)
+        return false
       }
 
-      console.log("📊 Asignaciones filtradas:", finalAssignments.length)
-      setAssignments(finalAssignments)
+      if (!newWeek || typeof newWeek !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(newWeek)) {
+        console.error(`❌ Fecha inválida desde ${source}:`, newWeek)
+        return false
+      }
 
-      const paidWeeksData = await getPaidWeeks({})
-      console.log("💰 Semanas pagadas cargadas:", paidWeeksData.length)
-      setPaidWeeks(paidWeeksData)
-      setLastUpdate(Date.now())
-    } catch (error) {
-      console.error("❌ Error cargando datos:", error)
-      toast({
-        title: "❌ Error",
-        description: "Error al cargar los datos",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+      console.log(`📅 CAMBIO DE SEMANA AUTORIZADO: ${persistentWeek} → ${newWeek} (${source})`)
 
-  useEffect(() => {
-    // 🚫 NO recargar si estamos actualizando estado
-    if (updatingState.current) {
-      console.log("⏸️ Saltando useEffect - actualización de estado en progreso")
-      return
-    }
-    loadData()
-  }, [selectedEmployee, selectedWeek, startDateStr, endDateStr])
+      // Actualizar AMBOS: estado y localStorage
+      setPersistentWeek(newWeek)
+      WeekPersistence.setStoredWeek(newWeek)
 
-  useEffect(() => {
-    const loadYearlyData = async () => {
-      if (activeTab !== "anual") return
+      return true
+    },
+    [persistentWeek],
+  )
 
-      setLoadingYearly(true)
+  // 🎯 FUNCIÓN PARA CAMBIAR EMPLEADO DE FORMA SEGURA
+  const changeEmployeeSafely = useCallback(
+    (newEmployee: string, source: string) => {
+      if (operationInProgress.current) {
+        console.log(`🔒 OPERACIÓN EN PROGRESO - Ignorando cambio de empleado desde ${source}`)
+        return false
+      }
+
+      console.log(`👤 CAMBIO DE EMPLEADO AUTORIZADO: ${persistentEmployee} → ${newEmployee} (${source})`)
+
+      // Actualizar AMBOS: estado y localStorage
+      setPersistentEmployee(newEmployee)
+      WeekPersistence.setStoredEmployee(newEmployee)
+
+      return true
+    },
+    [persistentEmployee],
+  )
+
+  // 🔄 FUNCIÓN DE CARGA DE DATOS
+  const loadWeekData = useCallback(
+    async (weekStr: string, employeeFilter: string) => {
       try {
-        const yearStartStr = yearStart.toISOString().split("T")[0]
-        const yearEndStr = yearEnd.toISOString().split("T")[0]
+        console.log(`🔄 Cargando datos para semana: ${weekStr}, empleado: ${employeeFilter}`)
 
-        let yearlyAssignmentsData = await getAssignments({
-          start_date: yearStartStr,
-          end_date: yearEndStr,
-        })
-
-        if (selectedEmployee !== "todos") {
-          yearlyAssignmentsData = yearlyAssignmentsData.filter(
-            (a) => a.employee_id === Number.parseInt(selectedEmployee),
-          )
+        const startDate = safeParseDateString(weekStr)
+        if (!startDate) {
+          console.error("Fecha de inicio inválida:", weekStr)
+          return false
         }
 
-        setYearlyAssignments(yearlyAssignmentsData)
-      } catch (error) {
-        console.error("❌ Error cargando datos anuales:", error)
-      } finally {
-        setLoadingYearly(false)
-      }
-    }
+        const endDate = new Date(startDate)
+        endDate.setDate(startDate.getDate() + 6)
+        const endDateStr = endDate.toISOString().split("T")[0]
 
-    loadYearlyData()
-  }, [activeTab, selectedEmployee, employees])
+        const [employeesData, allAssignmentsData, paidWeeksData] = await Promise.all([
+          getEmployees(),
+          getAssignments({}),
+          getPaidWeeks({}),
+        ])
 
-  const safeFormatDate = (dateString: string | null | undefined): string => {
-    if (!dateString) return ""
-    try {
-      if (typeof dateString === "string" && !/^\d{4}-\d{2}-\d{2}/.test(dateString)) {
-        return ""
-      }
-      const date = parseISO(dateString)
-      if (isNaN(date.getTime())) {
-        return ""
-      }
-      return formatDateForDisplay(date)
-    } catch (e) {
-      return ""
-    }
-  }
-
-  // FUNCIÓN MEJORADA: Cambiar estado de pago con mejor manejo de errores
-  const handlePaymentStatusChange = async (employeeId: number, newStatus: "pendiente" | "pagado", amount: number) => {
-    if (updatingPayment === employeeId) {
-      console.log("⚠️ Ya hay una actualización en progreso para este empleado")
-      return
-    }
-
-    const employeeName = employees.find((e) => e.id === employeeId)?.name || `ID-${employeeId}`
-
-    console.log(`🔄 ===== INICIO CAMBIO DE ESTADO PARA ${employeeName.toUpperCase()} =====`)
-    console.log(`📊 Datos del cambio:`, { employeeId, employeeName, newStatus, amount, startDateStr, endDateStr })
-    console.log(`🔒 Semana actual preservada: ${selectedWeek}`)
-
-    // 🔒 BLOQUEAR useEffect durante la actualización
-    updatingState.current = true
-    setUpdatingPayment(employeeId)
-
-    try {
-      const success = await updatePaymentStatus(
-        employeeId,
-        startDateStr,
-        endDateStr,
-        newStatus,
-        amount,
-        `Estado cambiado a ${newStatus} el ${new Date().toLocaleDateString()}`,
-      )
-
-      console.log(`📊 Resultado updatePaymentStatus para ${employeeName}:`, success)
-
-      if (success) {
-        toast({
-          title: "✅ Estado actualizado",
-          description: `${employeeName}: Semana marcada como ${newStatus}`,
-        })
-
-        // 🔄 RECARGA MANUAL SIN TRIGGERAR useEffect
-        console.log(`🔄 Recargando datos manualmente para ${employeeName}...`)
-
-        const employeesData = await getEmployees()
-        const allAssignmentsData = await getAssignments({})
         const filteredAssignments = allAssignmentsData.filter((assignment) => {
-          const assignmentDate = assignment.assignment_date
-          return isDateInWeekRange(assignmentDate, startDateStr, endDateStr)
+          return isDateInWeekRange(assignment.assignment_date, weekStr, endDateStr)
         })
 
         let finalAssignments = filteredAssignments
-        if (selectedEmployee !== "todos") {
-          finalAssignments = filteredAssignments.filter((a) => a.employee_id === Number.parseInt(selectedEmployee))
+        if (employeeFilter !== "todos") {
+          const employeeId = Number.parseInt(employeeFilter)
+          if (!isNaN(employeeId)) {
+            finalAssignments = filteredAssignments.filter((a) => a.employee_id === employeeId)
+          }
         }
 
-        const paidWeeksData = await getPaidWeeks({})
-
-        // 🔄 ACTUALIZAR ESTADO SIN TRIGGERAR useEffect
         setEmployees(employeesData)
         setAssignments(finalAssignments)
         setPaidWeeks(paidWeeksData)
         setLastUpdate(Date.now())
 
-        if (onStatsChange) {
-          console.log("📊 Ejecutando callback onStatsChange...")
-          onStatsChange()
-        }
-
-        console.log(`✅ Datos actualizados SIN cambiar la semana ${selectedWeek}`)
-      } else {
-        console.error(`❌ updatePaymentStatus retornó false para ${employeeName}`)
-        toast({
-          title: "❌ Error",
-          description: `${employeeName}: No se pudo actualizar el estado`,
-          variant: "destructive",
-        })
+        console.log(`✅ Datos cargados: ${employeesData.length} empleados, ${finalAssignments.length} asignaciones`)
+        return true
+      } catch (error) {
+        console.error("❌ Error cargando datos:", error)
+        return false
       }
-    } catch (error) {
-      console.error(`❌ Error en handlePaymentStatusChange para ${employeeName}:`, error)
-      toast({
-        title: "❌ Error",
-        description: `${employeeName}: Error inesperado al actualizar`,
-        variant: "destructive",
-      })
-    } finally {
-      // 🔓 DESBLOQUEAR useEffect
-      updatingState.current = false
-      setUpdatingPayment(null)
-      console.log(`🔄 ===== FIN CAMBIO DE ESTADO PARA ${employeeName.toUpperCase()} =====\n`)
-    }
-  }
-
-  const employeeSummary = employees
-    .map((employee) => {
-      const employeeAssignments = assignments.filter((a) => a.employee_id === employee.id)
-
-      const assignmentsByDate = employeeAssignments.reduce(
-        (acc, assignment) => {
-          const date = assignment.assignment_date
-          if (!acc[date]) {
-            acc[date] = []
-          }
-          acc[date].push(assignment)
-          return acc
-        },
-        {} as Record<string, EmployeeAssignment[]>,
-      )
-
-      const daysWorked = Object.keys(assignmentsByDate).length
-      let totalAmount = 0
-
-      const assignmentDetails = Object.entries(assignmentsByDate).map(([date, dayAssignments]) => {
-        const totalForDay = dayAssignments.reduce((sum, assignment) => sum + assignment.daily_rate_used, 0)
-        return {
-          date,
-          assignments: dayAssignments,
-          totalForDay,
-        }
-      })
-
-      totalAmount = assignmentDetails.reduce((sum, detail) => sum + detail.totalForDay, 0)
-
-      const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
-
-      // USAR LA NUEVA FUNCIÓN DE SOLAPAMIENTO SIGNIFICATIVO
-      const isPaid = hasSignificantWeekOverlap(startDateStr, endDateStr, paidWeeks, employee.id)
-
-      return {
-        employee,
-        daysWorked,
-        totalAmount,
-        hotels,
-        assignmentDetails,
-        assignments: employeeAssignments,
-        isPaid,
-      }
-    })
-    .filter((summary) => {
-      if (selectedEmployee !== "todos") {
-        return summary.employee.id === Number.parseInt(selectedEmployee)
-      }
-      return summary.daysWorked > 0
-    })
-
-  const hotelYearlyTotals = yearlyAssignments.reduce(
-    (acc, assignment) => {
-      const hotelName = assignment.hotel_name
-      if (!acc[hotelName]) {
-        acc[hotelName] = {
-          count: 0,
-          amount: 0,
-          employees: new Set(),
-        }
-      }
-
-      const savedDailyRate = assignment.daily_rate_used || 0
-      acc[hotelName].count++
-      acc[hotelName].amount += savedDailyRate
-      acc[hotelName].employees.add(assignment.employee_id)
-
-      return acc
     },
-    {} as Record<string, { count: number; amount: number; employees: Set<number> }>,
+    [getEmployees, getAssignments, getPaidWeeks],
   )
 
-  const sortedHotels = Object.entries(hotelYearlyTotals)
-    .sort((a, b) => b[1].amount - a[1].amount)
-    .map(([hotel, data]) => ({
-      name: hotel,
-      count: data.count,
-      amount: data.amount,
-      employeeCount: data.employees.size,
-    }))
+  // 🚀 CARGA INICIAL Y CUANDO CAMBIAN LOS FILTROS
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      console.log("🚀 MONTAJE INICIAL DEL COMPONENTE")
+    }
 
-  const maxAmount = sortedHotels.length > 0 ? sortedHotels[0].amount : 0
+    console.log(`🔄 useEffect disparado - Semana: ${persistentWeek}, Empleado: ${persistentEmployee}`)
 
-  const reloadData = async () => {
-    if (reloadInProgress.current) return
-    reloadInProgress.current = true
+    setLoading(true)
+    loadWeekData(persistentWeek, persistentEmployee).finally(() => {
+      setLoading(false)
+    })
+  }, [persistentWeek, persistentEmployee, loadWeekData])
+
+  // 🎯 NAVEGACIÓN DE SEMANAS
+  const goToPreviousWeek = useCallback(async () => {
+    const currentDate = safeParseDateString(persistentWeek)
+    if (!currentDate) return
+
+    const previousWeek = subWeeks(currentDate, 1)
+    const newWeekStr = previousWeek.toISOString().split("T")[0]
+
+    if (changeWeekSafely(newWeekStr, "goToPreviousWeek")) {
+      // El useEffect se encargará de cargar los datos
+    }
+  }, [persistentWeek, changeWeekSafely])
+
+  const goToNextWeek = useCallback(async () => {
+    const currentDate = safeParseDateString(persistentWeek)
+    if (!currentDate) return
+
+    const nextWeek = addWeeks(currentDate, 1)
+    const newWeekStr = nextWeek.toISOString().split("T")[0]
+
+    if (changeWeekSafely(newWeekStr, "goToNextWeek")) {
+      // El useEffect se encargará de cargar los datos
+    }
+  }, [persistentWeek, changeWeekSafely])
+
+  const goToCurrentWeek = useCallback(async () => {
+    const today = new Date()
+    const monday = startOfWeek(today, { weekStartsOn: 1 })
+    const newWeekStr = monday.toISOString().split("T")[0]
+
+    if (changeWeekSafely(newWeekStr, "goToCurrentWeek")) {
+      // El useEffect se encargará de cargar los datos
+    }
+  }, [changeWeekSafely])
+
+  const handleWeekChange = useCallback(
+    (newWeek: string) => {
+      if (changeWeekSafely(newWeek, "handleWeekChange")) {
+        // El useEffect se encargará de cargar los datos
+      }
+    },
+    [changeWeekSafely],
+  )
+
+  const handleEmployeeChange = useCallback(
+    (newEmployee: string) => {
+      if (changeEmployeeSafely(newEmployee, "handleEmployeeChange")) {
+        // El useEffect se encargará de cargar los datos
+      }
+    },
+    [changeEmployeeSafely],
+  )
+
+  // 🎯 CAMBIO DE ESTADO DE PAGO - COMPLETAMENTE AISLADO
+  const handlePaymentStatusChange = useCallback(
+    async (employeeId: number, newStatus: "pendiente" | "pagado", amount: number) => {
+      if (updatingPayment === employeeId || operationInProgress.current) {
+        console.log("⚠️ Operación ya en progreso")
+        return
+      }
+
+      const employeeName = employees.find((e) => e.id === employeeId)?.name || `ID-${employeeId}`
+
+      // 🔒 BLOQUEAR TODAS LAS OPERACIONES
+      operationInProgress.current = true
+      setUpdatingPayment(employeeId)
+
+      // 📦 PRESERVAR ESTADO DESDE LOCALSTORAGE (LA FUENTE DE VERDAD)
+      const preservedWeek = WeekPersistence.getStoredWeek()
+      const preservedEmployee = WeekPersistence.getStoredEmployee()
+
+      console.log(`🔄 ===== INICIO PAGO PARA ${employeeName.toUpperCase()} =====`)
+      console.log(`🔒 OPERACIÓN BLOQUEADA - Estado preservado:`, { preservedWeek, preservedEmployee })
+
+      try {
+        const startDate = safeParseDateString(preservedWeek)
+        if (!startDate) {
+          throw new Error("Fecha preservada inválida")
+        }
+
+        const endDate = new Date(startDate)
+        endDate.setDate(startDate.getDate() + 6)
+        const endDateStr = endDate.toISOString().split("T")[0]
+
+        const success = await updatePaymentStatus(
+          employeeId,
+          preservedWeek,
+          endDateStr,
+          newStatus,
+          amount,
+          `Estado cambiado a ${newStatus} el ${new Date().toLocaleDateString()}`,
+        )
+
+        if (success) {
+          toast({
+            title: "✅ Estado actualizado",
+            description: `${employeeName}: Semana marcada como ${newStatus}`,
+          })
+
+          // 🔄 RECARGAR DATOS CON ESTADO PRESERVADO
+          console.log(`🔄 Recargando datos con estado preservado...`)
+          await loadWeekData(preservedWeek, preservedEmployee)
+
+          // 🔒 VERIFICAR QUE EL ESTADO NO HAYA CAMBIADO
+          const currentWeek = WeekPersistence.getStoredWeek()
+          const currentEmployee = WeekPersistence.getStoredEmployee()
+
+          if (currentWeek !== preservedWeek) {
+            console.log(`🚨 ALERTA: Semana cambió durante operación: ${preservedWeek} → ${currentWeek}`)
+            console.log(`🔧 RESTAURANDO semana a: ${preservedWeek}`)
+            WeekPersistence.setStoredWeek(preservedWeek)
+            setPersistentWeek(preservedWeek)
+          }
+
+          if (currentEmployee !== preservedEmployee) {
+            console.log(`🚨 ALERTA: Empleado cambió durante operación: ${preservedEmployee} → ${currentEmployee}`)
+            console.log(`🔧 RESTAURANDO empleado a: ${preservedEmployee}`)
+            WeekPersistence.setStoredEmployee(preservedEmployee)
+            setPersistentEmployee(preservedEmployee)
+          }
+
+          if (onStatsChange) {
+            onStatsChange()
+          }
+
+          console.log(`✅ Operación completada - Estado final: semana=${preservedWeek}, empleado=${preservedEmployee}`)
+        } else {
+          toast({
+            title: "❌ Error",
+            description: `${employeeName}: No se pudo actualizar el estado`,
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error(`❌ Error en handlePaymentStatusChange:`, error)
+        toast({
+          title: "❌ Error",
+          description: "Error inesperado al actualizar",
+          variant: "destructive",
+        })
+      } finally {
+        // 🔓 DESBLOQUEAR OPERACIONES
+        operationInProgress.current = false
+        setUpdatingPayment(null)
+        console.log(`🔄 ===== FIN PAGO PARA ${employeeName.toUpperCase()} =====\n`)
+      }
+    },
+    [employees, updatePaymentStatus, loadWeekData, onStatsChange, toast, updatingPayment],
+  )
+
+  // 🔄 FUNCIÓN DE RECARGA MANUAL
+  const reloadData = useCallback(async () => {
+    if (operationInProgress.current) return
+
     setRefreshing(true)
+    const currentWeek = WeekPersistence.getStoredWeek()
+    const currentEmployee = WeekPersistence.getStoredEmployee()
 
-    console.log(`🔄 Recarga manual - Semana actual: ${selectedWeek}`)
+    console.log(`🔄 Recarga manual - Estado actual: semana=${currentWeek}, empleado=${currentEmployee}`)
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      await loadData(true)
-
+      await loadWeekData(currentWeek, currentEmployee)
       if (onStatsChange) onStatsChange()
-      console.log(`✅ Recarga completada manteniendo semana ${selectedWeek}`)
+      console.log(`✅ Recarga completada`)
     } catch (error) {
       console.error("❌ Error recargando datos:", error)
     } finally {
       setRefreshing(false)
-      reloadInProgress.current = false
     }
-  }
+  }, [loadWeekData, onStatsChange])
+
+  // 🧮 CALCULAR FECHAS ACTUALES
+  const currentStartDate = safeParseDateString(persistentWeek)
+  const currentEndDate = currentStartDate
+    ? (() => {
+        const end = new Date(currentStartDate)
+        end.setDate(currentStartDate.getDate() + 6)
+        return end
+      })()
+    : null
+
+  const startDateStr = persistentWeek
+  const endDateStr = currentEndDate ? currentEndDate.toISOString().split("T")[0] : ""
+
+  // 📊 CALCULAR RESUMEN DE EMPLEADOS
+  const employeeSummary = employees
+    .map((employee) => {
+      try {
+        const employeeAssignments = assignments.filter((a) => a.employee_id === employee.id)
+        const assignmentsByDate = employeeAssignments.reduce(
+          (acc, assignment) => {
+            const date = assignment.assignment_date
+            if (!acc[date]) acc[date] = []
+            acc[date].push(assignment)
+            return acc
+          },
+          {} as Record<string, EmployeeAssignment[]>,
+        )
+
+        const daysWorked = Object.keys(assignmentsByDate).length
+        const assignmentDetails = Object.entries(assignmentsByDate).map(([date, dayAssignments]) => {
+          const totalForDay = dayAssignments.reduce((sum, assignment) => sum + (assignment.daily_rate_used || 0), 0)
+          return { date, assignments: dayAssignments, totalForDay }
+        })
+
+        const totalAmount = assignmentDetails.reduce((sum, detail) => sum + detail.totalForDay, 0)
+        const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
+        const isPaid = hasSignificantWeekOverlap(startDateStr, endDateStr, paidWeeks, employee.id)
+
+        return {
+          employee,
+          daysWorked,
+          totalAmount,
+          hotels,
+          assignmentDetails,
+          assignments: employeeAssignments,
+          isPaid,
+        }
+      } catch (error) {
+        console.error("Error processing employee summary:", error)
+        return null
+      }
+    })
+    .filter((summary): summary is NonNullable<typeof summary> => {
+      if (!summary) return false
+      if (persistentEmployee !== "todos") {
+        return summary.employee.id === Number.parseInt(persistentEmployee)
+      }
+      return summary.daysWorked > 0
+    })
 
   return (
     <div className="space-y-4">
@@ -550,13 +552,19 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                 <CalendarDays className="h-5 w-5" />
                 Resumen de Empleados
               </CardTitle>
-              <CardDescription className="text-sm">Gestión semanal de pagos y asignaciones</CardDescription>
+              <CardDescription className="text-sm">
+                Gestión semanal de pagos y asignaciones
+                <div className="text-xs text-gray-500 mt-1">
+                  📦 Semana persistente: {persistentWeek} | 🔒 Operación:{" "}
+                  {operationInProgress.current ? "ACTIVA" : "INACTIVA"}
+                </div>
+              </CardDescription>
             </div>
             <Button
               variant="outline"
               size="sm"
               onClick={reloadData}
-              disabled={refreshing}
+              disabled={refreshing || operationInProgress.current}
               className="flex items-center gap-2"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -565,25 +573,44 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Controles compactos */}
+          {/* Controles */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Navegación de semanas */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">📅 Semana</Label>
               <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" onClick={goToPreviousWeek} className="px-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPreviousWeek}
+                  className="px-2"
+                  disabled={operationInProgress.current}
+                >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Input
                   type="date"
-                  value={selectedWeek}
-                  onChange={(e) => setSelectedWeek(e.target.value)}
+                  value={persistentWeek}
+                  onChange={(e) => handleWeekChange(e.target.value)}
                   className="flex-1 text-sm"
+                  disabled={operationInProgress.current}
                 />
-                <Button variant="outline" size="sm" onClick={goToNextWeek} className="px-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextWeek}
+                  className="px-2"
+                  disabled={operationInProgress.current}
+                >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="sm" onClick={goToCurrentWeek} className="px-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToCurrentWeek}
+                  className="px-2"
+                  disabled={operationInProgress.current}
+                >
                   <CalendarDays className="h-4 w-4" />
                 </Button>
               </div>
@@ -592,7 +619,11 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
             {/* Filtro de empleado */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">👥 Empleado</Label>
-              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+              <Select
+                value={persistentEmployee}
+                onValueChange={handleEmployeeChange}
+                disabled={operationInProgress.current}
+              >
                 <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
@@ -611,20 +642,16 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
             <div className="space-y-2">
               <Label className="text-sm font-medium">📍 Período</Label>
               <div className="text-sm p-2 bg-blue-50 rounded border border-blue-200">
-                {safeFormatDate(startDateStr)} al {safeFormatDate(endDateStr)}
+                {safeFormatDateString(startDateStr)} al {safeFormatDateString(endDateStr)}
               </div>
             </div>
           </div>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs value="semanal" className="w-full">
+            <TabsList className="grid w-full grid-cols-1">
               <TabsTrigger value="semanal" className="flex items-center gap-2 text-sm">
                 <Calendar className="h-4 w-4" />
-                Semanal
-              </TabsTrigger>
-              <TabsTrigger value="anual" className="flex items-center gap-2 text-sm">
-                <BarChart3 className="h-4 w-4" />
-                Anual
+                Vista Semanal
               </TabsTrigger>
             </TabsList>
 
@@ -639,7 +666,12 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                     <CalendarDays className="h-12 w-12 text-yellow-600 mx-auto mb-3" />
                     <h3 className="text-lg font-semibold text-yellow-800 mb-2">No hay actividad</h3>
                     <p className="text-yellow-700 text-sm mb-4">No se encontraron asignaciones para esta semana</p>
-                    <Button onClick={goToCurrentWeek} variant="outline" size="sm">
+                    <Button
+                      onClick={goToCurrentWeek}
+                      variant="outline"
+                      size="sm"
+                      disabled={operationInProgress.current}
+                    >
                       📍 Ir a la semana actual
                     </Button>
                   </CardContent>
@@ -661,7 +693,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                       <TableBody>
                         {employeeSummary.map((summary) => (
                           <TableRow key={`${summary.employee.id}-${lastUpdate}`}>
-                            {/* Empleado */}
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <User className="h-4 w-4 text-blue-600" />
@@ -672,14 +703,12 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                               </div>
                             </TableCell>
 
-                            {/* Días trabajados */}
                             <TableCell className="text-center">
                               <Badge variant="outline" className="bg-blue-50 text-blue-700">
                                 {summary.daysWorked}
                               </Badge>
                             </TableCell>
 
-                            {/* Total */}
                             <TableCell className="text-center">
                               <div className="font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
                               <div className="text-xs text-muted-foreground">
@@ -687,7 +716,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                               </div>
                             </TableCell>
 
-                            {/* Hoteles */}
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
                                 {summary.hotels.slice(0, 3).map((hotel) => (
@@ -703,7 +731,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                               </div>
                             </TableCell>
 
-                            {/* Estado */}
                             <TableCell className="text-center">
                               <Badge
                                 variant={summary.isPaid ? "default" : "outline"}
@@ -727,7 +754,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                               </Badge>
                             </TableCell>
 
-                            {/* Acciones */}
                             <TableCell className="text-center">
                               <div className="flex gap-1 justify-center">
                                 {summary.isPaid ? (
@@ -737,7 +763,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                                     onClick={() =>
                                       handlePaymentStatusChange(summary.employee.id, "pendiente", summary.totalAmount)
                                     }
-                                    disabled={updatingPayment === summary.employee.id}
+                                    disabled={updatingPayment === summary.employee.id || operationInProgress.current}
                                     className="text-xs px-2 py-1 h-7"
                                   >
                                     {updatingPayment === summary.employee.id ? (
@@ -756,7 +782,11 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                                     onClick={() =>
                                       handlePaymentStatusChange(summary.employee.id, "pagado", summary.totalAmount)
                                     }
-                                    disabled={updatingPayment === summary.employee.id || summary.daysWorked === 0}
+                                    disabled={
+                                      updatingPayment === summary.employee.id ||
+                                      summary.daysWorked === 0 ||
+                                      operationInProgress.current
+                                    }
                                     className="text-xs px-2 py-1 h-7 bg-green-600 hover:bg-green-700"
                                   >
                                     {updatingPayment === summary.employee.id ? (
@@ -778,84 +808,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                   </CardContent>
                 </Card>
               )}
-            </TabsContent>
-
-            <TabsContent value="anual">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <BarChart3 className="h-5 w-5" />📊 Gastos por Hotel {currentYear}
-                  </CardTitle>
-                  <CardDescription className="text-sm">
-                    💰 Distribución de gastos por hotel durante el año
-                    {selectedEmployee !== "todos" &&
-                      ` para ${employees.find((e) => e.id.toString() === selectedEmployee)?.name}`}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {loadingYearly ? (
-                    <div className="flex justify-center items-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    </div>
-                  ) : sortedHotels.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                      <div className="mb-2 text-lg font-semibold">
-                        No hay datos para mostrar en el año {currentYear}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="space-y-3">
-                        {sortedHotels.map((hotel, index) => (
-                          <div key={hotel.name} className="space-y-2 p-3 bg-gray-50 rounded-lg border">
-                            <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-3">
-                                <div className="text-lg font-bold text-gray-500">#{index + 1}</div>
-                                <div>
-                                  <Badge className={`${getHotelColor(hotel.name)} text-sm`}>🏨 {hotel.name}</Badge>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    📊 {hotel.count} asignaciones • 👥 {hotel.employeeCount} empleados
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xl font-bold text-green-600">${hotel.amount.toLocaleString()}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {((hotel.amount / sortedHotels.reduce((sum, h) => sum + h.amount, 0)) * 100).toFixed(
-                                    1,
-                                  )}
-                                  %
-                                </div>
-                              </div>
-                            </div>
-                            <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${getHotelSolidColor(hotel.name)} rounded-full transition-all duration-500`}
-                                style={{ width: `${maxAmount > 0 ? (hotel.amount / maxAmount) * 100 : 0}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="pt-4 border-t bg-gradient-to-r from-green-50 to-blue-50 p-4 rounded-lg">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <span className="font-medium text-lg">📊 Total Anual {currentYear}</span>
-                            <div className="text-sm text-muted-foreground mt-1">
-                              📈 {sortedHotels.reduce((sum, hotel) => sum + hotel.count, 0)} asignaciones totales
-                            </div>
-                          </div>
-                          <span className="text-2xl font-bold text-green-600">
-                            ${sortedHotels.reduce((sum, hotel) => sum + hotel.amount, 0).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
             </TabsContent>
           </Tabs>
         </CardContent>
