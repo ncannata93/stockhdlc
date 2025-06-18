@@ -495,7 +495,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   const startDateStr = persistentWeek
   const endDateStr = currentEndDate ? currentEndDate.toISOString().split("T")[0] : ""
 
-  // 📊 CALCULAR RESUMEN DE EMPLEADOS
+  // 📊 CALCULAR RESUMEN DE EMPLEADOS - 🔒 USANDO TARIFAS HISTÓRICAS
   const employeeSummary = employees
     .map((employee) => {
       try {
@@ -512,18 +512,39 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
 
         const daysWorked = Object.keys(assignmentsByDate).length
         const assignmentDetails = Object.entries(assignmentsByDate).map(([date, dayAssignments]) => {
-          const totalForDay = dayAssignments.reduce((sum, assignment) => sum + (assignment.daily_rate_used || 0), 0)
+          // 🔒 CRÍTICO: Usar daily_rate_used (tarifa histórica) NO employee.daily_rate (tarifa actual)
+          const totalForDay = dayAssignments.reduce((sum, assignment) => {
+            const historicalRate = assignment.daily_rate_used || 0
+            console.log(`💰 RESUMEN - Usando tarifa histórica: $${historicalRate} (asignación ID: ${assignment.id})`)
+            return sum + historicalRate
+          }, 0)
           return { date, assignments: dayAssignments, totalForDay }
         })
 
+        // 🔒 TOTAL BASADO EN TARIFAS HISTÓRICAS
         const totalAmount = assignmentDetails.reduce((sum, detail) => sum + detail.totalForDay, 0)
+
+        // 📊 CALCULAR TARIFA PROMEDIO HISTÓRICA PARA MOSTRAR
+        const totalHistoricalRates = employeeAssignments.reduce(
+          (sum, assignment) => sum + (assignment.daily_rate_used || 0),
+          0,
+        )
+        const averageHistoricalRate =
+          employeeAssignments.length > 0 ? totalHistoricalRates / employeeAssignments.length : employee.daily_rate
+
         const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
         const isPaid = hasSignificantWeekOverlap(startDateStr, endDateStr, paidWeeks, employee.id)
+
+        console.log(`📊 RESUMEN - ${employee.name}:`)
+        console.log(`   💰 Tarifa actual del empleado: $${employee.daily_rate}`)
+        console.log(`   🔒 Tarifa promedio histórica: $${averageHistoricalRate}`)
+        console.log(`   💵 Total calculado (histórico): $${totalAmount}`)
 
         return {
           employee,
           daysWorked,
           totalAmount,
+          averageHistoricalRate, // 🔒 Nueva propiedad para mostrar
           hotels,
           assignmentDetails,
           assignments: employeeAssignments,
@@ -712,7 +733,13 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                             <TableCell className="text-center">
                               <div className="font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
                               <div className="text-xs text-muted-foreground">
-                                ${summary.employee.daily_rate.toLocaleString()}/día
+                                {/* 🔒 MOSTRAR TARIFA HISTÓRICA PROMEDIO, NO LA ACTUAL */}$
+                                {Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
+                                {summary.averageHistoricalRate !== summary.employee.daily_rate && (
+                                  <div className="text-xs text-orange-600">
+                                    (Actual: ${summary.employee.daily_rate.toLocaleString()})
+                                  </div>
+                                )}
                               </div>
                             </TableCell>
 
