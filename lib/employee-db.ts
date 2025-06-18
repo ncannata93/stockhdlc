@@ -142,27 +142,12 @@ export const saveAssignment = async (
   if (!supabase) return null
 
   try {
-    let dailyRateUsed = assignment.daily_rate_used
-
-    // 🔒 SOLO obtener la tarifa actual si es una NUEVA asignación Y no se especificó una tarifa
-    if (dailyRateUsed === undefined && assignment.employee_id && !assignment.id) {
-      console.log("📊 Nueva asignación: obteniendo tarifa actual del empleado")
-      const { data: employeeData, error: employeeError } = await supabase
-        .from("employees")
-        .select("daily_rate")
-        .eq("id", assignment.employee_id)
-        .single()
-
-      if (employeeError) {
-        console.error("❌ Error al obtener tarifa del empleado:", employeeError)
-        return null
-      }
-      dailyRateUsed = employeeData.daily_rate
-      console.log(`💰 Tarifa histórica guardada: $${dailyRateUsed}`)
-    }
-
     if (assignment.id) {
-      // 🔒 ACTUALIZACIÓN: NO cambiar daily_rate_used, mantener el histórico
+      // 🔒 ACTUALIZACIÓN DE ASIGNACIÓN EXISTENTE
+      console.log(`🔄 ACTUALIZANDO asignación existente ID: ${assignment.id}`)
+
+      // ⚠️ CRÍTICO: NO incluir daily_rate_used en la actualización
+      // La tarifa histórica DEBE mantenerse intacta
       const updateData: any = {
         employee_id: assignment.employee_id,
         hotel_name: assignment.hotel_name,
@@ -171,11 +156,9 @@ export const saveAssignment = async (
         created_by: username,
       }
 
-      // ⚠️ SOLO actualizar daily_rate_used si se proporciona explícitamente
-      if (assignment.daily_rate_used !== undefined) {
-        updateData.daily_rate_used = assignment.daily_rate_used
-        console.log(`⚠️ Actualizando tarifa histórica explícitamente: $${assignment.daily_rate_used}`)
-      }
+      // 🚫 NUNCA actualizar daily_rate_used en ediciones
+      console.log(`🔒 PRESERVANDO tarifa histórica - NO se actualizará daily_rate_used`)
+      console.log(`📝 Datos a actualizar:`, updateData)
 
       const { data, error } = await supabase
         .from("employee_assignments")
@@ -191,9 +174,32 @@ export const saveAssignment = async (
         console.error("❌ Error al actualizar asignación:", error)
         return null
       }
+
+      console.log(`✅ Asignación actualizada - Tarifa histórica preservada: $${data.daily_rate_used}`)
       return { ...data, employee_name: data.employees?.name }
     } else {
-      // 🆕 NUEVA ASIGNACIÓN: Siempre guardar la tarifa histórica
+      // 🆕 NUEVA ASIGNACIÓN
+      console.log(`🆕 CREANDO nueva asignación`)
+
+      let dailyRateUsed = assignment.daily_rate_used
+
+      // Solo obtener la tarifa actual si no se especificó una
+      if (dailyRateUsed === undefined && assignment.employee_id) {
+        console.log("📊 Obteniendo tarifa actual del empleado para nueva asignación")
+        const { data: employeeData, error: employeeError } = await supabase
+          .from("employees")
+          .select("daily_rate")
+          .eq("id", assignment.employee_id)
+          .single()
+
+        if (employeeError) {
+          console.error("❌ Error al obtener tarifa del empleado:", employeeError)
+          return null
+        }
+        dailyRateUsed = employeeData.daily_rate
+        console.log(`💰 Tarifa histórica para nueva asignación: $${dailyRateUsed}`)
+      }
+
       const { data, error } = await supabase
         .from("employee_assignments")
         .insert({
@@ -215,7 +221,7 @@ export const saveAssignment = async (
         return null
       }
 
-      console.log(`✅ Asignación creada con tarifa histórica: $${dailyRateUsed}`)
+      console.log(`✅ Nueva asignación creada con tarifa histórica: $${dailyRateUsed}`)
       return { ...data, employee_name: data.employees?.name }
     }
   } catch (err) {
@@ -456,6 +462,7 @@ export const getHotels = async (): Promise<Hotel[]> => {
   }))
 }
 
+// 🔒 FUNCIÓN SEGURA: Crear asignación SIN modificar tarifas existentes
 export const addEmployeeAssignment = async (assignmentData: {
   employee_id: number
   hotel_id?: number
@@ -474,16 +481,47 @@ export const addEmployeeAssignment = async (assignmentData: {
     hotelName = hotel?.name
   }
 
+  // 🔒 CREAR NUEVA ASIGNACIÓN (sin ID = nueva)
   const result = await saveAssignment({
     employee_id: assignmentData.employee_id,
     hotel_name: hotelName,
     assignment_date: assignmentData.date,
     daily_rate_used: assignmentData.daily_rate,
     notes: assignmentData.notes,
+    // 🚫 NO incluir ID = nueva asignación
   })
 
   if (result) {
     console.log("✅ Asignación creada exitosamente")
+  }
+
+  return result
+}
+
+// 🔒 FUNCIÓN SEGURA: Editar asignación SIN cambiar tarifa histórica
+export const updateEmployeeAssignment = async (
+  assignmentId: number,
+  updateData: {
+    employee_id?: number
+    hotel_name?: string
+    assignment_date?: string
+    notes?: string
+  },
+): Promise<EmployeeAssignment | null> => {
+  console.log(`🔄 EDITANDO asignación ID: ${assignmentId}`, updateData)
+
+  // 🔒 ACTUALIZAR ASIGNACIÓN EXISTENTE (con ID = edición)
+  const result = await saveAssignment({
+    id: assignmentId, // 🔑 ID presente = edición
+    employee_id: updateData.employee_id,
+    hotel_name: updateData.hotel_name,
+    assignment_date: updateData.assignment_date,
+    notes: updateData.notes,
+    // 🚫 NO incluir daily_rate_used = preservar tarifa histórica
+  })
+
+  if (result) {
+    console.log("✅ Asignación editada exitosamente - Tarifa histórica preservada")
   }
 
   return result
@@ -501,6 +539,7 @@ export const useEmployeeDB = () => {
     getAssignments,
     saveAssignment: (assignment: Partial<EmployeeAssignment>) => saveAssignment(assignment, username),
     addEmployeeAssignment,
+    updateEmployeeAssignment, // 🔒 Nueva función segura para editar
     deleteAssignment,
     getPaidWeeks,
     markWeekAsPaid,
