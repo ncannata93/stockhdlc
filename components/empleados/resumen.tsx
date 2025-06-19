@@ -29,6 +29,7 @@ import { formatDateForDisplay } from "@/lib/date-utils"
 import { useToast } from "@/hooks/use-toast"
 import { getWeekRange } from "@/lib/week-utils"
 import { createClient } from "@supabase/supabase-js"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
 const getHotelColor = (hotelName: string) => {
   const colors: Record<string, string> = {
@@ -159,6 +160,7 @@ interface EmpleadosResumenProps {
 export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProps) {
   const { toast } = useToast()
   const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
+  const isMobile = useMediaQuery("(max-width: 768px)")
 
   // 🏪 ESTADO PERSISTENTE - LA ÚNICA FUENTE DE VERDAD
   const [persistentWeek, setPersistentWeek] = useState<string>(() => WeekPersistence.getStoredWeek())
@@ -641,6 +643,113 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       return summary.daysWorked > 0
     })
 
+  // 📱 COMPONENTE PARA VISTA MÓVIL
+  const MobileEmployeeCard = ({ summary }: { summary: any }) => (
+    <Card key={`${summary.employee.id}-${lastUpdate}`} className="mb-4">
+      <CardContent className="p-4">
+        {/* Header con nombre y estado */}
+        <div className="flex justify-between items-start mb-3">
+          <div className="flex items-center gap-3">
+            <User className="h-5 w-5 text-blue-600 flex-shrink-0" />
+            <div>
+              <div className="font-semibold text-lg">{summary.employee.name}</div>
+              <div className="text-sm text-muted-foreground">{summary.employee.role}</div>
+            </div>
+          </div>
+          <Badge
+            variant={summary.isPaid ? "default" : "outline"}
+            className={`text-sm ${
+              summary.isPaid
+                ? "bg-green-100 text-green-800 border-green-300"
+                : "bg-yellow-100 text-yellow-800 border-yellow-300"
+            }`}
+          >
+            {summary.isPaid ? (
+              <>
+                <CheckCircle className="h-4 w-4 mr-1" />
+                Pagada
+              </>
+            ) : (
+              <>
+                <Clock className="h-4 w-4 mr-1" />
+                Pendiente
+              </>
+            )}
+          </Badge>
+        </div>
+
+        {/* Información principal */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">{summary.daysWorked}</div>
+            <div className="text-sm text-muted-foreground">Días trabajados</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
+            <div className="text-sm text-muted-foreground">Total a pagar</div>
+          </div>
+        </div>
+
+        {/* Tarifa histórica */}
+        <div className="text-center mb-4 p-2 bg-gray-50 rounded">
+          <div className="text-sm font-medium">
+            ${Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
+          </div>
+          {summary.averageHistoricalRate !== summary.employee.daily_rate && (
+            <div className="text-xs text-orange-600">(Actual: ${summary.employee.daily_rate.toLocaleString()})</div>
+          )}
+        </div>
+
+        {/* Hoteles */}
+        <div className="mb-4">
+          <div className="text-sm font-medium mb-2">Hoteles asignados:</div>
+          <div className="flex flex-wrap gap-1">
+            {summary.hotels.slice(0, 4).map((hotel: string) => (
+              <Badge key={hotel} className={`${getHotelColor(hotel)} text-xs`}>
+                {hotel}
+              </Badge>
+            ))}
+            {summary.hotels.length > 4 && (
+              <Badge variant="outline" className="text-xs">
+                +{summary.hotels.length - 4} más
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Botón de acción */}
+        <Button
+          variant={summary.isPaid ? "outline" : "default"}
+          size="lg"
+          onClick={() => {
+            console.log("🖱️ CLICK EN BOTÓN MÓVIL:", {
+              employeeId: summary.employee.id,
+              employeeName: summary.employee.name,
+              currentStatus: summary.isPaid ? "pagado" : "pendiente",
+              newStatus: summary.isPaid ? "pendiente" : "pagado",
+              amount: summary.totalAmount,
+            })
+            handlePaymentStatusChange(summary.employee.id, summary.isPaid ? "pendiente" : "pagado", summary.totalAmount)
+          }}
+          disabled={updatingPayment === summary.employee.id}
+          className={`w-full text-base py-3 ${
+            summary.isPaid
+              ? "bg-green-100 text-green-800 hover:bg-green-200 border-green-300"
+              : "bg-blue-600 hover:bg-blue-700 text-white"
+          }`}
+        >
+          {updatingPayment === summary.employee.id ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : summary.isPaid ? (
+            "✅ Marcar como Pendiente"
+          ) : (
+            "💰 Marcar como Pagado"
+          )}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+
   return (
     <div className="space-y-4">
       <Card>
@@ -670,7 +779,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Controles */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3"}`}>
             {/* Navegación de semanas */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">📅 Semana</Label>
@@ -776,7 +885,15 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                     </Button>
                   </CardContent>
                 </Card>
+              ) : isMobile ? (
+                // Vista móvil con cards
+                <div className="space-y-4">
+                  {employeeSummary.map((summary) => (
+                    <MobileEmployeeCard key={summary.employee.id} summary={summary} />
+                  ))}
+                </div>
               ) : (
+                // Vista desktop con tabla
                 <Card>
                   <CardContent className="p-0">
                     <Table>

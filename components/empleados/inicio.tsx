@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Users, UserPlus, Calendar, BarChart3, Upload, TrendingUp, Clock, DollarSign, RefreshCw } from "lucide-react"
+import { Users, UserPlus, Calendar, BarChart3, Upload, TrendingUp, Clock, RefreshCw, DollarSign } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
 
@@ -24,29 +24,35 @@ interface PendingPaymentDetail {
   paidDate?: string
 }
 
+interface Stats {
+  totalEmpleados: number
+  empleadosActivos: number
+  asignacionesHoy: number
+  empleadosConPagosPendientes: number
+}
+
 export default function EmpleadosInicio({ onTabChange, refreshTrigger }: EmpleadosInicioProps) {
   const { toast } = useToast()
   const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<Stats>({
     totalEmpleados: 0,
     empleadosActivos: 0,
     asignacionesHoy: 0,
-    semanasConAsignaciones: 0,
-    semanasPagadas: 0,
-    semanasPendientes: 0,
     empleadosConPagosPendientes: 0,
-    montoTotalPendiente: 0,
   })
   const [pendingDetails, setPendingDetails] = useState<PendingPaymentDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const loadRealStats = useCallback(async () => {
-    console.log("🔄 INICIO - Cargando estadísticas simples...")
+    console.log("🔄 === INICIO CÁLCULO ESTADÍSTICAS EMPLEADOS ===")
     try {
       const employees = await getEmployees()
+      console.log(`👥 Empleados cargados: ${employees.length}`)
+
       const today = new Date()
       const todayStr = today.toISOString().split("T")[0]
+      console.log(`📅 Fecha actual: ${todayStr}`)
 
       // Asignaciones de hoy
       const todayAssignments = await getAssignments({
@@ -54,51 +60,110 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         end_date: todayStr,
       })
       const uniqueEmployeesToday = new Set(todayAssignments.map((a) => a.employee_id))
+      console.log(`📋 Asignaciones hoy: ${todayAssignments.length} (empleados únicos: ${uniqueEmployeesToday.size})`)
 
       // Empleados activos (30 días)
       const thirtyDaysAgo = new Date(today)
       thirtyDaysAgo.setDate(today.getDate() - 30)
+      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0]
+      console.log(`📅 Buscando empleados activos desde: ${thirtyDaysAgoStr}`)
+
       const recentAssignments = await getAssignments({
-        start_date: thirtyDaysAgo.toISOString().split("T")[0],
+        start_date: thirtyDaysAgoStr,
         end_date: todayStr,
       })
       const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
+      console.log(`🔥 Empleados activos (30 días): ${activeEmployees.size}`)
 
-      // Pagos pendientes simples
+      // Cargar todas las semanas pagadas para análisis detallado
       const allPaidWeeks = await getPaidWeeks({})
-      const pendingCount = allPaidWeeks.filter((pw) => pw.amount === 0 || !pw.amount).length
-      const paidCount = allPaidWeeks.filter((pw) => pw.amount > 0).length
-      const totalPending = allPaidWeeks
-        .filter((pw) => pw.amount === 0 || !pw.amount)
-        .reduce((sum, pw) => sum + (pw.expected_amount || 0), 0)
+      console.log(`💰 Total registros de semanas pagadas: ${allPaidWeeks.length}`)
 
-      setStats({
+      // 🎯 ANÁLISIS DETALLADO DE PAGOS
+      let totalPendingAmount = 0
+      let totalPaidAmount = 0
+      let pendingWeeksCount = 0
+      let paidWeeksCount = 0
+      let overdueWeeksCount = 0
+      let totalOverdueAmount = 0
+      const employeesWithPending = new Set<number>()
+      const employeesWithOverdue = new Set<number>()
+
+      console.log("🔍 === ANÁLISIS DETALLADO DE PAGOS ===")
+
+      allPaidWeeks.forEach((pw, index) => {
+        const employeeName = employees.find((e) => e.id === pw.employee_id)?.name || `ID-${pw.employee_id}`
+        const amount = Number(pw.amount) || 0
+        const expectedAmount = Number(pw.expected_amount) || 0
+
+        // Calcular si está vencido (más de 7 días desde el fin de semana)
+        let isOverdue = false
+        if (pw.week_end) {
+          try {
+            const weekEndDate = new Date(pw.week_end)
+            const daysSinceWeekEnd = Math.floor((today.getTime() - weekEndDate.getTime()) / (1000 * 60 * 60 * 24))
+            isOverdue = daysSinceWeekEnd > 7 && amount === 0
+
+            if (index < 5) {
+              // Log solo los primeros 5 para no saturar
+              console.log(`📊 ${employeeName}: Semana ${pw.week_start} - ${pw.week_end}`)
+              console.log(`   💰 Amount: $${amount}, Expected: $${expectedAmount}`)
+              console.log(`   📅 Días desde fin de semana: ${daysSinceWeekEnd}`)
+              console.log(`   ⚠️ Vencido: ${isOverdue}`)
+            }
+          } catch (error) {
+            console.error(`❌ Error procesando fecha para ${employeeName}:`, error)
+          }
+        }
+
+        if (amount > 0) {
+          // PAGADO
+          paidWeeksCount++
+          totalPaidAmount += amount
+        } else if (isOverdue) {
+          // VENCIDO
+          overdueWeeksCount++
+          totalOverdueAmount += expectedAmount
+          employeesWithOverdue.add(pw.employee_id)
+        } else {
+          // PENDIENTE
+          pendingWeeksCount++
+          totalPendingAmount += expectedAmount
+          employeesWithPending.add(pw.employee_id)
+        }
+      })
+
+      // Empleados con pagos pendientes (incluye vencidos)
+      const allEmployeesWithPendingPayments = new Set([...employeesWithPending, ...employeesWithOverdue])
+
+      console.log("📊 === RESUMEN BÁSICO ===")
+      console.log(`👥 Total empleados: ${employees.length}`)
+      console.log(`🔥 Empleados activos: ${activeEmployees.size}`)
+      console.log(`📋 Trabajando hoy: ${uniqueEmployeesToday.size}`)
+      console.log(`💰 Con pagos pendientes: ${allEmployeesWithPendingPayments.size}`)
+
+      const finalStats = {
         totalEmpleados: employees.length,
         empleadosActivos: activeEmployees.size,
         asignacionesHoy: uniqueEmployeesToday.size,
-        semanasConAsignaciones: allPaidWeeks.length,
-        semanasPagadas: paidCount,
-        semanasPendientes: pendingCount,
-        empleadosConPagosPendientes: new Set(
-          allPaidWeeks.filter((pw) => pw.amount === 0 || !pw.amount).map((pw) => pw.employee_id),
-        ).size,
-        montoTotalPendiente: totalPending,
-      })
+        empleadosConPagosPendientes: allEmployeesWithPendingPayments.size,
+      }
 
-      setPendingDetails([]) // Simplificar - no mostrar detalles complejos
+      console.log("🎯 === ESTADÍSTICAS FINALES ===")
+      console.log(finalStats)
+
+      setStats(finalStats)
+      setPendingDetails([]) // Simplificar - no mostrar detalles complejos por ahora
     } catch (error) {
-      console.error("❌ Error loading stats:", error)
+      console.error("❌ === ERROR EN CÁLCULO DE ESTADÍSTICAS ===", error)
       setStats({
         totalEmpleados: 0,
         empleadosActivos: 0,
         asignacionesHoy: 0,
-        semanasConAsignaciones: 0,
-        semanasPagadas: 0,
-        semanasPendientes: 0,
         empleadosConPagosPendientes: 0,
-        montoTotalPendiente: 0,
       })
     }
+    console.log("🏁 === FIN CÁLCULO ESTADÍSTICAS EMPLEADOS ===")
   }, [getEmployees, getAssignments, getPaidWeeks])
 
   // Cargar estadísticas iniciales

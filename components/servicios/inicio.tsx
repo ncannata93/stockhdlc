@@ -13,6 +13,7 @@ export function Inicio() {
     vencidos: 0,
     totalPendiente: 0,
     totalAbonado: 0,
+    totalVencido: 0,
     proximosVencer: [],
   })
 
@@ -55,7 +56,8 @@ export function Inicio() {
           const payments = (await Promise.race([dataPromise, timeoutPromise])) as any[]
 
           setDbStatus("connected")
-          calculateStats(payments || [])
+          const calculatedStats = calculateStats(payments || [])
+          setStats(calculatedStats)
         } catch (dbError) {
           console.warn("Error conectando a la base de datos:", dbError)
           setDbStatus("disconnected")
@@ -84,9 +86,10 @@ export function Inicio() {
     setStats({
       pendientes: 3,
       abonados: 12,
-      vencidos: 2, // Ahora mostrará 2 pagos vencidos
+      vencidos: 2,
       totalPendiente: 2500.0,
       totalAbonado: 8400.0,
+      totalVencido: 1200.0,
       proximosVencer: [
         {
           id: "1",
@@ -105,8 +108,8 @@ export function Inicio() {
           month: 1,
           year: 2025,
           amount: 1200.0,
-          due_date: pastDate.toISOString().split("T")[0], // Este estará vencido
-          status: "pendiente",
+          due_date: pastDate.toISOString().split("T")[0],
+          status: "vencido",
         },
       ],
     })
@@ -116,62 +119,75 @@ export function Inicio() {
     const now = new Date()
     now.setHours(0, 0, 0, 0) // Resetear horas para comparación de solo fecha
 
+    console.log("=== CALCULANDO ESTADÍSTICAS ===")
+    console.log("Total de pagos recibidos:", payments.length)
+    console.log("Fecha actual para comparación:", now.toISOString().split("T")[0])
+
     // Asegurarse de que los pagos tengan valores numéricos válidos
     const validPayments = payments.map((p) => ({
       ...p,
       amount: typeof p.amount === "number" ? p.amount : Number.parseFloat(p.amount) || 0,
     }))
 
-    // Separar pagos por estado, pero también verificar fechas para vencidos
-    const pendientes = validPayments.filter((p) => {
-      if (p.status !== "pendiente") return false
+    console.log("Pagos válidos procesados:", validPayments.length)
 
-      // Verificar si está vencido
-      if (p.due_date) {
-        try {
-          const [year, month, day] = p.due_date.split("T")[0].split("-")
-          const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-          dueDate.setHours(0, 0, 0, 0)
-
-          // Si está vencido, no lo contamos como pendiente
-          return dueDate >= now
-        } catch {
-          return true // Si hay error parseando fecha, lo consideramos pendiente
-        }
-      }
-      return true
-    })
-
+    // Separar pagos por estado real (no solo por campo status)
     const abonados = validPayments.filter((p) => p.status === "abonado")
+    console.log("Pagos abonados:", abonados.length)
 
-    // Pagos vencidos: status "vencido" O status "pendiente" pero con fecha pasada
-    const vencidos = validPayments.filter((p) => {
-      if (p.status === "vencido") return true
+    // Para pendientes y vencidos, verificar tanto el status como la fecha
+    const pendientesYVencidos = validPayments.filter((p) => p.status === "pendiente" || p.status === "vencido")
 
-      if (p.status === "pendiente" && p.due_date) {
-        try {
-          const [year, month, day] = p.due_date.split("T")[0].split("-")
-          const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-          dueDate.setHours(0, 0, 0, 0)
+    console.log("Pagos pendientes/vencidos por status:", pendientesYVencidos.length)
 
-          return dueDate < now
-        } catch {
-          return false
-        }
+    // Separar entre realmente pendientes y realmente vencidos
+    const pendientes = []
+    const vencidos = []
+
+    for (const payment of pendientesYVencidos) {
+      if (!payment.due_date) {
+        // Si no tiene fecha de vencimiento, considerarlo pendiente
+        pendientes.push(payment)
+        continue
       }
-      return false
-    })
+
+      try {
+        const [year, month, day] = payment.due_date.split("T")[0].split("-")
+        const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+        dueDate.setHours(0, 0, 0, 0)
+
+        if (dueDate < now) {
+          // Está vencido
+          vencidos.push(payment)
+          console.log(`Pago vencido: ${payment.service_name} - ${payment.hotel_name} - Vence: ${payment.due_date}`)
+        } else {
+          // Está pendiente
+          pendientes.push(payment)
+        }
+      } catch (error) {
+        console.error("Error parseando fecha:", payment.due_date, error)
+        // Si hay error parseando fecha, considerarlo pendiente
+        pendientes.push(payment)
+      }
+    }
+
+    console.log("Pagos realmente pendientes:", pendientes.length)
+    console.log("Pagos realmente vencidos:", vencidos.length)
 
     // Calcular totales con valores numéricos garantizados
     const totalPendiente = pendientes.reduce((sum, p) => sum + p.amount, 0)
     const totalAbonado = abonados.reduce((sum, p) => sum + p.amount, 0)
+    const totalVencido = vencidos.reduce((sum, p) => sum + p.amount, 0)
 
-    // Pagos próximos a vencer (en los próximos 30 días)
+    console.log("Total pendiente: $", totalPendiente)
+    console.log("Total abonado: $", totalAbonado)
+    console.log("Total vencido: $", totalVencido)
+
+    // Pagos próximos a vencer (pendientes en los próximos 30 días)
     const proximosVencer = pendientes
       .filter((p) => {
         if (!p.due_date) return false
         try {
-          // Crear fecha sin conversión de zona horaria
           const [year, month, day] = p.due_date.split("T")[0].split("-")
           const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
           const diffTime = dueDate.getTime() - now.getTime()
@@ -182,7 +198,6 @@ export function Inicio() {
         }
       })
       .sort((a, b) => {
-        // Ordenar por fecha de vencimiento (más urgente primero)
         try {
           const [yearA, monthA, dayA] = a.due_date.split("T")[0].split("-")
           const [yearB, monthB, dayB] = b.due_date.split("T")[0].split("-")
@@ -195,16 +210,22 @@ export function Inicio() {
           return 0
         }
       })
-      .slice(0, 10) // Limitar a 10 elementos
+      .slice(0, 10)
 
-    setStats({
+    console.log("Próximos a vencer:", proximosVencer.length)
+
+    const stats = {
       pendientes: pendientes.length,
       abonados: abonados.length,
       vencidos: vencidos.length,
       totalPendiente,
       totalAbonado,
+      totalVencido,
       proximosVencer,
-    })
+    }
+
+    console.log("=== ESTADÍSTICAS FINALES ===", stats)
+    return stats
   }
 
   const formatDate = (dateString: string) => {
@@ -365,6 +386,9 @@ export function Inicio() {
               <p className="text-2xl font-semibold text-gray-900">{stats.vencidos}</p>
             </div>
           </div>
+          <p className="mt-2 text-sm text-gray-600">
+            Total: <span className="font-semibold text-red-600">{formatCurrency(stats.totalVencido)}</span>
+          </p>
         </div>
       </div>
 
