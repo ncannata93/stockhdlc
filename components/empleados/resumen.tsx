@@ -18,7 +18,8 @@ import {
   Clock,
   RefreshCw,
   CheckCircle,
-  AlertTriangle,
+  BarChart3,
+  Building2,
 } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment } from "@/lib/employee-types"
@@ -26,7 +27,8 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateForDisplay } from "@/lib/date-utils"
 import { useToast } from "@/hooks/use-toast"
-import { getWeekRange, hasSignificantWeekOverlap } from "@/lib/week-utils"
+import { getWeekRange } from "@/lib/week-utils"
+import { createClient } from "@supabase/supabase-js"
 
 const getHotelColor = (hotelName: string) => {
   const colors: Record<string, string> = {
@@ -59,7 +61,6 @@ class WeekPersistence {
 
       const stored = localStorage.getItem(this.STORAGE_KEY)
       if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) {
-        console.log("📦 Semana recuperada de localStorage:", stored)
         return stored
       }
 
@@ -75,8 +76,6 @@ class WeekPersistence {
   static setStoredWeek(week: string): void {
     try {
       if (typeof window === "undefined") return
-
-      console.log("💾 Guardando semana en localStorage:", week)
       localStorage.setItem(this.STORAGE_KEY, week)
     } catch (error) {
       console.error("Error setting stored week:", error)
@@ -86,7 +85,6 @@ class WeekPersistence {
   static getStoredEmployee(): string {
     try {
       if (typeof window === "undefined") return "todos"
-
       const stored = localStorage.getItem(this.EMPLOYEE_KEY)
       return stored || "todos"
     } catch (error) {
@@ -98,7 +96,6 @@ class WeekPersistence {
   static setStoredEmployee(employee: string): void {
     try {
       if (typeof window === "undefined") return
-
       localStorage.setItem(this.EMPLOYEE_KEY, employee)
     } catch (error) {
       console.error("Error setting stored employee:", error)
@@ -143,7 +140,17 @@ const safeFormatDateString = (dateString: any): string => {
   }
 }
 
-// 🎯 USAR FUNCIÓN UNIFICADA - eliminar la función local y usar la importada
+// 🎯 FUNCIÓN SÚPER SIMPLE - IGUAL QUE SERVICIOS
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+
+  if (!supabaseUrl || !supabaseKey) {
+    return null
+  }
+
+  return createClient(supabaseUrl, supabaseKey)
+}
 
 interface EmpleadosResumenProps {
   onStatsChange?: () => void
@@ -151,7 +158,7 @@ interface EmpleadosResumenProps {
 
 export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProps) {
   const { toast } = useToast()
-  const { getEmployees, getAssignments, getPaidWeeks, updatePaymentStatus } = useEmployeeDB()
+  const { getEmployees, getAssignments, getPaidWeeks } = useEmployeeDB()
 
   // 🏪 ESTADO PERSISTENTE - LA ÚNICA FUENTE DE VERDAD
   const [persistentWeek, setPersistentWeek] = useState<string>(() => WeekPersistence.getStoredWeek())
@@ -165,6 +172,10 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   const [refreshing, setRefreshing] = useState(false)
   const [updatingPayment, setUpdatingPayment] = useState<number | null>(null)
   const [lastUpdate, setLastUpdate] = useState(Date.now())
+  const [annualData, setAnnualData] = useState<any[]>([])
+  const [loadingAnnual, setLoadingAnnual] = useState(false)
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [activeTab, setActiveTab] = useState("semanal")
 
   // 🔒 REFS PARA PREVENIR CAMBIOS DURANTE OPERACIONES
   const operationInProgress = useRef(false)
@@ -253,9 +264,90 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
         setLastUpdate(Date.now())
 
         console.log(`✅ Datos cargados: ${employeesData.length} empleados, ${finalAssignments.length} asignaciones`)
+        console.log(`📊 Semanas pagadas cargadas:`, paidWeeksData.length)
         return true
       } catch (error) {
         console.error("❌ Error cargando datos:", error)
+        return false
+      }
+    },
+    [getEmployees, getAssignments, getPaidWeeks],
+  )
+
+  const loadAnnualData = useCallback(
+    async (year: number, employeeFilter: string) => {
+      try {
+        console.log(`🔄 Cargando datos anuales para año: ${year}, empleado: ${employeeFilter}`)
+
+        const startDate = `${year}-01-01`
+        const endDate = `${year}-12-31`
+
+        const [employeesData, allAssignmentsData, paidWeeksData] = await Promise.all([
+          getEmployees(),
+          getAssignments({}),
+          getPaidWeeks({}),
+        ])
+
+        // Filtrar asignaciones del año
+        const yearAssignments = allAssignmentsData.filter((assignment) => {
+          return assignment.assignment_date >= startDate && assignment.assignment_date <= endDate
+        })
+
+        let finalAssignments = yearAssignments
+        if (employeeFilter !== "todos") {
+          const employeeId = Number.parseInt(employeeFilter)
+          if (!isNaN(employeeId)) {
+            finalAssignments = yearAssignments.filter((a) => a.employee_id === employeeId)
+          }
+        }
+
+        // 🏨 CALCULAR RESUMEN ANUAL POR HOTEL
+        const hotelSummary = finalAssignments.reduce(
+          (acc, assignment) => {
+            const hotelName = assignment.hotel_name
+            if (!acc[hotelName]) {
+              acc[hotelName] = {
+                hotelName,
+                totalDays: 0,
+                totalAmount: 0,
+                employees: new Set(),
+                assignments: [],
+                monthlyData: {},
+              }
+            }
+
+            acc[hotelName].totalDays += 1
+            acc[hotelName].totalAmount += assignment.daily_rate_used || 0
+            acc[hotelName].employees.add(assignment.employee_id)
+            acc[hotelName].assignments.push(assignment)
+
+            // Agrupar por mes
+            const month = assignment.assignment_date.substring(0, 7) // YYYY-MM
+            if (!acc[hotelName].monthlyData[month]) {
+              acc[hotelName].monthlyData[month] = { days: 0, amount: 0 }
+            }
+            acc[hotelName].monthlyData[month].days += 1
+            acc[hotelName].monthlyData[month].amount += assignment.daily_rate_used || 0
+
+            return acc
+          },
+          {} as Record<string, any>,
+        )
+
+        const annualHotelData = Object.values(hotelSummary).map((hotel: any) => ({
+          ...hotel,
+          uniqueEmployees: hotel.employees.size,
+          averagePerDay: hotel.totalDays > 0 ? hotel.totalAmount / hotel.totalDays : 0,
+        }))
+
+        // Ordenar por total amount descendente
+        annualHotelData.sort((a, b) => b.totalAmount - a.totalAmount)
+
+        setAnnualData(annualHotelData)
+        console.log(`✅ Datos anuales por hotel cargados: ${annualHotelData.length} hoteles`)
+        return true
+      } catch (error) {
+        console.error("❌ Error cargando datos anuales:", error)
         return false
       }
     },
@@ -276,6 +368,14 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       setLoading(false)
     })
   }, [persistentWeek, persistentEmployee, loadWeekData])
+
+  // Cargar datos anuales cuando cambia el año o empleado
+  useEffect(() => {
+    setLoadingAnnual(true)
+    loadAnnualData(selectedYear, persistentEmployee).finally(() => {
+      setLoadingAnnual(false)
+    })
+  }, [selectedYear, persistentEmployee, loadAnnualData])
 
   // 🎯 NAVEGACIÓN DE SEMANAS
   const goToPreviousWeek = useCallback(async () => {
@@ -330,101 +430,94 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     [changeEmployeeSafely],
   )
 
-  // 🎯 CAMBIO DE ESTADO DE PAGO - COMPLETAMENTE AISLADO
+  // 🎯 FUNCIÓN SÚPER SIMPLE CON LOGS DETALLADOS
   const handlePaymentStatusChange = useCallback(
     async (employeeId: number, newStatus: "pendiente" | "pagado", amount: number) => {
-      if (updatingPayment === employeeId || operationInProgress.current) {
-        console.log("⚠️ Operación ya en progreso")
+      console.log("🚀 === INICIO handlePaymentStatusChange ===")
+      console.log("📋 Parámetros:", { employeeId, newStatus, amount })
+      console.log("🔒 updatingPayment actual:", updatingPayment)
+
+      if (updatingPayment === employeeId) {
+        console.log("⚠️ Operación ya en progreso para empleado", employeeId)
         return
       }
 
       const employeeName = employees.find((e) => e.id === employeeId)?.name || `ID-${employeeId}`
+      console.log("👤 Empleado encontrado:", employeeName)
 
-      // 🔒 BLOQUEAR TODAS LAS OPERACIONES
-      operationInProgress.current = true
       setUpdatingPayment(employeeId)
-
-      // 📦 PRESERVAR ESTADO DESDE LOCALSTORAGE (LA FUENTE DE VERDAD)
-      const preservedWeek = WeekPersistence.getStoredWeek()
-      const preservedEmployee = WeekPersistence.getStoredEmployee()
-
-      console.log(`🔄 ===== INICIO PAGO PARA ${employeeName.toUpperCase()} =====`)
-      console.log(`🔒 OPERACIÓN BLOQUEADA - Estado preservado:`, { preservedWeek, preservedEmployee })
+      console.log("🔄 Estado updatingPayment cambiado a:", employeeId)
 
       try {
-        const startDate = safeParseDateString(preservedWeek)
-        if (!startDate) {
-          throw new Error("Fecha preservada inválida")
-        }
-
-        const endDate = new Date(startDate)
-        endDate.setDate(startDate.getDate() + 6)
-        const endDateStr = endDate.toISOString().split("T")[0]
-
-        const success = await updatePaymentStatus(
-          employeeId,
-          preservedWeek,
-          endDateStr,
-          newStatus,
-          amount,
-          `Estado cambiado a ${newStatus} el ${new Date().toLocaleDateString()}`,
+        console.log(
+          `🔄 ${newStatus === "pagado" ? "Marcando como pagado" : "Marcando como pendiente"} para ${employeeName}`,
         )
 
-        if (success) {
-          toast({
-            title: "✅ Estado actualizado",
-            description: `${employeeName}: Semana marcada como ${newStatus}`,
-          })
-
-          // 🔄 RECARGAR DATOS CON ESTADO PRESERVADO
-          console.log(`🔄 Recargando datos con estado preservado...`)
-          await loadWeekData(preservedWeek, preservedEmployee)
-
-          // 🔒 VERIFICAR QUE EL ESTADO NO HAYA CAMBIADO
-          const currentWeek = WeekPersistence.getStoredWeek()
-          const currentEmployee = WeekPersistence.getStoredEmployee()
-
-          if (currentWeek !== preservedWeek) {
-            console.log(`🚨 ALERTA: Semana cambió durante operación: ${preservedWeek} → ${currentWeek}`)
-            console.log(`🔧 RESTAURANDO semana a: ${preservedWeek}`)
-            WeekPersistence.setStoredWeek(preservedWeek)
-            setPersistentWeek(preservedWeek)
-          }
-
-          if (currentEmployee !== preservedEmployee) {
-            console.log(`🚨 ALERTA: Empleado cambió durante operación: ${preservedEmployee} → ${currentEmployee}`)
-            console.log(`🔧 RESTAURANDO empleado a: ${preservedEmployee}`)
-            WeekPersistence.setStoredEmployee(preservedEmployee)
-            setPersistentEmployee(preservedEmployee)
-          }
-
-          if (onStatsChange) {
-            onStatsChange()
-          }
-
-          console.log(`✅ Operación completada - Estado final: semana=${preservedWeek}, empleado=${preservedEmployee}`)
-        } else {
-          toast({
-            title: "❌ Error",
-            description: `${employeeName}: No se pudo actualizar el estado`,
-            variant: "destructive",
-          })
+        const supabase = getSupabaseClient()
+        if (!supabase) {
+          throw new Error("No se pudo conectar a Supabase")
         }
+        console.log("✅ Cliente Supabase obtenido")
+
+        // Calcular fechas de la semana actual
+        const { weekStart: startDateStr, weekEnd: endDateStr } = getWeekRange(persistentWeek)
+        console.log("📅 Fechas calculadas:", { startDateStr, endDateStr, persistentWeek })
+
+        // Preparar datos para upsert
+        const upsertData = {
+          employee_id: employeeId,
+          week_start: startDateStr,
+          week_end: endDateStr,
+          amount: newStatus === "pagado" ? amount : 0,
+          paid_date: new Date().toISOString().split("T")[0],
+          notes: `Estado cambiado a ${newStatus} el ${new Date().toLocaleDateString()}`,
+        }
+        console.log("📝 Datos para upsert:", upsertData)
+
+        // 🎯 LÓGICA SÚPER SIMPLE - IGUAL QUE SERVICIOS
+        console.log("🔄 Ejecutando upsert en Supabase...")
+        const { data, error } = await supabase.from("paid_weeks").upsert(upsertData, {
+          onConflict: "employee_id,week_start,week_end",
+        })
+
+        console.log("📊 Resultado de Supabase:", { data, error })
+
+        if (error) {
+          console.error("❌ Error en Supabase:", error)
+          throw error
+        }
+
+        console.log("✅ Upsert exitoso")
+
+        toast({
+          title: "✅ Estado actualizado",
+          description: `${employeeName}: Semana marcada como ${newStatus}`,
+        })
+
+        console.log("🔄 Recargando datos...")
+        // Recargar datos
+        await loadWeekData(persistentWeek, persistentEmployee)
+
+        if (onStatsChange) {
+          console.log("📊 Ejecutando onStatsChange...")
+          onStatsChange()
+        }
+
+        console.log(`✅ ${employeeName} marcado como ${newStatus} exitosamente`)
       } catch (error) {
         console.error(`❌ Error en handlePaymentStatusChange:`, error)
         toast({
           title: "❌ Error",
-          description: "Error inesperado al actualizar",
+          description: `Error: ${error instanceof Error ? error.message : "Error desconocido"}`,
           variant: "destructive",
         })
       } finally {
-        // 🔓 DESBLOQUEAR OPERACIONES
-        operationInProgress.current = false
+        console.log("🔄 Limpiando estado updatingPayment...")
         setUpdatingPayment(null)
-        console.log(`🔄 ===== FIN PAGO PARA ${employeeName.toUpperCase()} =====\n`)
+        console.log("🏁 === FIN handlePaymentStatusChange ===")
       }
     },
-    [employees, updatePaymentStatus, loadWeekData, onStatsChange, toast, updatingPayment],
+    [employees, loadWeekData, persistentWeek, persistentEmployee, onStatsChange, toast, updatingPayment],
   )
 
   // 🔄 FUNCIÓN DE RECARGA MANUAL
@@ -458,7 +551,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       })()
     : null
 
-  // Reemplazar las líneas que calculan weekStart y weekEnd con:
+  // Usar getWeekRange para calcular las fechas de la semana
   const { weekStart: startDateStr, weekEnd: endDateStr } = getWeekRange(persistentWeek)
 
   // 📊 CALCULAR RESUMEN DE EMPLEADOS - 🔒 USANDO TARIFAS HISTÓRICAS
@@ -481,7 +574,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           // 🔒 CRÍTICO: Usar daily_rate_used (tarifa histórica) NO employee.daily_rate (tarifa actual)
           const totalForDay = dayAssignments.reduce((sum, assignment) => {
             const historicalRate = assignment.daily_rate_used || 0
-            console.log(`💰 RESUMEN - Usando tarifa histórica: $${historicalRate} (asignación ID: ${assignment.id})`)
             return sum + historicalRate
           }, 0)
           return { date, assignments: dayAssignments, totalForDay }
@@ -499,19 +591,38 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           employeeAssignments.length > 0 ? totalHistoricalRates / employeeAssignments.length : employee.daily_rate
 
         const hotels = [...new Set(employeeAssignments.map((a) => a.hotel_name))]
-        // Reemplazar la line:
-        const isPaid = hasSignificantWeekOverlap(startDateStr, endDateStr, paidWeeks, employee.id)
 
-        console.log(`📊 RESUMEN - ${employee.name}:`)
-        console.log(`   💰 Tarifa actual del empleado: $${employee.daily_rate}`)
-        console.log(`   🔒 Tarifa promedio histórica: $${averageHistoricalRate}`)
-        console.log(`   💵 Total calculado (histórico): $${totalAmount}`)
+        // 🎯 VERIFICACIÓN SÚPER SIMPLE CON LOGS
+        console.log(`🔍 Verificando pago para ${employee.name} (ID: ${employee.id})`)
+        console.log(`📅 Semana buscada EXACTA: ${startDateStr} - ${endDateStr}`)
+
+        // Buscar registro EXACTO de la semana (no solapamientos)
+        const exactRecord = paidWeeks.find((pw) => {
+          const paidStart = new Date(pw.week_start).toISOString().split("T")[0]
+          const paidEnd = new Date(pw.week_end).toISOString().split("T")[0]
+          const isEmployee = pw.employee_id === employee.id
+          const isExactWeek = paidStart === startDateStr && paidEnd === endDateStr
+
+          if (isEmployee && isExactWeek) {
+            console.log(
+              `📊 Registro EXACTO encontrado para ${employee.name}: ${paidStart} - ${paidEnd}, Amount: ${pw.amount}`,
+            )
+          }
+
+          return isEmployee && isExactWeek
+        })
+
+        const isPaid = exactRecord ? Number(exactRecord.amount) > 0 : false
+
+        console.log(
+          `${isPaid ? "✅" : "❌"} ${employee.name}: ${isPaid ? "PAGADO" : "PENDIENTE"} (Registro exacto: ${exactRecord ? `Amount: ${exactRecord.amount}` : "No encontrado"})`,
+        )
 
         return {
           employee,
           daysWorked,
           totalAmount,
-          averageHistoricalRate, // 🔒 Nueva propiedad para mostrar
+          averageHistoricalRate,
           hotels,
           assignmentDetails,
           assignments: employeeAssignments,
@@ -542,10 +653,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
               </CardTitle>
               <CardDescription className="text-sm">
                 Gestión semanal de pagos y asignaciones
-                <div className="text-xs text-gray-500 mt-1">
-                  📦 Semana persistente: {persistentWeek} | 🔒 Operación:{" "}
-                  {operationInProgress.current ? "ACTIVA" : "INACTIVA"}
-                </div>
+                <div className="text-xs text-gray-500 mt-1">📦 Semana persistente: {persistentWeek}</div>
               </CardDescription>
             </div>
             <Button
@@ -635,11 +743,15 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
             </div>
           </div>
 
-          <Tabs value="semanal" className="w-full">
-            <TabsList className="grid w-full grid-cols-1">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="semanal" className="flex items-center gap-2 text-sm">
                 <Calendar className="h-4 w-4" />
                 Vista Semanal
+              </TabsTrigger>
+              <TabsTrigger value="anual" className="flex items-center gap-2 text-sm">
+                <BarChart3 className="h-4 w-4" />
+                Vista Anual por Hotel
               </TabsTrigger>
             </TabsList>
 
@@ -700,8 +812,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                             <TableCell className="text-center">
                               <div className="font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
                               <div className="text-xs text-muted-foreground">
-                                {/* 🔒 MOSTRAR TARIFA HISTÓRICA PROMEDIO, NO LA ACTUAL */}$
-                                {Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
+                                ${Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
                                 {summary.averageHistoricalRate !== summary.employee.daily_rate && (
                                   <div className="text-xs text-orange-600">
                                     (Actual: ${summary.employee.daily_rate.toLocaleString()})
@@ -749,51 +860,38 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                             </TableCell>
 
                             <TableCell className="text-center">
-                              <div className="flex gap-1 justify-center">
-                                {summary.isPaid ? (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      handlePaymentStatusChange(summary.employee.id, "pendiente", summary.totalAmount)
-                                    }
-                                    disabled={updatingPayment === summary.employee.id || operationInProgress.current}
-                                    className="text-xs px-2 py-1 h-7"
-                                  >
-                                    {updatingPayment === summary.employee.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <>
-                                        <AlertTriangle className="h-3 w-3 mr-1" />
-                                        Pendiente
-                                      </>
-                                    )}
-                                  </Button>
+                              <Button
+                                variant={summary.isPaid ? "outline" : "default"}
+                                size="sm"
+                                onClick={() => {
+                                  console.log("🖱️ CLICK EN BOTÓN:", {
+                                    employeeId: summary.employee.id,
+                                    employeeName: summary.employee.name,
+                                    currentStatus: summary.isPaid ? "pagado" : "pendiente",
+                                    newStatus: summary.isPaid ? "pendiente" : "pagado",
+                                    amount: summary.totalAmount,
+                                  })
+                                  handlePaymentStatusChange(
+                                    summary.employee.id,
+                                    summary.isPaid ? "pendiente" : "pagado",
+                                    summary.totalAmount,
+                                  )
+                                }}
+                                disabled={updatingPayment === summary.employee.id}
+                                className={`text-xs px-3 py-1 h-8 ${
+                                  summary.isPaid
+                                    ? "bg-green-100 text-green-800 hover:bg-green-200"
+                                    : "bg-blue-600 hover:bg-blue-700 text-white"
+                                }`}
+                              >
+                                {updatingPayment === summary.employee.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : summary.isPaid ? (
+                                  "✅ Pagado"
                                 ) : (
-                                  <Button
-                                    variant="default"
-                                    size="sm"
-                                    onClick={() =>
-                                      handlePaymentStatusChange(summary.employee.id, "pagado", summary.totalAmount)
-                                    }
-                                    disabled={
-                                      updatingPayment === summary.employee.id ||
-                                      summary.daysWorked === 0 ||
-                                      operationInProgress.current
-                                    }
-                                    className="text-xs px-2 py-1 h-7 bg-green-600 hover:bg-green-700"
-                                  >
-                                    {updatingPayment === summary.employee.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <>
-                                        <CheckCircle className="h-3 w-3 mr-1" />
-                                        Pagar
-                                      </>
-                                    )}
-                                  </Button>
+                                  "💰 Pagar"
                                 )}
-                              </div>
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -802,6 +900,127 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+            <TabsContent value="anual" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Building2 className="h-5 w-5" />
+                        Resumen Anual por Hotel - {selectedYear}
+                      </CardTitle>
+                      <CardDescription>Total de actividad por hotel durante el año</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={selectedYear.toString()}
+                        onValueChange={(value) => setSelectedYear(Number.parseInt(value))}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {loadingAnnual ? (
+                    <div className="flex justify-center items-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                  ) : annualData.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Building2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p>No hay datos para el año {selectedYear}</p>
+                      <p className="text-sm">Selecciona un año diferente o verifica las asignaciones</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Resumen general */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <Card className="bg-blue-50 border-blue-200">
+                          <CardContent className="p-4">
+                            <div className="text-2xl font-bold text-blue-700">
+                              {annualData.reduce((sum, hotel) => sum + hotel.totalDays, 0)}
+                            </div>
+                            <div className="text-sm text-blue-600">Total Días Trabajados</div>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-green-50 border-green-200">
+                          <CardContent className="p-4">
+                            <div className="text-2xl font-bold text-green-700">
+                              ${annualData.reduce((sum, hotel) => sum + hotel.totalAmount, 0).toLocaleString()}
+                            </div>
+                            <div className="text-sm text-green-600">Total Generado</div>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-purple-50 border-purple-200">
+                          <CardContent className="p-4">
+                            <div className="text-2xl font-bold text-purple-700">{annualData.length}</div>
+                            <div className="text-sm text-purple-600">Hoteles Activos</div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Tabla de hoteles */}
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Hotel</TableHead>
+                            <TableHead className="text-center">Días Trabajados</TableHead>
+                            <TableHead className="text-center">Total Generado</TableHead>
+                            <TableHead className="text-center">Empleados</TableHead>
+                            <TableHead className="text-center">Promedio/Día</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {annualData.map((hotel) => (
+                            <TableRow key={hotel.hotelName}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="h-4 w-4 text-blue-600" />
+                                  <div>
+                                    <div className="font-medium">{hotel.hotelName}</div>
+                                    <Badge className={`${getHotelColor(hotel.hotelName)} text-xs mt-1`}>
+                                      {hotel.hotelName}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                                  {hotel.totalDays}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="font-bold text-green-600">${hotel.totalAmount.toLocaleString()}</div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant="outline" className="bg-purple-50 text-purple-700">
+                                  {hotel.uniqueEmployees}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="text-sm font-medium">
+                                  ${Math.round(hotel.averagePerDay).toLocaleString()}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </CardContent>

@@ -3,24 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import {
-  Users,
-  UserPlus,
-  Calendar,
-  BarChart3,
-  Upload,
-  TrendingUp,
-  Clock,
-  DollarSign,
-  RefreshCw,
-  Eye,
-  AlertCircle,
-} from "lucide-react"
+import { Users, UserPlus, Calendar, BarChart3, Upload, TrendingUp, Clock, DollarSign, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEmployeeDB } from "@/lib/employee-db"
-import { subWeeks, format, startOfWeek, endOfWeek } from "date-fns"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { hasSignificantWeekOverlap } from "@/lib/week-utils"
 
 interface EmpleadosInicioProps {
   onTabChange?: (tab: string) => void
@@ -57,196 +42,52 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
   const [refreshing, setRefreshing] = useState(false)
 
   const loadRealStats = useCallback(async () => {
-    console.log("🔄 INICIO - Cargando estadísticas...")
+    console.log("🔄 INICIO - Cargando estadísticas simples...")
     try {
-      // Obtener todos los empleados
       const employees = await getEmployees()
-      console.log("👥 INICIO - Empleados encontrados:", employees.length)
-
-      // Obtener fecha de hoy
       const today = new Date()
       const todayStr = today.toISOString().split("T")[0]
 
-      // Obtener asignaciones de hoy
+      // Asignaciones de hoy
       const todayAssignments = await getAssignments({
         start_date: todayStr,
         end_date: todayStr,
       })
-
-      // Obtener empleados únicos que trabajan hoy
       const uniqueEmployeesToday = new Set(todayAssignments.map((a) => a.employee_id))
-      console.log("📅 INICIO - Empleados trabajando hoy:", uniqueEmployeesToday.size)
 
-      // Calcular empleados activos (con asignaciones en los últimos 30 días)
+      // Empleados activos (30 días)
       const thirtyDaysAgo = new Date(today)
       thirtyDaysAgo.setDate(today.getDate() - 30)
-
       const recentAssignments = await getAssignments({
         start_date: thirtyDaysAgo.toISOString().split("T")[0],
         end_date: todayStr,
       })
-
       const activeEmployees = new Set(recentAssignments.map((a) => a.employee_id))
-      console.log("🔥 INICIO - Empleados activos (30 días):", activeEmployees.size)
 
-      // 🎯 ANÁLISIS CORRECTO DE PAGOS PENDIENTES
-      const eightWeeksAgo = subWeeks(today, 8)
-      const allRecentAssignments = await getAssignments({
-        start_date: eightWeeksAgo.toISOString().split("T")[0],
-        end_date: todayStr,
-      })
-
-      const allPaidWeeks = await getPaidWeeks({
-        start_date: eightWeeksAgo.toISOString().split("T")[0],
-        end_date: todayStr,
-      })
-
-      console.log("📊 INICIO - Asignaciones recientes (8 semanas):", allRecentAssignments.length)
-      console.log("💰 INICIO - Semanas pagadas encontradas:", allPaidWeeks.length)
-
-      // 🗓️ LÓGICA CORREGIDA: Agrupar por empleado y semana CORRECTAMENTE
-      const weeklyData = new Map<string, PendingPaymentDetail>()
-
-      // Procesar cada asignación
-      allRecentAssignments.forEach((assignment) => {
-        const assignmentDate = new Date(assignment.assignment_date)
-
-        // 🔧 CALCULAR SEMANA CORRECTAMENTE (Lunes a Domingo)
-        const weekStart = startOfWeek(assignmentDate, { weekStartsOn: 1 }) // Lunes
-        const weekEnd = endOfWeek(assignmentDate, { weekStartsOn: 1 }) // Domingo
-
-        const weekStartStr = weekStart.toISOString().split("T")[0]
-        const weekEndStr = weekEnd.toISOString().split("T")[0]
-        const weekKey = `${assignment.employee_id}-${weekStartStr}`
-
-        console.log(`📅 INICIO - Procesando asignación:`)
-        console.log(`   Empleado: ${assignment.employee_name} (ID: ${assignment.employee_id})`)
-        console.log(`   Fecha asignación: ${assignment.assignment_date}`)
-        console.log(`   Semana calculada: ${weekStartStr} - ${weekEndStr}`)
-        console.log(`   Tarifa histórica: $${assignment.daily_rate_used}`)
-
-        if (!weeklyData.has(weekKey)) {
-          weeklyData.set(weekKey, {
-            employeeId: assignment.employee_id,
-            employeeName: assignment.employee_name || "Desconocido",
-            weekStart: weekStartStr,
-            weekEnd: weekEndStr,
-            assignmentCount: 0,
-            totalAmount: 0,
-            isPaid: false,
-          })
-        }
-
-        const weekData = weeklyData.get(weekKey)!
-        weekData.assignmentCount++ // Contar días trabajados
-        weekData.totalAmount += assignment.daily_rate_used || 0 // Sumar tarifa histórica
-      })
-
-      console.log("📅 INICIO - Semanas únicas encontradas:", weeklyData.size)
-
-      // 🎯 DETERMINAR ESTADO DE PAGO PARA CADA SEMANA
-      const pendingWeeks: PendingPaymentDetail[] = []
-      const paidWeeks: PendingPaymentDetail[] = []
-      const employeesWithPendingPayments = new Set<number>()
-      let totalPendingAmount = 0
-      let totalPaidWeeks = 0
-
-      weeklyData.forEach((weekData, weekKey) => {
-        console.log(`🔍 INICIO - Analizando semana:`)
-        console.log(`   Empleado: ${weekData.employeeName} (ID: ${weekData.employeeId})`)
-        console.log(`   Semana: ${weekData.weekStart} - ${weekData.weekEnd}`)
-        console.log(`   Días trabajados: ${weekData.assignmentCount}`)
-        console.log(`   Monto total: $${weekData.totalAmount}`)
-
-        // 🎯 VERIFICAR SI ESTÁ PAGADA
-        const isPaid = hasSignificantWeekOverlap(
-          weekData.weekStart,
-          weekData.weekEnd,
-          allPaidWeeks,
-          weekData.employeeId,
-        )
-
-        if (isPaid) {
-          // ✅ Semana PAGADA
-          weekData.isPaid = true
-          const matchingPaidWeek = allPaidWeeks.find((pw) => {
-            return (
-              pw.employee_id === weekData.employeeId &&
-              weekData.weekStart <= pw.week_end &&
-              weekData.weekEnd >= pw.week_start &&
-              pw.amount > 0
-            )
-          })
-
-          if (matchingPaidWeek) {
-            weekData.paidAmount = matchingPaidWeek.amount
-            weekData.paidDate = matchingPaidWeek.paid_date
-          }
-
-          paidWeeks.push(weekData)
-          totalPaidWeeks++
-
-          console.log(`✅ INICIO - Semana PAGADA: ${weekData.employeeName} (${weekData.weekStart})`)
-        } else {
-          // 🔴 Semana PENDIENTE
-          weekData.isPaid = false
-          pendingWeeks.push(weekData)
-          employeesWithPendingPayments.add(weekData.employeeId)
-          totalPendingAmount += weekData.totalAmount
-
-          console.log(
-            `🔴 INICIO - Semana PENDIENTE: ${weekData.employeeName} (${weekData.weekStart}) - $${weekData.totalAmount}`,
-          )
-        }
-      })
-
-      // Ordenar pendientes por empleado y fecha
-      pendingWeeks.sort((a, b) => {
-        if (a.employeeName !== b.employeeName) {
-          return a.employeeName.localeCompare(b.employeeName)
-        }
-        return a.weekStart.localeCompare(b.weekStart)
-      })
-
-      setPendingDetails(pendingWeeks)
+      // Pagos pendientes simples
+      const allPaidWeeks = await getPaidWeeks({})
+      const pendingCount = allPaidWeeks.filter((pw) => pw.amount === 0 || !pw.amount).length
+      const paidCount = allPaidWeeks.filter((pw) => pw.amount > 0).length
+      const totalPending = allPaidWeeks
+        .filter((pw) => pw.amount === 0 || !pw.amount)
+        .reduce((sum, pw) => sum + (pw.expected_amount || 0), 0)
 
       setStats({
         totalEmpleados: employees.length,
         empleadosActivos: activeEmployees.size,
         asignacionesHoy: uniqueEmployeesToday.size,
-        semanasConAsignaciones: weeklyData.size,
-        semanasPagadas: totalPaidWeeks,
-        semanasPendientes: pendingWeeks.length,
-        empleadosConPagosPendientes: employeesWithPendingPayments.size,
-        montoTotalPendiente: totalPendingAmount,
+        semanasConAsignaciones: allPaidWeeks.length,
+        semanasPagadas: paidCount,
+        semanasPendientes: pendingCount,
+        empleadosConPagosPendientes: new Set(
+          allPaidWeeks.filter((pw) => pw.amount === 0 || !pw.amount).map((pw) => pw.employee_id),
+        ).size,
+        montoTotalPendiente: totalPending,
       })
 
-      console.log("📊 INICIO - RESUMEN FINAL CORREGIDO:")
-      console.log("- Total semanas con trabajo:", weeklyData.size)
-      console.log("- Semanas pagadas:", totalPaidWeeks)
-      console.log("- Semanas pendientes:", pendingWeeks.length)
-      console.log("- Empleados con pagos pendientes:", employeesWithPendingPayments.size)
-      console.log("- Monto total pendiente: $", totalPendingAmount.toLocaleString())
-
-      // 🔍 DEBUG: Mostrar detalles de semanas pendientes
-      console.log("🔍 INICIO - DETALLE DE SEMANAS PENDIENTES:")
-      pendingWeeks.forEach((week, index) => {
-        console.log(`  ${index + 1}. ${week.employeeName}: ${week.weekStart} al ${week.weekEnd}`)
-        console.log(`     - Días trabajados: ${week.assignmentCount}`)
-        console.log(`     - Monto: $${week.totalAmount.toLocaleString()}`)
-      })
-
-      // 🔍 VALIDACIÓN: Verificar coherencia
-      const totalWeeks = totalPaidWeeks + pendingWeeks.length
-      if (weeklyData.size !== totalWeeks) {
-        console.error("❌ INICIO - DISCREPANCIA DETECTADA:")
-        console.error(`Total semanas calculadas: ${weeklyData.size}`)
-        console.error(`Pagadas + Pendientes: ${totalWeeks}`)
-      } else {
-        console.log("✅ INICIO - Cálculos coherentes")
-      }
+      setPendingDetails([]) // Simplificar - no mostrar detalles complejos
     } catch (error) {
-      console.error("❌ INICIO - Error loading stats:", error)
+      console.error("❌ Error loading stats:", error)
       setStats({
         totalEmpleados: 0,
         empleadosActivos: 0,
@@ -257,7 +98,6 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
         empleadosConPagosPendientes: 0,
         montoTotalPendiente: 0,
       })
-      setPendingDetails([])
     }
   }, [getEmployees, getAssignments, getPaidWeeks])
 
@@ -358,126 +198,6 @@ export default function EmpleadosInicio({ onTabChange, refreshTrigger }: Emplead
           </div>
         </Card>
       </div>
-
-      {/* Estadísticas de Pagos Detalladas */}
-      <Card>
-        <CardHeader className="pb-3 sm:pb-4">
-          <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Análisis de Pagos (Últimas 8 semanas)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{loading ? "..." : stats.semanasConAsignaciones}</div>
-              <div className="text-sm text-muted-foreground">Semanas con Trabajo</div>
-            </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{loading ? "..." : stats.semanasPagadas}</div>
-              <div className="text-sm text-muted-foreground">Semanas Pagadas</div>
-            </div>
-            <div className="text-center p-4 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{loading ? "..." : stats.semanasPendientes}</div>
-              <div className="text-sm text-muted-foreground">Semanas Pendientes</div>
-            </div>
-            <div className="text-center p-4 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">
-                ${loading ? "..." : stats.montoTotalPendiente.toLocaleString()}
-              </div>
-              <div className="text-sm text-muted-foreground">Monto Pendiente</div>
-            </div>
-          </div>
-
-          {/* Botón para ir al resumen de pagos */}
-          {stats.semanasPendientes > 0 && !loading && (
-            <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
-              <Button
-                onClick={() => handleQuickAction("Ver Pagos Pendientes", "resumen")}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white"
-              >
-                <DollarSign className="h-4 w-4" />
-                Gestionar Pagos Pendientes
-              </Button>
-
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="flex items-center gap-2">
-                    <Eye className="h-4 w-4" />
-                    Ver Detalle ({stats.semanasPendientes})
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Detalle de Pagos Pendientes ({stats.semanasPendientes} semanas)</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    {pendingDetails.map((detail, index) => (
-                      <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="font-semibold">{detail.employeeName}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              Semana: {format(new Date(detail.weekStart), "dd/MM/yyyy")} -{" "}
-                              {format(new Date(detail.weekEnd), "dd/MM/yyyy")}
-                            </p>
-                            <p className="text-sm">Días trabajados: {detail.assignmentCount}</p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-lg font-bold text-red-600">${detail.totalAmount.toLocaleString()}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="mt-6 pt-4 border-t">
-                      <div className="text-center mb-4">
-                        <div className="text-2xl font-bold text-red-600">
-                          Total: ${stats.montoTotalPendiente.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {stats.empleadosConPagosPendientes} empleado
-                          {stats.empleadosConPagosPendientes !== 1 ? "s" : ""} con pagos pendientes
-                        </div>
-                      </div>
-                      <Button
-                        onClick={() => {
-                          handleQuickAction("Ir a Gestionar Pagos", "resumen")
-                        }}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        Ir a Gestionar Estos Pagos
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {stats.semanasPendientes > 0 && !loading && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center gap-2 text-red-800 mb-2">
-            <AlertCircle className="h-4 w-4" />
-            <span className="text-sm font-medium">
-              Hay {stats.semanasPendientes} semana{stats.semanasPendientes !== 1 ? "s" : ""} pendiente
-              {stats.semanasPendientes !== 1 ? "s" : ""} de pago
-            </span>
-          </div>
-          <div className="text-xs text-red-700 mb-3">
-            {stats.empleadosConPagosPendientes} empleado{stats.empleadosConPagosPendientes !== 1 ? "s" : ""}
-            {stats.empleadosConPagosPendientes !== 1 ? " tienen" : " tiene"} pagos pendientes por $
-            {stats.montoTotalPendiente.toLocaleString()}
-          </div>
-          <Button
-            onClick={() => handleQuickAction("Gestionar Pagos Pendientes", "resumen")}
-            className="w-full bg-red-600 hover:bg-red-700 text-white text-sm"
-          >
-            Gestionar Pagos Pendientes
-          </Button>
-        </div>
-      )}
 
       {/* Acciones Rápidas */}
       <Card>
