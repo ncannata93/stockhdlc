@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Settings, Users, Calendar, BarChart3, Upload, UserCog, DollarSign } from "lucide-react"
+import { Settings, Users, Calendar, BarChart3, Upload, UserCog } from "lucide-react"
 
 import EmpleadosInicio from "@/components/empleados/inicio"
 import EmpleadosAgregar from "@/components/empleados/agregar"
@@ -12,7 +12,6 @@ import EmpleadosHistorial from "@/components/empleados/historial"
 import EmpleadosResumen from "@/components/empleados/resumen"
 import ImportarAsignaciones from "@/components/empleados/importar-asignaciones"
 import EmpleadosList from "@/components/empleados/empleados-list"
-import PagoSimple from "@/components/empleados/pago-simple"
 
 export default function EmpleadosPage() {
   const [activeTab, setActiveTab] = useState("inicio")
@@ -96,13 +95,6 @@ export default function EmpleadosPage() {
                 <Upload className="h-3 w-3 sm:h-4 sm:w-4" />
                 <span className="hidden sm:inline">Importar</span>
               </TabsTrigger>
-              <TabsTrigger
-                value="pagos"
-                className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap px-2 py-2"
-              >
-                <DollarSign className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Pagos</span>
-              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="inicio" className="mt-6">
@@ -131,10 +123,6 @@ export default function EmpleadosPage() {
 
             <TabsContent value="importar" className="mt-6">
               <ImportarAsignaciones onSuccess={handleRefresh} />
-            </TabsContent>
-
-            <TabsContent value="pagos" className="mt-6">
-              <PagoSimple />
             </TabsContent>
           </Tabs>
         </CardContent>

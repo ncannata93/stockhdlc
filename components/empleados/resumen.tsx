@@ -18,8 +18,9 @@ import {
   Clock,
   RefreshCw,
   CheckCircle,
+  AlertTriangle,
 } from "lucide-react"
-import { useEmployeeDB, getSupabaseClient } from "@/lib/employee-db"
+import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment } from "@/lib/employee-types"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -748,65 +749,51 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                             </TableCell>
 
                             <TableCell className="text-center">
-                              <Button
-                                variant={summary.isPaid ? "outline" : "default"}
-                                size="sm"
-                                onClick={async () => {
-                                  const supabase = getSupabaseClient()
-                                  if (!supabase) return
-
-                                  try {
-                                    if (summary.isPaid) {
-                                      // Marcar como pendiente (eliminar registro)
-                                      await supabase
-                                        .from("paid_weeks")
-                                        .delete()
-                                        .eq("employee_id", summary.employee.id)
-                                        .eq("week_start", startDateStr)
-                                        .eq("week_end", endDateStr)
-                                    } else {
-                                      // Marcar como pagado (crear registro)
-                                      await supabase.from("paid_weeks").upsert({
-                                        employee_id: summary.employee.id,
-                                        week_start: startDateStr,
-                                        week_end: endDateStr,
-                                        amount: summary.totalAmount,
-                                        paid_date: new Date().toISOString().split("T")[0],
-                                        notes: `Pagado el ${new Date().toLocaleDateString()}`,
-                                      })
+                              <div className="flex gap-1 justify-center">
+                                {summary.isPaid ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      handlePaymentStatusChange(summary.employee.id, "pendiente", summary.totalAmount)
                                     }
-
-                                    // Recargar datos
-                                    await loadWeekData(persistentWeek, persistentEmployee)
-                                    if (onStatsChange) onStatsChange()
-
-                                    toast({
-                                      title: summary.isPaid ? "Marcado como pendiente" : "Marcado como pagado",
-                                      description: `${summary.employee.name} - Semana actualizada`,
-                                    })
-                                  } catch (error) {
-                                    toast({
-                                      title: "Error",
-                                      description: "No se pudo actualizar el estado",
-                                      variant: "destructive",
-                                    })
-                                  }
-                                }}
-                                disabled={updatingPayment === summary.employee.id}
-                                className={`text-xs px-3 py-1 h-8 ${
-                                  summary.isPaid
-                                    ? "bg-green-100 text-green-800 hover:bg-green-200"
-                                    : "bg-blue-600 hover:bg-blue-700 text-white"
-                                }`}
-                              >
-                                {updatingPayment === summary.employee.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : summary.isPaid ? (
-                                  "✅ Pagado"
+                                    disabled={updatingPayment === summary.employee.id || operationInProgress.current}
+                                    className="text-xs px-2 py-1 h-7"
+                                  >
+                                    {updatingPayment === summary.employee.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                        Pendiente
+                                      </>
+                                    )}
+                                  </Button>
                                 ) : (
-                                  "💰 Pagar"
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() =>
+                                      handlePaymentStatusChange(summary.employee.id, "pagado", summary.totalAmount)
+                                    }
+                                    disabled={
+                                      updatingPayment === summary.employee.id ||
+                                      summary.daysWorked === 0 ||
+                                      operationInProgress.current
+                                    }
+                                    className="text-xs px-2 py-1 h-7 bg-green-600 hover:bg-green-700"
+                                  >
+                                    {updatingPayment === summary.employee.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Pagar
+                                      </>
+                                    )}
+                                  </Button>
                                 )}
-                              </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
