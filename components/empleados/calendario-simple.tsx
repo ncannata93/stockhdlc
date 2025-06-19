@@ -268,7 +268,7 @@ export default function CalendarioSimple() {
                               <div key={assignment.id} className="space-y-1">
                                 <div
                                   className={`
-                                    text-xs p-1.5 rounded border font-medium text-center
+                                    text-xs rounded border font-medium text-center p-1
                                     ${getHotelColor(assignment.hotel_name)}
                                   `}
                                   title={`${assignment.hotel_name}: ${assignment.employee_name}`}

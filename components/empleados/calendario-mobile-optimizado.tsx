@@ -279,7 +279,7 @@ export default function CalendarioMobileOptimizado() {
                       <div
                         key={dayIndex}
                         className={`
-                          min-h-[90px] border rounded-lg p-1 relative
+                          min-h-[100px] border rounded-lg p-1 relative
                           ${isToday ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200"}
                           ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
                           ${hasAssignments ? "border-green-400 bg-green-50" : ""}

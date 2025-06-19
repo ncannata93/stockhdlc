@@ -259,14 +259,14 @@ export default function EmpleadosCalendario() {
                                       className={`
                                         text-xs p-0.5 rounded font-bold text-center cursor-pointer
                                         ${getHotelColor(assignment.hotel_name)}
-                                        min-h-[20px] flex flex-col justify-center
+                                        min-h-[24px] flex flex-col justify-center
                                       `}
                                     >
                                       <div className="text-xs font-bold leading-none">
                                         {getHotelCode(assignment.hotel_name)}
                                       </div>
                                       <div className="text-xs truncate leading-none mt-0.5">
-                                        {assignment.employee_name?.split(" ")[0]?.substring(0, 4) || "N/A"}
+                                        {assignment.employee_name?.split(" ")[0] || "N/A"}
                                       </div>
                                     </div>
                                   </TooltipTrigger>

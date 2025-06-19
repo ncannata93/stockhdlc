@@ -280,7 +280,7 @@ export default function CalendarioMobile() {
                                   {getHotelCode(assignment.hotel_name)}
                                 </Badge>
                                 <div className="text-xs text-center text-gray-600 truncate">
-                                  {assignment.employee_name?.split(" ")[0]}
+                                  {assignment.employee_name?.split(" ")[0] || "N/A"}
                                 </div>
                               </div>
                             ))}
