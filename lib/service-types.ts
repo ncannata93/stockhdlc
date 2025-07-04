@@ -11,6 +11,7 @@ export interface Service {
   name: string // Ej: "Electricidad - Edenor", "Gas - Metrogas"
   description?: string // Descripción opcional adicional
   category: ServiceCategory
+  provider?: string // Proveedor del servicio
   account_number?: string
   hotel_id: string
   hotel_name?: string // Para mostrar en la interfaz
@@ -34,6 +35,7 @@ export interface ServicePayment {
   payment_date?: string
   status: PaymentStatus
   invoice_number?: string
+  payment_method?: PaymentMethod // Nueva propiedad
   notes?: string
   created_at: string
   updated_at: string
@@ -55,6 +57,16 @@ export type ServiceCategory =
 
 export type PaymentStatus = "pendiente" | "abonado" | "vencido"
 
+export type PaymentMethod =
+  | "bbva_visa"
+  | "bbva_master"
+  | "brubank"
+  | "santander_visa"
+  | "santander_amex"
+  | "transferencia"
+  | "mercadopago"
+  | "efectivo"
+
 export const SERVICE_CATEGORIES = {
   electricidad: "Electricidad",
   gas: "Gas",
@@ -74,6 +86,17 @@ export const PAYMENT_STATUS = {
   pendiente: "Pendiente",
   abonado: "Abonado",
   vencido: "Vencido",
+}
+
+export const PAYMENT_METHODS = {
+  bbva_visa: "BBVA VISA",
+  bbva_master: "BBVA MASTER",
+  brubank: "BRUBANK",
+  santander_visa: "SANTANDER VISA",
+  santander_amex: "SANTANDER AMEX",
+  transferencia: "TRANSFERENCIA",
+  mercadopago: "MERCADOPAGO",
+  efectivo: "EFECTIVO",
 }
 
 export const MONTHS = {

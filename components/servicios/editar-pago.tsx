@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation"
 import { getServices, updateServicePayment, getServicePayments, getHotels } from "@/lib/service-db"
 import type { Service, Hotel } from "@/lib/service-types"
 import { Save, ArrowLeft, Building2 } from "lucide-react"
+import { PAYMENT_METHODS } from "@/lib/service-types"
 
 export function EditarPago() {
   const searchParams = useSearchParams()
@@ -28,6 +29,7 @@ export function EditarPago() {
     paymentDate: "",
     status: "pendiente",
     invoiceNumber: "",
+    paymentMethod: "",
     notes: "",
   })
 
@@ -77,6 +79,7 @@ export function EditarPago() {
           paymentDate: payment.payment_date || "",
           status: payment.status,
           invoiceNumber: payment.invoice_number || "",
+          paymentMethod: payment.payment_method || "",
           notes: payment.notes || "",
         })
       }
@@ -118,6 +121,15 @@ export function EditarPago() {
           hotelId: selectedService.hotel_id,
         }))
       }
+    } else if (name === "status") {
+      // Si cambia el estado, limpiar campos relacionados con el pago si no es "abonado"
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+        paymentDate: value === "abonado" ? prev.paymentDate : "",
+        invoiceNumber: value === "abonado" ? prev.invoiceNumber : "",
+        paymentMethod: value === "abonado" ? prev.paymentMethod : "",
+      }))
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }))
     }
@@ -141,6 +153,7 @@ export function EditarPago() {
         payment_date: formData.paymentDate || undefined,
         status: formData.status,
         invoice_number: formData.invoiceNumber || undefined,
+        payment_method: formData.paymentMethod || undefined,
         notes: formData.notes,
       })
 
@@ -366,12 +379,13 @@ export function EditarPago() {
             <>
               <div>
                 <label htmlFor="paymentDate" className="block text-sm font-medium text-gray-700 mb-1">
-                  Fecha de Pago
+                  Fecha de Pago *
                 </label>
                 <input
                   type="date"
                   id="paymentDate"
                   name="paymentDate"
+                  required={formData.status === "abonado"}
                   value={formData.paymentDate}
                   onChange={handleChange}
                   className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -380,7 +394,7 @@ export function EditarPago() {
 
               <div>
                 <label htmlFor="invoiceNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                  Número de Factura
+                  Número de Comprobante
                 </label>
                 <input
                   type="text"
@@ -389,8 +403,29 @@ export function EditarPago() {
                   value={formData.invoiceNumber}
                   onChange={handleChange}
                   className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Número de factura"
+                  placeholder="Número de comprobante"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700 mb-1">
+                  Forma de Pago *
+                </label>
+                <select
+                  id="paymentMethod"
+                  name="paymentMethod"
+                  required={formData.status === "abonado"}
+                  value={formData.paymentMethod}
+                  onChange={handleChange}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccione forma de pago</option>
+                  {Object.entries(PAYMENT_METHODS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </>
           )}

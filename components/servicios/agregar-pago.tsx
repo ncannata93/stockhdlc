@@ -3,30 +3,26 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
-import { getServices, addServicePayment, getHotels } from "@/lib/service-db"
+import { getServices, getHotels, addServicePayment } from "@/lib/service-db"
 import type { Service, Hotel } from "@/lib/service-types"
-import { Save, ArrowLeft, Building2 } from "lucide-react"
-
-// Importar la función para actualizar promedio
-import { updateServiceAverage } from "@/lib/service-db"
+import { PAYMENT_METHODS } from "@/lib/service-types"
+import { Building2, DollarSign, Calendar, FileText, CreditCard } from "lucide-react"
 
 export function AgregarPago() {
-  const searchParams = useSearchParams()
   const [services, setServices] = useState<Service[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
-  const [filteredServices, setFilteredServices] = useState<Service[]>([])
-  const [selectedHotel, setSelectedHotel] = useState("")
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     serviceId: "",
-    serviceName: "",
     hotelId: "",
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     amount: "",
     dueDate: "",
+    paymentDate: "",
     status: "pendiente",
+    invoiceNumber: "",
+    paymentMethod: "",
     notes: "",
   })
 
@@ -34,132 +30,24 @@ export function AgregarPago() {
     loadData()
   }, [])
 
-  useEffect(() => {
-    // Filtrar servicios por hotel seleccionado
-    if (selectedHotel) {
-      const filtered = services.filter((service) => service.hotel_id === selectedHotel)
-      setFilteredServices(filtered)
-    } else {
-      setFilteredServices(services)
-    }
-
-    // Limpiar servicio seleccionado si no está en el hotel filtrado
-    if (selectedHotel && formData.serviceId) {
-      const serviceExists = services.find((s) => s.id === formData.serviceId && s.hotel_id === selectedHotel)
-      if (!serviceExists) {
-        setFormData((prev) => ({
-          ...prev,
-          serviceId: "",
-          serviceName: "",
-          hotelId: "",
-          amount: "",
-        }))
-      }
-    }
-  }, [selectedHotel, services, formData.serviceId])
-
   const loadData = async () => {
     try {
       const [servicesData, hotelsData] = await Promise.all([getServices(), getHotels()])
-
       setServices(servicesData)
       setHotels(hotelsData)
-      setFilteredServices(servicesData)
-
-      // Verificar si hay un hotelId en la URL
-      const hotelIdParam = searchParams.get("hotelId")
-      if (hotelIdParam) {
-        setSelectedHotel(hotelIdParam)
-      }
-
-      // Si hay un serviceId en la URL, seleccionarlo
-      const serviceIdParam = searchParams.get("serviceId")
-      if (serviceIdParam && servicesData.length > 0) {
-        const service = servicesData.find((s) => s.id === serviceIdParam)
-        if (service) {
-          setSelectedHotel(service.hotel_id)
-          setFormData((prev) => ({
-            ...prev,
-            serviceId: service.id,
-            serviceName: service.name,
-            hotelId: service.hotel_id,
-            amount: service.average_amount?.toString() || "",
-          }))
-        }
-      }
     } catch (error) {
       console.error("Error al cargar datos:", error)
     }
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
   const handleHotelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const hotelId = e.target.value
-    setSelectedHotel(hotelId)
-
-    // Limpiar servicio seleccionado
-    setFormData((prev) => ({
-      ...prev,
-      serviceId: "",
-      serviceName: "",
-      hotelId: "",
-      amount: "",
-    }))
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-
-    if (name === "serviceId" && value) {
-      const selectedService = filteredServices.find((s) => s.id === value)
-      if (selectedService) {
-        setFormData((prev) => ({
-          ...prev,
-          serviceId: value,
-          serviceName: selectedService.name,
-          hotelId: selectedService.hotel_id,
-          amount: selectedService.average_amount?.toString() || prev.amount,
-        }))
-      }
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }))
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-
-    try {
-      const newPayment = await addServicePayment({
-        service_id: formData.serviceId,
-        service_name: formData.serviceName,
-        hotel_id: formData.hotelId,
-        month: Number(formData.month),
-        year: Number(formData.year),
-        amount: Number(formData.amount),
-        due_date: formData.dueDate,
-        status: formData.status,
-        notes: formData.notes,
-        // Si el estado es abonado, agregar la fecha de pago
-        payment_date: formData.status === "abonado" ? new Date().toISOString().split("T")[0] : undefined,
-      })
-
-      console.log("Pago creado:", newPayment)
-
-      // Si el pago se creó como "abonado", actualizar el promedio del servicio
-      if (formData.status === "abonado") {
-        console.log("Pago creado como abonado, actualizando promedio...")
-        await updateServiceAverage(formData.serviceId)
-      }
-
-      // Redireccionar a la lista de pagos
-      window.location.href = "/servicios?tab=pagos"
-    } catch (error) {
-      console.error("Error al guardar pago:", error)
-      alert("Error al guardar el pago. Intente nuevamente.")
-    } finally {
-      setLoading(false)
-    }
+    setFormData((prev) => ({ ...prev, hotelId, serviceId: "" }))
   }
 
   const getMonthName = (month: number) => {
@@ -180,126 +68,169 @@ export function AgregarPago() {
     return months[month - 1]
   }
 
-  const selectedHotelName = hotels.find((h) => h.id === selectedHotel)?.name
+  const generateDueDate = (month: number, year: number) => {
+    return `${year}-${month.toString().padStart(2, "0")}-10`
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      const selectedService = services.find((s) => s.id === formData.serviceId)
+      const selectedHotel = hotels.find((h) => h.id === formData.hotelId)
+
+      if (!selectedService || !selectedHotel) {
+        alert("Por favor seleccione un servicio y hotel válidos")
+        return
+      }
+
+      const dueDate = formData.dueDate || generateDueDate(formData.month, formData.year)
+
+      await addServicePayment({
+        service_id: formData.serviceId,
+        service_name: selectedService.name,
+        hotel_id: formData.hotelId,
+        hotel_name: selectedHotel.name,
+        month: Number(formData.month),
+        year: Number(formData.year),
+        amount: Number(formData.amount),
+        due_date: dueDate,
+        payment_date: formData.paymentDate || undefined,
+        status: formData.status as "pendiente" | "abonado" | "vencido",
+        invoice_number: formData.invoiceNumber || undefined,
+        payment_method: formData.paymentMethod || undefined,
+        notes: formData.notes,
+      })
+
+      alert("Pago agregado exitosamente")
+
+      // Resetear formulario
+      setFormData({
+        serviceId: "",
+        hotelId: "",
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear(),
+        amount: "",
+        dueDate: "",
+        paymentDate: "",
+        status: "pendiente",
+        invoiceNumber: "",
+        paymentMethod: "",
+        notes: "",
+      })
+
+      // Redirigir a la lista de pagos
+      window.location.href = "/servicios?tab=pagos"
+    } catch (error) {
+      console.error("Error al agregar pago:", error)
+      alert("Error al agregar el pago. Intente nuevamente.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filteredServices = services.filter((service) => !formData.hotelId || service.hotel_id === formData.hotelId)
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center">
-          <button
-            onClick={() => (window.location.href = "/servicios?tab=pagos")}
-            className="mr-4 text-gray-500 hover:text-gray-700"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h2 className="text-xl font-semibold text-gray-800">Registrar Pago de Servicio</h2>
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-blue-100 rounded-lg">
+          <DollarSign className="h-6 w-6 text-blue-600" />
         </div>
-
-        {selectedHotelName && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-            <div className="flex items-center">
-              <Building2 className="h-5 w-5 text-blue-600 mr-2" />
-              <span className="text-sm font-medium text-blue-800">Hotel seleccionado: {selectedHotelName}</span>
-            </div>
-          </div>
-        )}
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">Agregar Pago de Servicio</h2>
+          <p className="text-sm text-gray-600">Complete la información del pago del servicio</p>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="md:col-span-2">
-            <label htmlFor="hotelFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Filtrar por Hotel *
+          {/* Hotel */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <Building2 className="h-4 w-4 inline mr-1" />
+              Hotel *
             </label>
             <select
-              id="hotelFilter"
-              value={selectedHotel}
+              name="hotelId"
+              value={formData.hotelId}
               onChange={handleHotelChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Seleccione un hotel primero</option>
+              <option value="">Seleccione un hotel</option>
               {hotels.map((hotel) => (
                 <option key={hotel.id} value={hotel.id}>
-                  🏨 {hotel.name}
+                  {hotel.name}
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="md:col-span-2">
-            <label htmlFor="serviceId" className="block text-sm font-medium text-gray-700 mb-1">
+          {/* Servicio */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <FileText className="h-4 w-4 inline mr-1" />
               Servicio *
             </label>
             <select
-              id="serviceId"
               name="serviceId"
-              required
               value={formData.serviceId}
-              onChange={handleChange}
-              disabled={!selectedHotel}
-              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              onChange={handleInputChange}
+              required
+              disabled={!formData.hotelId}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
             >
-              <option value="">{selectedHotel ? "Seleccione un servicio" : "Primero seleccione un hotel"}</option>
+              <option value="">Seleccione un servicio</option>
               {filteredServices.map((service) => (
                 <option key={service.id} value={service.id}>
-                  {service.name} - {service.provider}
-                  {service.average_amount && ` (Promedio: $${service.average_amount})`}
+                  {service.name}
                 </option>
               ))}
             </select>
-            {selectedHotel && filteredServices.length === 0 && (
-              <p className="mt-1 text-sm text-red-600">
-                No hay servicios registrados para este hotel.{" "}
-                <a href="/servicios?tab=agregar-servicio" className="text-blue-600 hover:underline">
-                  Agregar servicio
-                </a>
-              </p>
-            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="month" className="block text-sm font-medium text-gray-700 mb-1">
-                Mes *
-              </label>
-              <select
-                id="month"
-                name="month"
-                required
-                value={formData.month}
-                onChange={handleChange}
-                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                  <option key={month} value={month}>
-                    {getMonthName(month)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="year" className="block text-sm font-medium text-gray-700 mb-1">
-                Año *
-              </label>
-              <select
-                id="year"
-                name="year"
-                required
-                value={formData.year}
-                onChange={handleChange}
-                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
+          {/* Mes */}
           <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Mes *</label>
+            <select
+              name="month"
+              value={formData.month}
+              onChange={handleInputChange}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                <option key={month} value={month}>
+                  {getMonthName(month)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Año */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Año *</label>
+            <select
+              name="year"
+              value={formData.year}
+              onChange={handleInputChange}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Monto */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <DollarSign className="h-4 w-4 inline mr-1" />
               Monto *
             </label>
             <div className="relative">
@@ -308,45 +239,43 @@ export function AgregarPago() {
               </div>
               <input
                 type="number"
-                id="amount"
                 name="amount"
+                value={formData.amount}
+                onChange={handleInputChange}
                 required
                 min="0"
                 step="0.01"
-                value={formData.amount}
-                onChange={handleChange}
                 className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="0.00"
               />
             </div>
           </div>
 
+          {/* Fecha de Vencimiento */}
           <div>
-            <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700 mb-1">
-              Fecha de Vencimiento *
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <Calendar className="h-4 w-4 inline mr-1" />
+              Fecha de Vencimiento
             </label>
             <input
               type="date"
-              id="dueDate"
               name="dueDate"
-              required
               value={formData.dueDate}
-              onChange={handleChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <p className="text-xs text-gray-500 mt-1">Si no se especifica, se usará el día 10 del mes seleccionado</p>
           </div>
 
+          {/* Estado */}
           <div>
-            <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">
-              Estado *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Estado *</label>
             <select
-              id="status"
               name="status"
-              required
               value={formData.status}
-              onChange={handleChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={handleInputChange}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="pendiente">Pendiente</option>
               <option value="abonado">Abonado</option>
@@ -354,37 +283,94 @@ export function AgregarPago() {
             </select>
           </div>
 
+          {/* Campos adicionales cuando el estado es "abonado" */}
+          {formData.status === "abonado" && (
+            <>
+              {/* Fecha de Pago */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Calendar className="h-4 w-4 inline mr-1" />
+                  Fecha de Pago *
+                </label>
+                <input
+                  type="date"
+                  name="paymentDate"
+                  value={formData.paymentDate}
+                  onChange={handleInputChange}
+                  required={formData.status === "abonado"}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Forma de Pago */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <CreditCard className="h-4 w-4 inline mr-1" />
+                  Forma de Pago *
+                </label>
+                <select
+                  name="paymentMethod"
+                  value={formData.paymentMethod}
+                  onChange={handleInputChange}
+                  required={formData.status === "abonado"}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccione forma de pago</option>
+                  {Object.entries(PAYMENT_METHODS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Número de Comprobante */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <FileText className="h-4 w-4 inline mr-1" />
+                  Número de Comprobante
+                </label>
+                <input
+                  type="text"
+                  name="invoiceNumber"
+                  value={formData.invoiceNumber}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 001-001-0000123"
+                />
+              </div>
+            </>
+          )}
+
+          {/* Notas */}
           <div className="md:col-span-2">
-            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
-              Notas
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Notas</label>
             <textarea
-              id="notes"
               name="notes"
               value={formData.notes}
-              onChange={handleChange}
+              onChange={handleInputChange}
               rows={3}
-              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Información adicional sobre el pago"
-            ></textarea>
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Información adicional sobre el pago..."
+            />
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
+        {/* Botones */}
+        <div className="flex justify-end space-x-3 pt-6 border-t">
           <button
             type="button"
             onClick={() => (window.location.href = "/servicios?tab=pagos")}
-            className="mr-4 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
           >
             Cancelar
           </button>
           <button
             type="submit"
-            disabled={loading || !formData.serviceId}
-            className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
-            <Save className="h-4 w-4" />
-            {loading ? "Guardando..." : "Registrar Pago"}
+            {loading ? "Guardando..." : "Agregar Pago"}
           </button>
         </div>
       </form>

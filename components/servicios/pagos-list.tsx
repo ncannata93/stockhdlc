@@ -11,6 +11,7 @@ import {
   updateServicePayment,
 } from "@/lib/service-db"
 import type { ServicePayment, Hotel } from "@/lib/service-types"
+import { PAYMENT_METHODS } from "@/lib/service-types"
 import {
   Trash2,
   Edit,
@@ -22,6 +23,7 @@ import {
   ChevronUp,
   ChevronDown,
   CreditCard,
+  Receipt,
 } from "lucide-react"
 
 const MONTHS = {
@@ -70,6 +72,7 @@ export function PagosList() {
   const [selectedPayment, setSelectedPayment] = useState<ServicePayment | null>(null)
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0])
   const [invoiceNumber, setInvoiceNumber] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState("")
 
   // Estado para modal de edición
   const [showEditModal, setShowEditModal] = useState(false)
@@ -85,6 +88,7 @@ export function PagosList() {
     paymentDate: "",
     status: "pendiente",
     invoiceNumber: "",
+    paymentMethod: "",
     notes: "",
   })
 
@@ -181,6 +185,7 @@ export function PagosList() {
     setSelectedPayment(payment)
     setPaymentDate(new Date().toISOString().split("T")[0])
     setInvoiceNumber("")
+    setPaymentMethod("")
     setShowPaymentModal(true)
   }
 
@@ -197,6 +202,7 @@ export function PagosList() {
       paymentDate: payment.payment_date || "",
       status: payment.status,
       invoiceNumber: payment.invoice_number || "",
+      paymentMethod: payment.payment_method || "",
       notes: payment.notes || "",
     })
     setShowEditModal(true)
@@ -222,6 +228,7 @@ export function PagosList() {
         payment_date: editFormData.paymentDate || undefined,
         status: editFormData.status,
         invoice_number: editFormData.invoiceNumber || undefined,
+        payment_method: editFormData.paymentMethod || undefined,
         notes: editFormData.notes,
       })
 
@@ -257,6 +264,14 @@ export function PagosList() {
 
     try {
       await markPaymentAsPaid(selectedPayment.id, paymentDate, invoiceNumber)
+
+      // También actualizar el método de pago si se proporcionó
+      if (paymentMethod) {
+        await updateServicePayment(selectedPayment.id, {
+          payment_method: paymentMethod,
+        })
+      }
+
       setShowPaymentModal(false)
       setSelectedPayment(null)
       await loadData()
@@ -304,6 +319,11 @@ export function PagosList() {
     )
   }
 
+  const getPaymentMethodLabel = (method?: string) => {
+    if (!method) return ""
+    return PAYMENT_METHODS[method as keyof typeof PAYMENT_METHODS] || method
+  }
+
   const filteredPayments = payments.filter((payment) => {
     const matchesSearch =
       payment.service_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -343,6 +363,20 @@ export function PagosList() {
       // Convertir fechas a timestamps para comparación
       aValue = new Date(aValue).getTime()
       bValue = new Date(bValue).getTime()
+    } else if (sortField === "payment_date") {
+      // Ordenar por fecha de pago - los sin fecha van al final
+      if (!a.payment_date && !b.payment_date) return 0
+      if (!a.payment_date) return sortDirection === "asc" ? 1 : -1
+      if (!b.payment_date) return sortDirection === "asc" ? -1 : 1
+      aValue = new Date(a.payment_date).getTime()
+      bValue = new Date(b.payment_date).getTime()
+    } else if (sortField === "payment_method") {
+      // Ordenar por forma de pago - los sin método van al final
+      if (!a.payment_method && !b.payment_method) return 0
+      if (!a.payment_method) return sortDirection === "asc" ? 1 : -1
+      if (!b.payment_method) return sortDirection === "asc" ? -1 : 1
+      aValue = getPaymentMethodLabel(a.payment_method)
+      bValue = getPaymentMethodLabel(b.payment_method)
     }
 
     // Comparar valores
@@ -476,7 +510,7 @@ export function PagosList() {
       ) : (
         <>
           {/* Vista desktop - Tabla */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden lg:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -516,6 +550,18 @@ export function PagosList() {
                   >
                     Estado {renderSortIndicator("status")}
                   </th>
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                    onClick={() => handleSort("payment_date")}
+                  >
+                    Fecha Pago {renderSortIndicator("payment_date")}
+                  </th>
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                    onClick={() => handleSort("payment_method")}
+                  >
+                    Forma de Pago {renderSortIndicator("payment_method")}
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
                   </th>
@@ -553,6 +599,28 @@ export function PagosList() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(payment.status)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {payment.payment_date ? (
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 text-green-600 mr-1" />
+                          <span className="text-sm text-gray-900">{formatDate(payment.payment_date)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {payment.payment_method ? (
+                        <div className="flex items-center">
+                          <CreditCard className="h-4 w-4 text-blue-600 mr-1" />
+                          <span className="text-sm font-medium text-gray-900">
+                            {getPaymentMethodLabel(payment.payment_method)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
                         {(payment.status === "pendiente" || payment.status === "vencido") && (
@@ -587,7 +655,7 @@ export function PagosList() {
           </div>
 
           {/* Vista móvil - Tarjetas */}
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <div className="space-y-4 p-4">
               {sortedPayments.map((payment) => (
                 <div key={payment.id} className="bg-white border rounded-lg shadow-sm p-4">
@@ -648,18 +716,40 @@ export function PagosList() {
                       {getStatusBadge(payment.status)}
                     </div>
 
-                    {payment.payment_date && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-500">Fecha de Pago:</span>
-                        <span className="text-sm text-gray-900">{formatDate(payment.payment_date)}</span>
-                      </div>
-                    )}
+                    {payment.status === "abonado" && (
+                      <>
+                        {payment.payment_date && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-500">Fecha de Pago:</span>
+                            <div className="flex items-center">
+                              <Calendar className="h-4 w-4 text-green-600 mr-1" />
+                              <span className="text-sm text-gray-900">{formatDate(payment.payment_date)}</span>
+                            </div>
+                          </div>
+                        )}
 
-                    {payment.invoice_number && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-500">Factura:</span>
-                        <span className="text-sm text-gray-900">{payment.invoice_number}</span>
-                      </div>
+                        {payment.payment_method && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-500">Forma de Pago:</span>
+                            <div className="flex items-center">
+                              <CreditCard className="h-4 w-4 text-blue-600 mr-1" />
+                              <span className="text-sm font-medium text-gray-900">
+                                {getPaymentMethodLabel(payment.payment_method)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {payment.invoice_number && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-500">Comprobante:</span>
+                            <div className="flex items-center">
+                              <Receipt className="h-4 w-4 text-gray-400 mr-1" />
+                              <span className="text-sm text-gray-900">{payment.invoice_number}</span>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -694,7 +784,7 @@ export function PagosList() {
 
               <div>
                 <label htmlFor="paymentDate" className="block text-sm font-medium text-gray-700 mb-1">
-                  Fecha de Pago
+                  Fecha de Pago *
                 </label>
                 <input
                   type="date"
@@ -706,8 +796,27 @@ export function PagosList() {
               </div>
 
               <div>
+                <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700 mb-1">
+                  Forma de Pago *
+                </label>
+                <select
+                  id="paymentMethod"
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccione forma de pago</option>
+                  {Object.entries(PAYMENT_METHODS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label htmlFor="invoiceNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                  Número de Factura (opcional)
+                  Número de Comprobante
                 </label>
                 <input
                   type="text"
@@ -729,7 +838,8 @@ export function PagosList() {
               </button>
               <button
                 onClick={handleMarkAsPaid}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700"
+                disabled={!paymentMethod}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
               >
                 Marcar como Pagado
               </button>
@@ -844,7 +954,7 @@ export function PagosList() {
                 {editFormData.status === "abonado" && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Pago</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Pago *</label>
                       <input
                         type="date"
                         name="paymentDate"
@@ -855,7 +965,24 @@ export function PagosList() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Número de Factura</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pago *</label>
+                      <select
+                        name="paymentMethod"
+                        value={editFormData.paymentMethod}
+                        onChange={handleEditFormChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Seleccione forma de pago</option>
+                        {Object.entries(PAYMENT_METHODS).map(([key, label]) => (
+                          <option key={key} value={key}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Número de Comprobante</label>
                       <input
                         type="text"
                         name="invoiceNumber"
