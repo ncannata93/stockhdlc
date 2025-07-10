@@ -665,17 +665,38 @@ export async function addServicePayment(
       .single()
 
     if (error) {
-      return addServicePaymentToLocalStorage(payment)
+      const newPayment = addServicePaymentToLocalStorage(payment)
+
+      // Si el pago agregado está abonado, generar pagos futuros
+      if (payment.status === "abonado") {
+        await generateFuturePaymentsForService(payment.service_id)
+      }
+
+      return newPayment
     }
 
     // Asegurarse de que el pago tenga el nombre del hotel
-    return {
+    const finalPayment = {
       ...data,
       hotel_name: hotelName,
     }
+
+    // Si el pago agregado está abonado, generar pagos futuros
+    if (payment.status === "abonado") {
+      await generateFuturePaymentsForService(payment.service_id)
+    }
+
+    return finalPayment
   } catch (error) {
     console.warn("Using localStorage for adding service payment:", error)
-    return addServicePaymentToLocalStorage(payment)
+    const newPayment = addServicePaymentToLocalStorage(payment)
+
+    // Si el pago agregado está abonado, generar pagos futuros
+    if (payment.status === "abonado") {
+      await generateFuturePaymentsForService(payment.service_id)
+    }
+
+    return newPayment
   }
 }
 
@@ -701,6 +722,7 @@ function addServicePaymentToLocalStorage(
     }
     payments.push(newPayment)
     localStorage.setItem("hotel-service-payments", JSON.stringify(payments))
+
     return newPayment
   } catch (error) {
     console.error("Error adding service payment to localStorage:", error)
@@ -792,6 +814,9 @@ export async function markPaymentAsPaid(id: string, paymentDate: string, invoice
     // Actualizar el promedio del servicio automáticamente
     if (payment?.service_id) {
       await updateServiceAverage(payment.service_id)
+
+      // Generar pagos futuros automáticamente después de marcar como pagado
+      await generateFuturePaymentsForService(payment.service_id)
     }
   } catch (error) {
     console.error("Error marking payment as paid:", error)
@@ -895,5 +920,133 @@ async function getServicePaymentsRaw(): Promise<ServicePayment[]> {
     return payments || []
   } catch (error) {
     return getServicePaymentsFromLocalStorage()
+  }
+}
+
+// Nueva función para generar pagos futuros para un servicio específico
+async function generateFuturePaymentsForService(serviceId: string): Promise<void> {
+  try {
+    console.log(`Generando pagos futuros para servicio: ${serviceId}`)
+
+    // Obtener el servicio
+    const services = await getServices()
+    const service = services.find((s) => s.id === serviceId)
+    if (!service) {
+      console.error("Servicio no encontrado:", serviceId)
+      return
+    }
+
+    // Obtener todos los pagos de este servicio
+    const allPayments = await getServicePaymentsRaw()
+    const servicePayments = allPayments.filter((p) => p.service_id === serviceId)
+
+    if (servicePayments.length === 0) {
+      console.log("No hay pagos existentes para este servicio")
+      return
+    }
+
+    // Encontrar el último mes/año con pago (abonado o pendiente)
+    const lastPayment = servicePayments.reduce((latest, payment) => {
+      const paymentDate = new Date(payment.year, payment.month - 1)
+      const latestDate = new Date(latest.year, latest.month - 1)
+      return paymentDate > latestDate ? payment : latest
+    })
+
+    console.log(`Último pago encontrado: ${lastPayment.month}/${lastPayment.year}`)
+
+    // Calcular el promedio de los pagos abonados para usar como monto base
+    const paidPayments = servicePayments.filter((p) => p.status === "abonado")
+    let averageAmount = service.average_amount || 0
+
+    if (paidPayments.length > 0) {
+      const totalAmount = paidPayments.reduce((sum, payment) => sum + payment.amount, 0)
+      averageAmount = totalAmount / paidPayments.length
+      console.log(`Promedio calculado: ${averageAmount} (basado en ${paidPayments.length} pagos)`)
+    }
+
+    // Generar pagos desde el mes siguiente al último pago hasta 12 meses adelante
+    const startMonth = lastPayment.month === 12 ? 1 : lastPayment.month + 1
+    const startYear = lastPayment.month === 12 ? lastPayment.year + 1 : lastPayment.year
+
+    const payments: Omit<ServicePayment, "id" | "created_at" | "updated_at">[] = []
+
+    for (let i = 0; i < 12; i++) {
+      const month = ((startMonth - 1 + i) % 12) + 1
+      const year = startYear + Math.floor((startMonth - 1 + i) / 12)
+
+      // Verificar si ya existe un pago para este mes/año
+      const exists = servicePayments.some((p) => p.month === month && p.year === year)
+
+      if (!exists) {
+        payments.push({
+          service_id: serviceId,
+          service_name: service.name,
+          hotel_id: service.hotel_id,
+          hotel_name: service.hotel_name || "Hotel no encontrado",
+          month,
+          year,
+          amount: Math.round(averageAmount * 100) / 100, // Redondear a 2 decimales
+          due_date: generateDueDate(month, year),
+          status: "pendiente",
+          notes: "Generado automáticamente después de pago",
+        })
+      }
+    }
+
+    console.log(`Generando ${payments.length} pagos futuros`)
+
+    // Insertar todos los pagos futuros
+    for (const payment of payments) {
+      try {
+        await addServicePaymentDirectly(payment)
+      } catch (error) {
+        console.error("Error insertando pago futuro:", error)
+      }
+    }
+
+    console.log(`Generados ${payments.length} pagos futuros para el servicio: ${service.name}`)
+  } catch (error) {
+    console.error("Error generating future payments for service:", error)
+  }
+}
+
+// Función auxiliar para insertar pagos directamente sin generar más pagos futuros
+async function addServicePaymentDirectly(
+  payment: Omit<ServicePayment, "id" | "created_at" | "updated_at">,
+): Promise<ServicePayment> {
+  try {
+    const { data, error } = await supabase
+      .from("service_payments")
+      .insert([
+        {
+          service_id: payment.service_id,
+          hotel_id: payment.hotel_id,
+          hotel_name: payment.hotel_name,
+          service_name: payment.service_name,
+          month: payment.month,
+          year: payment.year,
+          amount: payment.amount,
+          due_date: payment.due_date,
+          payment_date: payment.payment_date,
+          status: payment.status || "pendiente",
+          invoice_number: payment.invoice_number,
+          payment_method: payment.payment_method,
+          notes: payment.notes,
+        },
+      ])
+      .select()
+      .single()
+
+    if (error) {
+      return addServicePaymentToLocalStorage(payment)
+    }
+
+    return {
+      ...data,
+      hotel_name: payment.hotel_name || "Hotel no encontrado",
+    }
+  } catch (error) {
+    console.warn("Using localStorage for adding service payment directly:", error)
+    return addServicePaymentToLocalStorage(payment)
   }
 }
