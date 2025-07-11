@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Loader2, CalendarIcon, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getSupabaseClient } from "@/lib/supabase"
 import { HOTELS } from "@/lib/employee-types"
 
@@ -80,6 +79,7 @@ export default function EmpleadosCalendario() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
 
   const loadAssignments = async (date: Date) => {
     setLoading(true)
@@ -163,6 +163,170 @@ export default function EmpleadosCalendario() {
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1))
   const currentMonth = () => setCurrentDate(new Date())
 
+  const toggleDayExpansion = (dateStr: string) => {
+    const newExpanded = new Set(expandedDays)
+    if (newExpanded.has(dateStr)) {
+      newExpanded.delete(dateStr)
+    } else {
+      newExpanded.add(dateStr)
+    }
+    setExpandedDays(newExpanded)
+  }
+
+  // 📱 COMPONENTE MEJORADO PARA VISTA MÓVIL
+  const MobileCalendarView = () => {
+    const isMobile = true // Force mobile view for this component
+
+    return (
+      <div className="space-y-3">
+        {/* Días de la semana */}
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {["L", "M", "X", "J", "V", "S", "D"].map((day, i) => (
+            <div key={i} className="text-center font-semibold p-2 text-sm text-muted-foreground bg-gray-100 rounded">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendario mejorado para móvil */}
+        <div className="space-y-2">
+          {weeks.map((week, weekIndex) => (
+            <div key={weekIndex} className="grid grid-cols-7 gap-1">
+              {week.map((day, dayIndex) => {
+                const isToday = isSameDay(day, new Date())
+                const isCurrentMonth = isSameMonth(day, currentDate)
+                const dayAssignments = getAssignmentsForDay(day)
+                const hasAssignments = dayAssignments.length > 0
+
+                return (
+                  <div
+                    key={dayIndex}
+                    className={`
+                      min-h-[100px] border rounded-lg p-1 relative overflow-hidden
+                      ${isToday ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200"}
+                      ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
+                      ${hasAssignments ? "border-green-400 bg-green-50" : ""}
+                    `}
+                  >
+                    {/* Header del día */}
+                    <div className="flex justify-between items-center mb-1">
+                      <div
+                        className={`text-sm font-bold ${
+                          isToday ? "text-blue-600" : isCurrentMonth ? "text-gray-900" : "text-gray-400"
+                        }`}
+                      >
+                        {format(day, "d")}
+                      </div>
+                      {hasAssignments && dayAssignments.length > 0 && (
+                        <div className="text-xs bg-blue-500 text-white rounded-full px-1.5 py-0.5 font-bold">
+                          {dayAssignments.length}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Contenido del día - Optimizado para más espacio */}
+                    {hasAssignments ? (
+                      <div className="space-y-0.5">
+                        {(() => {
+                          const dateStr = format(day, "yyyy-MM-dd")
+                          const isExpanded = expandedDays.has(dateStr)
+                          const visibleAssignments = isExpanded ? dayAssignments : dayAssignments.slice(0, 4)
+                          const hasMore = dayAssignments.length > 4
+
+                          return (
+                            <>
+                              {visibleAssignments.map((assignment, idx) => (
+                                <div
+                                  key={assignment.id}
+                                  className={`
+                                    ${getHotelColor(assignment.hotel_name)} 
+                                    text-xs font-medium px-1.5 py-1 rounded text-center
+                                    shadow-sm border border-white/20
+                                  `}
+                                  title={`${assignment.hotel_name}: ${assignment.employee_name}`}
+                                >
+                                  {assignment.employee_name?.split(" ")[0] || "N/A"}
+                                </div>
+                              ))}
+
+                              {/* Indicador de más asignaciones - Mejorado */}
+                              {hasMore && !isExpanded && (
+                                <button
+                                  onClick={() => toggleDayExpansion(dateStr)}
+                                  className="w-full text-xs text-center text-blue-600 font-bold bg-blue-100 hover:bg-blue-200 rounded px-1 py-1 transition-colors"
+                                  title={`Ver ${dayAssignments.length - 4} empleados más: ${dayAssignments
+                                    .slice(4)
+                                    .map((a) => a.employee_name?.split(" ")[0])
+                                    .join(", ")}`}
+                                >
+                                  +{dayAssignments.length - 4} más
+                                </button>
+                              )}
+
+                              {/* Botón para colapsar cuando está expandido */}
+                              {hasMore && isExpanded && (
+                                <button
+                                  onClick={() => toggleDayExpansion(dateStr)}
+                                  className="w-full text-xs text-center text-gray-600 font-bold bg-gray-100 hover:bg-gray-200 rounded px-1 py-1 transition-colors"
+                                >
+                                  Mostrar menos
+                                </button>
+                              )}
+                            </>
+                          )
+                        })()}
+                      </div>
+                    ) : (
+                      isCurrentMonth && (
+                        <div className="h-full flex items-center justify-center opacity-20">
+                          <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* Leyenda mejorada */}
+        {/* Leyenda mejorada - Mostrar TODOS los hoteles */}
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+          <h4 className="text-sm font-semibold mb-3 text-gray-700 flex items-center gap-2">
+            <CalendarIcon className="h-4 w-4" />
+            Códigos de Hoteles:
+          </h4>
+          <div className="grid grid-cols-2 gap-2">
+            {HOTELS.map((hotel) => (
+              <div key={hotel} className="flex items-center gap-2 p-2 bg-white rounded border">
+                <Badge className={`${getHotelColor(hotel)} text-xs font-bold px-2 py-1 flex-shrink-0`}>
+                  {getHotelCode(hotel)}
+                </Badge>
+                <span className="text-xs font-medium truncate" title={hotel}>
+                  {hotel}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="text-xs text-muted-foreground mt-2 text-center">
+            Total: {HOTELS.length} hoteles disponibles
+          </div>
+        </div>
+
+        {/* Mensaje cuando no hay asignaciones */}
+        {assignments.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            <CalendarIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+            <p className="font-medium">No hay asignaciones este mes</p>
+            <p className="text-sm">Agrega asignaciones desde "Agregar"</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Replace the existing calendar rendering with mobile-optimized version
   return (
     <Card>
       <CardHeader>
@@ -199,116 +363,7 @@ export default function EmpleadosCalendario() {
           </div>
         )}
 
-        {!loading && (
-          <div className="space-y-4">
-            {/* Leyenda de hoteles */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">Leyenda de Hoteles:</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                {HOTELS.slice(0, 10).map((hotel) => (
-                  <div key={hotel} className="flex items-center gap-2">
-                    <Badge className={`${getHotelColor(hotel)} font-bold text-xs px-2 py-1`}>
-                      {getHotelCode(hotel)}
-                    </Badge>
-                    <span className="text-xs truncate" title={hotel}>
-                      {hotel}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Días de la semana */}
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day, i) => (
-                <div key={i} className="text-center font-medium p-2 bg-muted rounded-md text-sm">
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendario */}
-            <div className="space-y-1">
-              {weeks.map((week, weekIndex) => (
-                <div key={weekIndex} className="grid grid-cols-7 gap-1">
-                  {week.map((day, dayIndex) => {
-                    const isToday = isSameDay(day, new Date())
-                    const isCurrentMonth = isSameMonth(day, currentDate)
-                    const dayAssignments = getAssignmentsForDay(day)
-                    const hasAssignments = dayAssignments.length > 0
-
-                    return (
-                      <div
-                        key={dayIndex}
-                        className={`
-                          min-h-[120px] sm:min-h-[140px] border rounded-md p-1 relative
-                          ${isToday ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200"}
-                          ${!isCurrentMonth ? "bg-gray-50 opacity-50" : "bg-white"}
-                          ${hasAssignments ? "border-green-300 bg-green-50" : ""}
-                        `}
-                      >
-                        <div className="text-sm font-medium mb-1 text-center">{format(day, "d")}</div>
-
-                        {hasAssignments ? (
-                          <div className="grid grid-cols-2 gap-0.5">
-                            {dayAssignments.map((assignment) => (
-                              <TooltipProvider key={assignment.id}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div
-                                      className={`
-                                        text-xs p-0.5 rounded font-bold text-center cursor-pointer
-                                        ${getHotelColor(assignment.hotel_name)}
-                                        min-h-[24px] flex flex-col justify-center
-                                      `}
-                                    >
-                                      <div className="text-xs font-bold leading-none">
-                                        {getHotelCode(assignment.hotel_name)}
-                                      </div>
-                                      <div className="text-xs truncate leading-none mt-0.5">
-                                        {assignment.employee_name?.split(" ")[0] || "N/A"}
-                                      </div>
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="text-sm">
-                                      <div className="font-medium">{assignment.hotel_name}</div>
-                                      <div>{assignment.employee_name}</div>
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ))}
-                          </div>
-                        ) : (
-                          isCurrentMonth && (
-                            <div className="h-full flex items-center justify-center opacity-30">
-                              <div className="w-2 h-2 rounded-full bg-gray-300"></div>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
-
-            {/* Información adicional */}
-            {assignments.length === 0 && !loading && (
-              <div className="text-center py-8 text-muted-foreground">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>No hay asignaciones para este mes</p>
-                <p className="text-sm">Agrega asignaciones desde la sección "Agregar"</p>
-              </div>
-            )}
-
-            {/* Debug info */}
-            <div className="text-xs text-muted-foreground text-center">
-              Total asignaciones cargadas: {assignments.length}
-            </div>
-          </div>
-        )}
+        {!loading && <MobileCalendarView />}
       </CardContent>
     </Card>
   )
