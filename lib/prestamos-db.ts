@@ -6,7 +6,7 @@ import type {
   FiltrosPrestamos,
   EstadisticasPrestamos,
 } from "./prestamos-types"
-import { HOTELES, RESPONSABLES } from "./prestamos-types"
+import { HOTELES } from "./prestamos-types"
 
 // Clave para localStorage
 const PRESTAMOS_KEY = "prestamos_data"
@@ -148,65 +148,6 @@ export async function eliminarPrestamo(id: string): Promise<boolean> {
   }
 }
 
-export async function procesarIngresoRapido({
-  tipo,
-  hotel1,
-  hotel2,
-  monto,
-  concepto,
-  responsable,
-}: {
-  tipo: "prestamo" | "devolucion"
-  hotel1: string
-  hotel2: string
-  monto: number
-  concepto?: string
-  responsable: string
-}): Promise<Prestamo | null> {
-  try {
-    // Validar hoteles
-    if (!HOTELES.includes(hotel1) || !HOTELES.includes(hotel2)) {
-      console.error("Hotel no válido:", { hotel1, hotel2 })
-      return null
-    }
-
-    // Validar responsable
-    if (!RESPONSABLES.includes(responsable)) {
-      console.error("Responsable no válido:", responsable)
-      return null
-    }
-
-    // Crear el préstamo
-    const prestamo: Prestamo = {
-      id: `prestamo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      responsable,
-      hotel_origen: tipo === "prestamo" ? hotel1 : hotel2,
-      hotel_destino: tipo === "prestamo" ? hotel2 : hotel1,
-      producto: concepto || "Préstamo general",
-      cantidad: "1",
-      valor: monto,
-      fecha: new Date().toISOString().split("T")[0],
-      notas: concepto || "",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    // Obtener préstamos existentes
-    const prestamosExistentes = JSON.parse(localStorage.getItem("prestamos_data") || "[]")
-
-    // Agregar el nuevo préstamo
-    const todosLosPrestamos = [...prestamosExistentes, prestamo]
-
-    // Guardar en localStorage
-    localStorage.setItem("prestamos_data", JSON.stringify(todosLosPrestamos))
-
-    return prestamo
-  } catch (error) {
-    console.error("Error al procesar ingreso rápido:", error)
-    return null
-  }
-}
-
 export function obtenerPrestamosFiltrados(filtros: FiltrosPrestamos): Prestamo[] {
   try {
     let prestamos = obtenerPrestamosLocal()
@@ -295,28 +236,70 @@ export function obtenerResponsables(): string[] {
       responsables.add(prestamo.responsable)
     })
 
-    // Agregar responsables predefinidos
-    RESPONSABLES.forEach((resp) => responsables.add(resp))
-
     return Array.from(responsables).sort()
   } catch (error) {
     console.error("Error al obtener responsables:", error)
-    return RESPONSABLES
+    return []
   }
 }
 
-// Función auxiliar para actualizar relaciones
-function actualizarRelacion(relaciones: RelacionHotel[], hotel: string, monto: number): void {
-  const relacion = relaciones.find((r) => r.hotel === hotel)
-  if (relacion) {
-    relacion.monto += monto
-    relacion.transacciones++
+// Función auxiliar para actualizar relaciones con compensación
+function actualizarRelacionConCompensacion(
+  relaciones: RelacionHotel[],
+  hotel: string,
+  monto: number,
+  relacionesOpuestas: RelacionHotel[],
+): void {
+  // Buscar si existe una relación opuesta
+  const relacionOpuesta = relacionesOpuestas.find((r) => r.hotel === hotel)
+
+  if (relacionOpuesta) {
+    // Hay compensación - calcular el neto
+    const montoNeto = monto - relacionOpuesta.monto
+
+    if (montoNeto > 0) {
+      // Queda saldo a favor de esta relación
+      const relacion = relaciones.find((r) => r.hotel === hotel)
+      if (relacion) {
+        relacion.monto = montoNeto
+        relacion.transacciones++
+      } else {
+        relaciones.push({
+          hotel,
+          monto: montoNeto,
+          transacciones: 1,
+        })
+      }
+
+      // Eliminar la relación opuesta ya que fue compensada
+      const indiceOpuesto = relacionesOpuestas.findIndex((r) => r.hotel === hotel)
+      if (indiceOpuesto !== -1) {
+        relacionesOpuestas.splice(indiceOpuesto, 1)
+      }
+    } else if (montoNeto < 0) {
+      // El saldo queda a favor de la relación opuesta
+      relacionOpuesta.monto = Math.abs(montoNeto)
+      relacionOpuesta.transacciones++
+    } else {
+      // Se compensan exactamente - eliminar ambas relaciones
+      const indiceOpuesto = relacionesOpuestas.findIndex((r) => r.hotel === hotel)
+      if (indiceOpuesto !== -1) {
+        relacionesOpuestas.splice(indiceOpuesto, 1)
+      }
+    }
   } else {
-    relaciones.push({
-      hotel,
-      monto,
-      transacciones: 1,
-    })
+    // No hay compensación - agregar normalmente
+    const relacion = relaciones.find((r) => r.hotel === hotel)
+    if (relacion) {
+      relacion.monto += monto
+      relacion.transacciones++
+    } else {
+      relaciones.push({
+        hotel,
+        monto,
+        transacciones: 1,
+      })
+    }
   }
 }
 
@@ -347,43 +330,81 @@ export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
       })
     })
 
-    // Procesar cada préstamo
+    // Primera pasada: calcular totales brutos
+    const relacionesBrutas = new Map<string, { acreedorDe: Map<string, number>; deudorDe: Map<string, number> }>()
+
     prestamos.forEach((prestamo) => {
       if (prestamo.estado === "cancelado") return
 
       const hotelOrigen = prestamo.hotel_origen
       const hotelDestino = prestamo.hotel_destino
-      const monto = Number(prestamo.monto) // Asegurar que sea número
+      const monto = Number(prestamo.valor || prestamo.monto)
 
-      // Verificar que el monto sea válido
       if (isNaN(monto)) {
-        console.warn(`Monto inválido en préstamo ${prestamo.id}:`, prestamo.monto)
+        console.warn(`Monto inválido en préstamo ${prestamo.id}:`, prestamo.valor || prestamo.monto)
         return
       }
 
-      const balanceOrigen = balanceMap.get(hotelOrigen)
-      const balanceDestino = balanceMap.get(hotelDestino)
-
-      if (balanceOrigen && balanceDestino) {
-        // Actualizar balance del hotel origen (es acreedor)
-        balanceOrigen.acreedor += monto
-        balanceOrigen.transacciones++
-        actualizarRelacion(balanceOrigen.acreedorDe, hotelDestino, monto)
-
-        // Actualizar balance del hotel destino (es deudor)
-        balanceDestino.deudor += monto
-        balanceDestino.transacciones++
-        actualizarRelacion(balanceDestino.deudorDe, hotelOrigen, monto)
+      // Inicializar mapas si no existen
+      if (!relacionesBrutas.has(hotelOrigen)) {
+        relacionesBrutas.set(hotelOrigen, { acreedorDe: new Map(), deudorDe: new Map() })
       }
+      if (!relacionesBrutas.has(hotelDestino)) {
+        relacionesBrutas.set(hotelDestino, { acreedorDe: new Map(), deudorDe: new Map() })
+      }
+
+      // Acumular relaciones brutas
+      const relacionOrigen = relacionesBrutas.get(hotelOrigen)!
+      const relacionDestino = relacionesBrutas.get(hotelDestino)!
+
+      // Hotel origen es acreedor de hotel destino
+      const montoActualAcreedor = relacionOrigen.acreedorDe.get(hotelDestino) || 0
+      relacionOrigen.acreedorDe.set(hotelDestino, montoActualAcreedor + monto)
+
+      // Hotel destino es deudor de hotel origen
+      const montoActualDeudor = relacionDestino.deudorDe.get(hotelOrigen) || 0
+      relacionDestino.deudorDe.set(hotelOrigen, montoActualDeudor + monto)
     })
 
-    // Calcular balance neto y filtrar relaciones vacías
+    // Segunda pasada: aplicar compensación y calcular balances netos
+    relacionesBrutas.forEach((relaciones, hotel) => {
+      const balance = balanceMap.get(hotel)!
+
+      // Procesar relaciones como acreedor con compensación
+      relaciones.acreedorDe.forEach((monto, otroHotel) => {
+        const relacionesOtroHotel = relacionesBrutas.get(otroHotel)
+        const montoQueLeDebenAEsteHotel = relacionesOtroHotel?.acreedorDe.get(hotel) || 0
+
+        // Calcular el neto
+        const montoNeto = monto - montoQueLeDebenAEsteHotel
+
+        if (montoNeto > 0) {
+          // Este hotel es acreedor neto
+          balance.acreedor += montoNeto
+          balance.acreedorDe.push({
+            hotel: otroHotel,
+            monto: montoNeto,
+            transacciones: 1, // Simplificado para el ejemplo
+          })
+        } else if (montoNeto < 0) {
+          // Este hotel es deudor neto
+          balance.deudor += Math.abs(montoNeto)
+          balance.deudorDe.push({
+            hotel: otroHotel,
+            monto: Math.abs(montoNeto),
+            transacciones: 1,
+          })
+        }
+        // Si montoNeto === 0, se compensan exactamente y no se agrega nada
+      })
+
+      // Contar transacciones totales
+      balance.transacciones = prestamos.filter((p) => p.hotel_origen === hotel || p.hotel_destino === hotel).length
+    })
+
+    // Calcular balance neto final
     const resultado = Array.from(balanceMap.values()).map((balance) => {
       balance.balance = balance.acreedor - balance.deudor
-
-      // Filtrar relaciones con monto 0
-      balance.acreedorDe = balance.acreedorDe.filter((r) => r.monto > 0)
-      balance.deudorDe = balance.deudorDe.filter((r) => r.monto > 0)
 
       // Ordenar relaciones por monto descendente
       balance.acreedorDe.sort((a, b) => b.monto - a.monto)
@@ -406,7 +427,7 @@ export async function obtenerEstadisticas(): Promise<EstadisticasPrestamos> {
     const balance = await obtenerBalanceHoteles()
 
     const totalPrestamos = prestamos.length
-    const montoTotal = prestamos.reduce((sum, p) => sum + Number(p.monto), 0)
+    const montoTotal = prestamos.reduce((sum, p) => sum + Number(p.valor || p.monto || 0), 0)
     const prestamosActivos = prestamos.filter((p) => p.estado === "pendiente").length
     const prestamosPagados = prestamos.filter((p) => p.estado === "pagado").length
     const prestamosCancelados = prestamos.filter((p) => p.estado === "cancelado").length
@@ -469,7 +490,8 @@ export async function importarDatos(datosJson: string): Promise<boolean> {
       // Asegurar que todos los montos sean números
       const prestamosCorregidos = datos.prestamos.map((p: any) => ({
         ...p,
-        monto: Number(p.monto),
+        monto: Number(p.monto || p.valor || 0),
+        valor: Number(p.valor || p.monto || 0),
       }))
 
       guardarPrestamosLocal(prestamosCorregidos)

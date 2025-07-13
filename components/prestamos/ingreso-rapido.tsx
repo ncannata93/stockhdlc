@@ -1,199 +1,197 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Zap, CheckCircle, XCircle, Info } from "lucide-react"
-import { RESPONSABLES, HOTELES } from "@/lib/prestamos-types"
-import { procesarIngresoRapido } from "@/lib/prestamos-db"
+import { Zap, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-
-interface IngresoRapidoProps {
-  onTransaccionCreada?: () => void
-}
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface ResultadoProcesamiento {
   linea: string
   exito: boolean
   mensaje: string
-  datos?: any
+  datos?: {
+    responsable: string
+    hotel_origen: string
+    hotel_destino: string
+    producto: string
+    cantidad: string
+    valor: number
+  }
+}
+
+interface IngresoRapidoProps {
+  onTransaccionCreada?: () => void
 }
 
 export function IngresoRapido({ onTransaccionCreada }: IngresoRapidoProps) {
   const { toast } = useToast()
+  const [responsableDefecto, setResponsableDefecto] = useState("")
   const [texto, setTexto] = useState("")
-  const [responsable, setResponsable] = useState("")
   const [procesando, setProcesando] = useState(false)
   const [resultados, setResultados] = useState<ResultadoProcesamiento[]>([])
 
-  const ejemplos = [
-    "Argentina → Mallak $50000 Préstamo para reparaciones",
-    "Mallak ← Monaco $30000 Devolución de préstamo anterior",
-    "Jaguel → Argentina $75000 Préstamo para renovación",
-    "Monaco ← Jaguel $25000 Devolución parcial",
-  ]
-
-  const parsearLinea = (linea: string): any => {
-    // Limpiar la línea
-    const lineaLimpia = linea.trim()
-    if (!lineaLimpia) return null
-
-    // Patrones para préstamo (→) y devolución (←)
-    const patronPrestamo = /^(.+?)\s*→\s*(.+?)\s*\$(\d+(?:\.\d+)?)\s*(.*)$/
-    const patronDevolucion = /^(.+?)\s*←\s*(.+?)\s*\$(\d+(?:\.\d+)?)\s*(.*)$/
-
-    let match = lineaLimpia.match(patronPrestamo)
-    if (match) {
+  const procesarLinea = (linea: string, responsableDefecto: string): ResultadoProcesamiento => {
+    const lineaTrimmed = linea.trim()
+    if (!lineaTrimmed) {
       return {
-        tipo: "prestamo",
-        hotel1: match[1].trim(),
-        hotel2: match[2].trim(),
-        monto: Number.parseFloat(match[3]),
-        concepto: match[4].trim() || "Préstamo",
+        linea,
+        exito: false,
+        mensaje: "Línea vacía",
       }
     }
 
-    match = lineaLimpia.match(patronDevolucion)
-    if (match) {
+    // Dividir por comas y limpiar espacios
+    const partes = lineaTrimmed.split(",").map((parte) => parte.trim())
+
+    // Verificar que tenga exactamente 6 campos o 5 (sin responsable)
+    if (partes.length === 5) {
+      // Formato: Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor
+      // Usar responsable por defecto
+      if (!responsableDefecto) {
+        return {
+          linea,
+          exito: false,
+          mensaje: "Falta responsable por defecto para formato de 5 campos",
+        }
+      }
+      partes.unshift(responsableDefecto) // Agregar responsable al inicio
+    } else if (partes.length !== 6) {
       return {
-        tipo: "devolucion",
-        hotel1: match[1].trim(),
-        hotel2: match[2].trim(),
-        monto: Number.parseFloat(match[3]),
-        concepto: match[4].trim() || "Devolución",
+        linea,
+        exito: false,
+        mensaje: `Formato incorrecto. Se esperan 6 campos: Responsable, Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor. Se encontraron ${partes.length} campos.`,
       }
     }
 
-    return null
+    const [responsable, hotel_origen, hotel_destino, producto, cantidad, valorStr] = partes
+
+    // Validar campos obligatorios
+    if (!responsable || !hotel_origen || !hotel_destino || !producto || !cantidad || !valorStr) {
+      return {
+        linea,
+        exito: false,
+        mensaje: "Todos los campos son obligatorios",
+      }
+    }
+
+    // Validar y convertir valor
+    const valor = Number.parseFloat(valorStr.replace(/[^\d.-]/g, ""))
+    if (isNaN(valor) || valor <= 0) {
+      return {
+        linea,
+        exito: false,
+        mensaje: `Valor inválido: ${valorStr}`,
+      }
+    }
+
+    return {
+      linea,
+      exito: true,
+      mensaje: "Procesado correctamente",
+      datos: {
+        responsable,
+        hotel_origen,
+        hotel_destino,
+        producto,
+        cantidad,
+        valor,
+      },
+    }
   }
 
-  const validarDatos = (datos: any): string | null => {
-    if (!datos.hotel1 || !datos.hotel2) {
-      return "Faltan hoteles"
-    }
+  const guardarTransaccion = async (datos: {
+    responsable: string
+    hotel_origen: string
+    hotel_destino: string
+    producto: string
+    cantidad: string
+    valor: number
+  }) => {
+    try {
+      // Crear la transacción
+      const nuevaTransaccion = {
+        id: `prestamo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        responsable: datos.responsable,
+        hotel_origen: datos.hotel_origen,
+        hotel_destino: datos.hotel_destino,
+        producto: datos.producto,
+        cantidad: datos.cantidad,
+        valor: datos.valor,
+        fecha: new Date().toISOString().split("T")[0],
+        notas: `${datos.producto} - ${datos.cantidad}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
 
-    if (!HOTELES.includes(datos.hotel1)) {
-      return `Hotel no válido: ${datos.hotel1}`
-    }
+      // Obtener transacciones existentes
+      const transaccionesExistentes = JSON.parse(localStorage.getItem("prestamos_data") || "[]")
 
-    if (!HOTELES.includes(datos.hotel2)) {
-      return `Hotel no válido: ${datos.hotel2}`
-    }
+      // Agregar la nueva transacción
+      const todasLasTransacciones = [...transaccionesExistentes, nuevaTransaccion]
 
-    if (datos.hotel1 === datos.hotel2) {
-      return "Los hoteles no pueden ser iguales"
-    }
+      // Guardar en localStorage
+      localStorage.setItem("prestamos_data", JSON.stringify(todasLasTransacciones))
 
-    if (!datos.monto || datos.monto <= 0) {
-      return "Monto inválido"
+      return true
+    } catch (error) {
+      console.error("Error al guardar transacción:", error)
+      return false
     }
-
-    return null
   }
 
   const procesarTexto = async () => {
-    if (!responsable) {
-      toast({
-        title: "Error",
-        description: "Debes seleccionar un responsable",
-        variant: "destructive",
-      })
-      return
-    }
-
     if (!texto.trim()) {
       toast({
         title: "Error",
-        description: "Debes ingresar al menos una transacción",
+        description: "Ingresa al menos una línea de datos",
         variant: "destructive",
       })
       return
     }
 
     setProcesando(true)
-    const lineas = texto.split("\n").filter((l) => l.trim())
-    const nuevosResultados: ResultadoProcesamiento[] = []
+    const lineas = texto.split("\n").filter((linea) => linea.trim())
+    const resultadosProcesamiento: ResultadoProcesamiento[] = []
     let exitosos = 0
+    let errores = 0
 
     for (const linea of lineas) {
-      try {
-        const datos = parsearLinea(linea)
+      const resultado = procesarLinea(linea, responsableDefecto)
+      resultadosProcesamiento.push(resultado)
 
-        if (!datos) {
-          nuevosResultados.push({
-            linea,
-            exito: false,
-            mensaje: "Formato inválido. Usa: Hotel1 → Hotel2 $monto concepto",
-          })
-          continue
-        }
-
-        const errorValidacion = validarDatos(datos)
-        if (errorValidacion) {
-          nuevosResultados.push({
-            linea,
-            exito: false,
-            mensaje: errorValidacion,
-          })
-          continue
-        }
-
-        // Procesar la transacción
-        const resultado = await procesarIngresoRapido({
-          ...datos,
-          responsable,
-        })
-
-        if (resultado) {
-          nuevosResultados.push({
-            linea,
-            exito: true,
-            mensaje: `${datos.tipo === "prestamo" ? "Préstamo" : "Devolución"} creado correctamente`,
-            datos: resultado,
-          })
+      if (resultado.exito && resultado.datos) {
+        const guardado = await guardarTransaccion(resultado.datos)
+        if (guardado) {
           exitosos++
         } else {
-          nuevosResultados.push({
-            linea,
-            exito: false,
-            mensaje: "Error al crear la transacción",
-          })
+          resultado.exito = false
+          resultado.mensaje = "Error al guardar en localStorage"
+          errores++
         }
-      } catch (error) {
-        nuevosResultados.push({
-          linea,
-          exito: false,
-          mensaje: `Error: ${error instanceof Error ? error.message : "Error desconocido"}`,
-        })
+      } else {
+        errores++
       }
     }
 
-    setResultados(nuevosResultados)
+    setResultados(resultadosProcesamiento)
     setProcesando(false)
 
     // Mostrar toast de resumen
     if (exitosos > 0) {
       toast({
         title: "Procesamiento completado",
-        description: `${exitosos} de ${lineas.length} transacciones creadas exitosamente`,
+        description: `${exitosos} transacciones guardadas, ${errores} errores`,
       })
-
-      // Limpiar el formulario si todo fue exitoso
-      if (exitosos === lineas.length) {
-        setTexto("")
-        setResultados([])
-      }
-
-      // Notificar que se crearon transacciones
       onTransaccionCreada?.()
     } else {
       toast({
-        title: "Error en el procesamiento",
-        description: "No se pudo crear ninguna transacción",
+        title: "Error",
+        description: `No se pudo procesar ninguna transacción. ${errores} errores`,
         variant: "destructive",
       })
     }
@@ -204,10 +202,6 @@ export function IngresoRapido({ onTransaccionCreada }: IngresoRapidoProps) {
     setResultados([])
   }
 
-  const insertarEjemplo = () => {
-    setTexto(ejemplos.join("\n"))
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -216,111 +210,111 @@ export function IngresoRapido({ onTransaccionCreada }: IngresoRapidoProps) {
           Ingreso Rápido
         </CardTitle>
         <CardDescription>
-          Ingresa múltiples transacciones usando texto simple. Usa → para préstamos y ← para devoluciones.
+          Ingresa múltiples transacciones usando formato CSV: Responsable, Hotel que retira, Hotel que recibe, Producto,
+          Cantidad, Valor
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Selector de responsable */}
+        {/* Responsable por defecto */}
         <div className="space-y-2">
-          <Label htmlFor="responsable">Responsable</Label>
-          <Select value={responsable} onValueChange={setResponsable}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecciona el responsable" />
-            </SelectTrigger>
-            <SelectContent>
-              {RESPONSABLES.map((resp) => (
-                <SelectItem key={resp} value={resp}>
-                  {resp}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label htmlFor="responsable-defecto">Responsable por defecto (opcional)</Label>
+          <Input
+            id="responsable-defecto"
+            value={responsableDefecto}
+            onChange={(e) => setResponsableDefecto(e.target.value)}
+            placeholder="Ej: Nicolas Cannata"
+          />
+          <p className="text-xs text-gray-600">
+            Si se especifica, puedes usar formato de 5 campos omitiendo el responsable
+          </p>
         </div>
 
         {/* Área de texto */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="texto">Transacciones</Label>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={insertarEjemplo}>
-                Insertar ejemplos
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={limpiarFormulario}>
-                Limpiar
-              </Button>
-            </div>
-          </div>
+          <Label htmlFor="texto-rapido">Datos de transacciones</Label>
           <Textarea
-            id="texto"
+            id="texto-rapido"
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
-            placeholder={`Formato: Hotel1 → Hotel2 $monto concepto
+            placeholder={`Ejemplos:
+Nicolas Cannata, Argentina, Mallak, Toallas, 20 unidades, 50000
+Diego Pili, Mallak, Monaco, Equipamiento, 5 items, 30000
+Juan Prey, Jaguel, Argentina, Materiales, 10 kg, 75000
 
-Ejemplos:
-${ejemplos.join("\n")}
-
-Hoteles disponibles: ${HOTELES.join(", ")}`}
+O con responsable por defecto (5 campos):
+Argentina, Mallak, Toallas, 20 unidades, 50000
+Mallak, Monaco, Equipamiento, 5 items, 30000`}
             rows={8}
             className="font-mono text-sm"
           />
         </div>
 
-        {/* Información de formato */}
-        <div className="bg-blue-50 p-3 rounded-lg">
-          <div className="flex items-start gap-2">
-            <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">Formato de entrada:</p>
-              <ul className="space-y-1 text-xs">
-                <li>
-                  • <strong>Préstamo:</strong> Hotel1 → Hotel2 $monto concepto
-                </li>
-                <li>
-                  • <strong>Devolución:</strong> Hotel1 ← Hotel2 $monto concepto
-                </li>
-                <li>• Una transacción por línea</li>
-                <li>• El concepto es opcional</li>
-              </ul>
-            </div>
-          </div>
+        {/* Botones */}
+        <div className="flex gap-2">
+          <Button onClick={procesarTexto} disabled={procesando} className="flex-1">
+            {procesando ? "Procesando..." : "Procesar Transacciones"}
+          </Button>
+          <Button onClick={limpiarFormulario} variant="outline">
+            Limpiar
+          </Button>
         </div>
-
-        {/* Botón de procesamiento */}
-        <Button onClick={procesarTexto} disabled={procesando || !responsable || !texto.trim()} className="w-full">
-          {procesando ? "Procesando..." : "Procesar Transacciones"}
-        </Button>
 
         {/* Resultados */}
         {resultados.length > 0 && (
           <div className="space-y-2">
-            <Label>Resultados del procesamiento:</Label>
+            <h4 className="font-medium">Resultados del procesamiento:</h4>
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {resultados.map((resultado, index) => (
                 <div
                   key={index}
-                  className={`flex items-start gap-2 p-3 rounded-lg ${
+                  className={`flex items-start gap-2 p-2 rounded text-sm ${
                     resultado.exito ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
                   }`}
                 >
                   {resultado.exito ? (
-                    <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                    <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                   ) : (
-                    <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                    <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="font-mono text-xs text-gray-600 mb-1 break-all">{resultado.linea}</div>
-                    <div className={`text-sm ${resultado.exito ? "text-green-800" : "text-red-800"}`}>
-                      {resultado.mensaje}
-                    </div>
+                    <div className="font-mono text-xs text-gray-600 truncate">{resultado.linea}</div>
+                    <div className={resultado.exito ? "text-green-700" : "text-red-700"}>{resultado.mensaje}</div>
+                    {resultado.exito && resultado.datos && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <Badge variant="outline" className="text-xs">
+                          {resultado.datos.hotel_origen} → {resultado.datos.hotel_destino}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          ${resultado.datos.valor.toLocaleString()}
+                        </Badge>
+                      </div>
+                    )}
                   </div>
-                  <Badge variant={resultado.exito ? "secondary" : "destructive"} className="text-xs">
-                    {resultado.exito ? "OK" : "Error"}
-                  </Badge>
                 </div>
               ))}
             </div>
           </div>
         )}
+
+        {/* Ayuda */}
+        <div className="bg-blue-50 p-3 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium mb-1">Formato de datos:</p>
+              <ul className="text-xs space-y-1">
+                <li>• 6 campos: Responsable, Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor</li>
+                <li>
+                  • 5 campos: Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor (requiere responsable por
+                  defecto)
+                </li>
+                <li>• Separar campos con comas</li>
+                <li>• Una transacción por línea</li>
+                <li>• El valor debe ser numérico</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
