@@ -1,261 +1,327 @@
 "use client"
 
 import { useState } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Upload, CheckCircle, AlertCircle, Info } from "lucide-react"
-import { HOTELES, RESPONSABLES, type PrestamoFormData } from "@/lib/prestamos-types"
+import { Zap, CheckCircle, XCircle, Info } from "lucide-react"
+import { RESPONSABLES, HOTELES } from "@/lib/prestamos-types"
+import { procesarIngresoRapido } from "@/lib/prestamos-db"
+import { useToast } from "@/hooks/use-toast"
 
-interface ParsedPrestamo extends PrestamoFormData {
-  lineNumber: number
+interface IngresoRapidoProps {
+  onTransaccionCreada?: () => void
 }
 
-interface ValidationError {
-  line: number
-  field: string
-  message: string
+interface ResultadoProcesamiento {
+  linea: string
+  exito: boolean
+  mensaje: string
+  datos?: any
 }
 
-export function IngresoRapido() {
-  const [textInput, setTextInput] = useState("")
-  const [parsedPrestamos, setParsedPrestamos] = useState<ParsedPrestamo[]>([])
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
+export function IngresoRapido({ onTransaccionCreada }: IngresoRapidoProps) {
+  const { toast } = useToast()
+  const [texto, setTexto] = useState("")
+  const [responsable, setResponsable] = useState("")
+  const [procesando, setProcesando] = useState(false)
+  const [resultados, setResultados] = useState<ResultadoProcesamiento[]>([])
 
-  const parseTextInput = () => {
-    const lines = textInput
-      .trim()
-      .split("\n")
-      .filter((line) => line.trim())
-    const prestamos: ParsedPrestamo[] = []
-    const errors: ValidationError[] = []
+  const ejemplos = [
+    "Argentina → Mallak $50000 Préstamo para reparaciones",
+    "Mallak ← Monaco $30000 Devolución de préstamo anterior",
+    "Jaguel → Argentina $75000 Préstamo para renovación",
+    "Monaco ← Jaguel $25000 Devolución parcial",
+  ]
 
-    lines.forEach((line, index) => {
-      const lineNumber = index + 1
-      const parts = line.split("|").map((part) => part.trim())
+  const parsearLinea = (linea: string): any => {
+    // Limpiar la línea
+    const lineaLimpia = linea.trim()
+    if (!lineaLimpia) return null
 
-      if (parts.length !== 6) {
-        errors.push({
-          line: lineNumber,
-          field: "formato",
-          message: `Línea debe tener 6 campos separados por |. Encontrados: ${parts.length}`,
-        })
-        return
+    // Patrones para préstamo (→) y devolución (←)
+    const patronPrestamo = /^(.+?)\s*→\s*(.+?)\s*\$(\d+(?:\.\d+)?)\s*(.*)$/
+    const patronDevolucion = /^(.+?)\s*←\s*(.+?)\s*\$(\d+(?:\.\d+)?)\s*(.*)$/
+
+    let match = lineaLimpia.match(patronPrestamo)
+    if (match) {
+      return {
+        tipo: "prestamo",
+        hotel1: match[1].trim(),
+        hotel2: match[2].trim(),
+        monto: Number.parseFloat(match[3]),
+        concepto: match[4].trim() || "Préstamo",
       }
+    }
 
-      const [responsable, hotelOrigen, hotelDestino, producto, cantidadStr, valorStr] = parts
-
-      // Validaciones
-      if (!responsable) {
-        errors.push({ line: lineNumber, field: "responsable", message: "Responsable requerido" })
+    match = lineaLimpia.match(patronDevolucion)
+    if (match) {
+      return {
+        tipo: "devolucion",
+        hotel1: match[1].trim(),
+        hotel2: match[2].trim(),
+        monto: Number.parseFloat(match[3]),
+        concepto: match[4].trim() || "Devolución",
       }
+    }
 
-      if (!HOTELES.includes(hotelOrigen as any)) {
-        errors.push({ line: lineNumber, field: "hotel_origen", message: `Hotel origen "${hotelOrigen}" no válido` })
-      }
-
-      if (!HOTELES.includes(hotelDestino as any)) {
-        errors.push({ line: lineNumber, field: "hotel_destino", message: `Hotel destino "${hotelDestino}" no válido` })
-      }
-
-      if (hotelOrigen === hotelDestino) {
-        errors.push({ line: lineNumber, field: "hoteles", message: "Hotel origen y destino no pueden ser iguales" })
-      }
-
-      if (!producto) {
-        errors.push({ line: lineNumber, field: "producto", message: "Producto requerido" })
-      }
-
-      const cantidad = Number.parseInt(cantidadStr)
-      if (isNaN(cantidad) || cantidad <= 0) {
-        errors.push({ line: lineNumber, field: "cantidad", message: "Cantidad debe ser un número positivo" })
-      }
-
-      const valor = Number.parseFloat(valorStr)
-      if (isNaN(valor) || valor <= 0) {
-        errors.push({ line: lineNumber, field: "valor", message: "Valor debe ser un número positivo" })
-      }
-
-      if (errors.filter((e) => e.line === lineNumber).length === 0) {
-        prestamos.push({
-          responsable,
-          hotel_origen: hotelOrigen,
-          hotel_destino: hotelDestino,
-          producto,
-          cantidad,
-          valor,
-          lineNumber,
-        })
-      }
-    })
-
-    setParsedPrestamos(prestamos)
-    setValidationErrors(errors)
-    setShowPreview(true)
+    return null
   }
 
-  const processPrestamos = async () => {
-    setIsProcessing(true)
-    try {
-      // Aquí iría la lógica para guardar en la base de datos
-      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulación
+  const validarDatos = (datos: any): string | null => {
+    if (!datos.hotel1 || !datos.hotel2) {
+      return "Faltan hoteles"
+    }
 
-      // Reset form
-      setTextInput("")
-      setParsedPrestamos([])
-      setValidationErrors([])
-      setShowPreview(false)
+    if (!HOTELES.includes(datos.hotel1)) {
+      return `Hotel no válido: ${datos.hotel1}`
+    }
 
-      alert(`${parsedPrestamos.length} préstamos procesados exitosamente`)
-    } catch (error) {
-      console.error("Error procesando préstamos:", error)
-      alert("Error al procesar préstamos")
-    } finally {
-      setIsProcessing(false)
+    if (!HOTELES.includes(datos.hotel2)) {
+      return `Hotel no válido: ${datos.hotel2}`
+    }
+
+    if (datos.hotel1 === datos.hotel2) {
+      return "Los hoteles no pueden ser iguales"
+    }
+
+    if (!datos.monto || datos.monto <= 0) {
+      return "Monto inválido"
+    }
+
+    return null
+  }
+
+  const procesarTexto = async () => {
+    if (!responsable) {
+      toast({
+        title: "Error",
+        description: "Debes seleccionar un responsable",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!texto.trim()) {
+      toast({
+        title: "Error",
+        description: "Debes ingresar al menos una transacción",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setProcesando(true)
+    const lineas = texto.split("\n").filter((l) => l.trim())
+    const nuevosResultados: ResultadoProcesamiento[] = []
+    let exitosos = 0
+
+    for (const linea of lineas) {
+      try {
+        const datos = parsearLinea(linea)
+
+        if (!datos) {
+          nuevosResultados.push({
+            linea,
+            exito: false,
+            mensaje: "Formato inválido. Usa: Hotel1 → Hotel2 $monto concepto",
+          })
+          continue
+        }
+
+        const errorValidacion = validarDatos(datos)
+        if (errorValidacion) {
+          nuevosResultados.push({
+            linea,
+            exito: false,
+            mensaje: errorValidacion,
+          })
+          continue
+        }
+
+        // Procesar la transacción
+        const resultado = await procesarIngresoRapido({
+          ...datos,
+          responsable,
+        })
+
+        if (resultado) {
+          nuevosResultados.push({
+            linea,
+            exito: true,
+            mensaje: `${datos.tipo === "prestamo" ? "Préstamo" : "Devolución"} creado correctamente`,
+            datos: resultado,
+          })
+          exitosos++
+        } else {
+          nuevosResultados.push({
+            linea,
+            exito: false,
+            mensaje: "Error al crear la transacción",
+          })
+        }
+      } catch (error) {
+        nuevosResultados.push({
+          linea,
+          exito: false,
+          mensaje: `Error: ${error instanceof Error ? error.message : "Error desconocido"}`,
+        })
+      }
+    }
+
+    setResultados(nuevosResultados)
+    setProcesando(false)
+
+    // Mostrar toast de resumen
+    if (exitosos > 0) {
+      toast({
+        title: "Procesamiento completado",
+        description: `${exitosos} de ${lineas.length} transacciones creadas exitosamente`,
+      })
+
+      // Limpiar el formulario si todo fue exitoso
+      if (exitosos === lineas.length) {
+        setTexto("")
+        setResultados([])
+      }
+
+      // Notificar que se crearon transacciones
+      onTransaccionCreada?.()
+    } else {
+      toast({
+        title: "Error en el procesamiento",
+        description: "No se pudo crear ninguna transacción",
+        variant: "destructive",
+      })
     }
   }
 
+  const limpiarFormulario = () => {
+    setTexto("")
+    setResultados([])
+  }
+
+  const insertarEjemplo = () => {
+    setTexto(ejemplos.join("\n"))
+  }
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
-            Ingreso Rápido Masivo
-          </CardTitle>
-          <CardDescription>Ingresa múltiples préstamos usando formato de texto</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              Formato: Responsable | Hotel que retira | Hotel que recibe | Producto | Cantidad | Valor
-            </label>
-            <Textarea
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder={`Ejemplo:
-Nicolas Cannata | Munich | Monaco | Toallas | 10 | 5000
-Juan Manuel | Jaguel | Argentina | Sabanas | 5 | 3000
-Nacho | Colores | Tupe | Almohadas | 8 | 2400`}
-              className="min-h-[200px] font-mono text-sm"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button onClick={parseTextInput} disabled={!textInput.trim()} variant="outline">
-              <Info className="h-4 w-4 mr-2" />
-              Validar Datos
-            </Button>
-            {showPreview && parsedPrestamos.length > 0 && (
-              <Button onClick={processPrestamos} disabled={isProcessing || validationErrors.length > 0}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                {isProcessing ? "Procesando..." : `Procesar ${parsedPrestamos.length} Préstamos`}
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Hoteles disponibles */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Hoteles/Personas Disponibles</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-1">
-            {HOTELES.map((hotel) => (
-              <Badge key={hotel} variant="secondary" className="text-xs">
-                {hotel}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Responsables sugeridos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Responsables Sugeridos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-1">
-            {RESPONSABLES.map((responsable) => (
-              <Badge key={responsable} variant="outline" className="text-xs">
-                {responsable}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Errores de validación */}
-      {validationErrors.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="h-5 w-5" />
-              Errores de Validación ({validationErrors.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {validationErrors.map((error, index) => (
-                <Alert key={index} variant="destructive">
-                  <AlertDescription>
-                    <strong>Línea {error.line}:</strong> {error.message}
-                  </AlertDescription>
-                </Alert>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Zap className="h-5 w-5" />
+          Ingreso Rápido
+        </CardTitle>
+        <CardDescription>
+          Ingresa múltiples transacciones usando texto simple. Usa → para préstamos y ← para devoluciones.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Selector de responsable */}
+        <div className="space-y-2">
+          <Label htmlFor="responsable">Responsable</Label>
+          <Select value={responsable} onValueChange={setResponsable}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecciona el responsable" />
+            </SelectTrigger>
+            <SelectContent>
+              {RESPONSABLES.map((resp) => (
+                <SelectItem key={resp} value={resp}>
+                  {resp}
+                </SelectItem>
               ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </SelectContent>
+          </Select>
+        </div>
 
-      {/* Preview de préstamos válidos */}
-      {showPreview && parsedPrestamos.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-600">
-              <CheckCircle className="h-5 w-5" />
-              Préstamos Válidos ({parsedPrestamos.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {parsedPrestamos.map((prestamo, index) => (
-                <div key={index} className="p-3 border rounded-lg bg-green-50">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <strong>Responsable:</strong> {prestamo.responsable}
-                    </div>
-                    <div>
-                      <strong>De:</strong> {prestamo.hotel_origen}
-                    </div>
-                    <div>
-                      <strong>Para:</strong> {prestamo.hotel_destino}
-                    </div>
-                    <div>
-                      <strong>Producto:</strong> {prestamo.producto}
-                    </div>
-                    <div>
-                      <strong>Cantidad:</strong> {prestamo.cantidad}
-                    </div>
-                    <div>
-                      <strong>Valor:</strong> ${prestamo.valor.toLocaleString()}
+        {/* Área de texto */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="texto">Transacciones</Label>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={insertarEjemplo}>
+                Insertar ejemplos
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={limpiarFormulario}>
+                Limpiar
+              </Button>
+            </div>
+          </div>
+          <Textarea
+            id="texto"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder={`Formato: Hotel1 → Hotel2 $monto concepto
+
+Ejemplos:
+${ejemplos.join("\n")}
+
+Hoteles disponibles: ${HOTELES.join(", ")}`}
+            rows={8}
+            className="font-mono text-sm"
+          />
+        </div>
+
+        {/* Información de formato */}
+        <div className="bg-blue-50 p-3 rounded-lg">
+          <div className="flex items-start gap-2">
+            <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium mb-1">Formato de entrada:</p>
+              <ul className="space-y-1 text-xs">
+                <li>
+                  • <strong>Préstamo:</strong> Hotel1 → Hotel2 $monto concepto
+                </li>
+                <li>
+                  • <strong>Devolución:</strong> Hotel1 ← Hotel2 $monto concepto
+                </li>
+                <li>• Una transacción por línea</li>
+                <li>• El concepto es opcional</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Botón de procesamiento */}
+        <Button onClick={procesarTexto} disabled={procesando || !responsable || !texto.trim()} className="w-full">
+          {procesando ? "Procesando..." : "Procesar Transacciones"}
+        </Button>
+
+        {/* Resultados */}
+        {resultados.length > 0 && (
+          <div className="space-y-2">
+            <Label>Resultados del procesamiento:</Label>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {resultados.map((resultado, index) => (
+                <div
+                  key={index}
+                  className={`flex items-start gap-2 p-3 rounded-lg ${
+                    resultado.exito ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
+                  }`}
+                >
+                  {resultado.exito ? (
+                    <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-xs text-gray-600 mb-1 break-all">{resultado.linea}</div>
+                    <div className={`text-sm ${resultado.exito ? "text-green-800" : "text-red-800"}`}>
+                      {resultado.mensaje}
                     </div>
                   </div>
+                  <Badge variant={resultado.exito ? "secondary" : "destructive"} className="text-xs">
+                    {resultado.exito ? "OK" : "Error"}
+                  </Badge>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
-
-// Named export

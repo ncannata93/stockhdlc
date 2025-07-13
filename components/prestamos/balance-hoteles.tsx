@@ -2,122 +2,263 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Download, TrendingUp, TrendingDown, Minus } from "lucide-react"
-import { obtenerBalanceHoteles, formatearMonto, exportarDatos } from "@/lib/prestamos-db"
-import type { BalanceHotel } from "@/lib/prestamos-types"
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import {
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Download,
+  RefreshCw,
+  AlertCircle,
+} from "lucide-react"
+import { HOTELES } from "@/lib/prestamos-types"
+import { useToast } from "@/hooks/use-toast"
 
-export function BalanceHoteles() {
-  const [balance, setBalance] = useState<BalanceHotel[]>([])
-  const [loading, setLoading] = useState(true)
+interface Prestamo {
+  id: string
+  responsable: string
+  hotel_origen: string
+  hotel_destino: string
+  producto: string
+  cantidad: string
+  valor: number
+  fecha: string
+  notas?: string
+  created_at?: string
+  updated_at?: string
+}
+
+interface BalanceHotel {
+  hotel: string
+  comoAcreedor: number // Dinero que le deben a este hotel (dinero que prestó)
+  comoDeudor: number // Dinero que debe este hotel (dinero que recibió)
+  balanceNeto: number // Diferencia (positivo = le deben, negativo = debe)
+  transacciones: Prestamo[]
+  estado: "equilibrado" | "acreedor" | "deudor"
+}
+
+interface BalanceHotelesProps {
+  refreshTrigger?: number
+}
+
+export function BalanceHoteles({ refreshTrigger }: BalanceHotelesProps) {
+  const { toast } = useToast()
+  const [balances, setBalances] = useState<BalanceHotel[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hotelesExpandidos, setHotelesExpandidos] = useState<Set<string>>(new Set())
+
+  const formatearMonto = (monto: number): string => {
+    // Asegurar que monto sea un número válido
+    const montoNumerico = typeof monto === "string" ? Number.parseFloat(monto) : monto
+    if (isNaN(montoNumerico)) {
+      return "$0"
+    }
+
+    return new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: "ARS",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(montoNumerico)
+  }
+
+  const calcularBalances = () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // Cargar préstamos desde localStorage
+      const prestamosData: Prestamo[] = JSON.parse(localStorage.getItem("prestamos_data") || "[]")
+
+      // Inicializar balances para todos los hoteles
+      const balancesMap = new Map<string, BalanceHotel>()
+
+      HOTELES.forEach((hotel) => {
+        balancesMap.set(hotel, {
+          hotel,
+          comoAcreedor: 0,
+          comoDeudor: 0,
+          balanceNeto: 0,
+          transacciones: [],
+          estado: "equilibrado",
+        })
+      })
+
+      // Procesar cada préstamo
+      prestamosData.forEach((prestamo) => {
+        const valor = typeof prestamo.valor === "string" ? Number.parseFloat(prestamo.valor) : prestamo.valor
+        if (isNaN(valor)) return
+
+        const hotelOrigen = prestamo.hotel_origen // Hotel que presta (acreedor)
+        const hotelDestino = prestamo.hotel_destino // Hotel que recibe (deudor)
+
+        // El hotel origen presta dinero, por lo tanto es ACREEDOR
+        if (balancesMap.has(hotelOrigen)) {
+          const balance = balancesMap.get(hotelOrigen)!
+          balance.comoAcreedor += valor // Le deben dinero
+          balance.transacciones.push(prestamo)
+        }
+
+        // El hotel destino recibe dinero, por lo tanto es DEUDOR
+        if (balancesMap.has(hotelDestino)) {
+          const balance = balancesMap.get(hotelDestino)!
+          balance.comoDeudor += valor // Debe dinero
+          balance.transacciones.push(prestamo)
+        }
+      })
+
+      // Calcular balance neto y estado para cada hotel
+      const balancesArray = Array.from(balancesMap.values()).map((balance) => {
+        balance.balanceNeto = balance.comoAcreedor - balance.comoDeudor
+
+        if (Math.abs(balance.balanceNeto) < 0.01) {
+          balance.estado = "equilibrado"
+        } else if (balance.balanceNeto > 0) {
+          balance.estado = "acreedor" // Le deben más de lo que debe
+        } else {
+          balance.estado = "deudor" // Debe más de lo que le deben
+        }
+
+        return balance
+      })
+
+      // Ordenar por balance neto (acreedores primero, luego equilibrados, luego deudores)
+      balancesArray.sort((a, b) => {
+        if (a.estado !== b.estado) {
+          if (a.estado === "acreedor") return -1
+          if (b.estado === "acreedor") return 1
+          if (a.estado === "equilibrado") return -1
+          if (b.estado === "equilibrado") return 1
+        }
+        return Math.abs(b.balanceNeto) - Math.abs(a.balanceNeto)
+      })
+
+      setBalances(balancesArray)
+    } catch (error) {
+      console.error("Error al calcular balances:", error)
+      setError("Error al calcular los balances")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    cargarBalance()
-  }, [])
+    calcularBalances()
+  }, [refreshTrigger])
 
-  const cargarBalance = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const data = await obtenerBalanceHoteles()
-      setBalance(data)
-    } catch (err) {
-      setError("Error al cargar el balance de hoteles")
-      console.error(err)
-    } finally {
-      setLoading(false)
+  const toggleHotelExpandido = (hotel: string) => {
+    const nuevosExpandidos = new Set(hotelesExpandidos)
+    if (nuevosExpandidos.has(hotel)) {
+      nuevosExpandidos.delete(hotel)
+    } else {
+      nuevosExpandidos.add(hotel)
     }
+    setHotelesExpandidos(nuevosExpandidos)
   }
 
-  const handleExportar = async () => {
+  const exportarBalance = () => {
     try {
-      const datos = await exportarDatos()
-      const blob = new Blob([datos], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
+      const datos = balances.map((balance) => ({
+        Hotel: balance.hotel,
+        "Como Acreedor": formatearMonto(balance.comoAcreedor),
+        "Como Deudor": formatearMonto(balance.comoDeudor),
+        "Balance Neto": formatearMonto(balance.balanceNeto),
+        Estado: balance.estado,
+        "Cantidad Transacciones": balance.transacciones.length,
+      }))
+
+      const csv = [Object.keys(datos[0]).join(","), ...datos.map((fila) => Object.values(fila).join(","))].join("\n")
+
+      const blob = new Blob([csv], { type: "text/csv" })
+      const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `balance-hoteles-${new Date().toISOString().split("T")[0]}.json`
-      document.body.appendChild(a)
+      a.download = `balance-hoteles-${new Date().toISOString().split("T")[0]}.csv`
       a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error("Error al exportar datos:", err)
+      window.URL.revokeObjectURL(url)
+
+      toast({
+        title: "Éxito",
+        description: "Balance exportado correctamente",
+      })
+    } catch (error) {
+      console.error("Error al exportar:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo exportar el balance",
+        variant: "destructive",
+      })
     }
   }
 
-  const getBalanceIcon = (balance: number) => {
-    if (balance > 0) return <TrendingUp className="h-4 w-4 text-green-600" />
-    if (balance < 0) return <TrendingDown className="h-4 w-4 text-red-600" />
-    return <Minus className="h-4 w-4 text-gray-400" />
+  const getEstadoBadge = (estado: string) => {
+    switch (estado) {
+      case "acreedor":
+        return (
+          <Badge variant="secondary" className="bg-green-100 text-green-800">
+            <TrendingUp className="h-3 w-3 mr-1" />
+            Acreedor
+          </Badge>
+        )
+      case "deudor":
+        return (
+          <Badge variant="secondary" className="bg-red-100 text-red-800">
+            <TrendingDown className="h-3 w-3 mr-1" />
+            Deudor
+          </Badge>
+        )
+      case "equilibrado":
+        return (
+          <Badge variant="secondary" className="bg-gray-100 text-gray-800">
+            <Minus className="h-3 w-3 mr-1" />
+            Equilibrado
+          </Badge>
+        )
+      default:
+        return <Badge variant="outline">{estado}</Badge>
+    }
   }
 
-  const getBalanceColor = (balance: number) => {
-    if (balance > 0) return "text-green-600"
-    if (balance < 0) return "text-red-600"
-    return "text-gray-600"
-  }
-
-  const getBalanceBadge = (balance: number) => {
-    if (balance > 0)
-      return (
-        <Badge variant="secondary" className="bg-green-100 text-green-800">
-          Acreedor
-        </Badge>
-      )
-    if (balance < 0)
-      return (
-        <Badge variant="secondary" className="bg-red-100 text-red-800">
-          Deudor
-        </Badge>
-      )
-    return <Badge variant="outline">Equilibrado</Badge>
-  }
-
-  // Estadísticas generales
-  const acreedores = balance.filter((h) => h.balance > 0).length
-  const deudores = balance.filter((h) => h.balance < 0).length
-  const equilibrados = balance.filter((h) => h.balance === 0).length
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <Card key={i}>
-              <CardHeader className="animate-pulse">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-6 bg-gray-200 rounded w-1/2"></div>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-        <Card>
-          <CardHeader className="animate-pulse">
-            <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 bg-gray-200 rounded animate-pulse"></div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            Balance Detallado
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+            <span className="ml-2">Calculando balances...</span>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 
   if (error) {
     return (
       <Card>
-        <CardContent className="pt-6">
-          <div className="text-center text-red-600">
-            <p>{error}</p>
-            <Button onClick={cargarBalance} className="mt-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            Balance Detallado
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-8 text-red-600">
+            <AlertCircle className="h-8 w-8 mr-2" />
+            <span>{error}</span>
+            <Button variant="outline" size="sm" onClick={calcularBalances} className="ml-4 bg-transparent">
               Reintentar
             </Button>
           </div>
@@ -126,166 +267,160 @@ export function BalanceHoteles() {
     )
   }
 
-  if (balance.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Balance Entre Hoteles</CardTitle>
-          <CardDescription>No hay transacciones registradas entre hoteles</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center text-gray-500 py-8">
-            <p>Crea algunos préstamos para ver el balance entre hoteles</p>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
-    <div className="space-y-6">
-      {/* Estadísticas generales */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Hoteles</CardDescription>
-            <CardTitle className="text-2xl">{balance.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Acreedores</CardDescription>
-            <CardTitle className="text-2xl text-green-600">{acreedores}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Deudores</CardDescription>
-            <CardTitle className="text-2xl text-red-600">{deudores}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Equilibrados</CardDescription>
-            <CardTitle className="text-2xl text-gray-600">{equilibrados}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      {/* Balance detallado */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>Balance Detallado</CardTitle>
-              <CardDescription>Balance neto entre hoteles (Acreedor - Deudor)</CardDescription>
-            </div>
-            <Button onClick={handleExportar} variant="outline" size="sm">
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Balance Detallado
+            </CardTitle>
+            <CardDescription>Balance neto entre hoteles (Acreedor - Deudor)</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={exportarBalance}>
               <Download className="h-4 w-4 mr-2" />
               Exportar
             </Button>
+            <Button variant="outline" size="sm" onClick={calcularBalances}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Actualizar
+            </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          <Accordion type="single" collapsible className="w-full">
-            {balance.map((hotel) => (
-              <AccordionItem key={hotel.hotel} value={hotel.hotel}>
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center justify-between w-full mr-4">
-                    <div className="flex items-center gap-3">
-                      {getBalanceIcon(hotel.balance)}
-                      <span className="font-medium">{hotel.hotel}</span>
-                      {getBalanceBadge(hotel.balance)}
-                    </div>
-                    <div className="text-right">
-                      <div className={`font-bold ${getBalanceColor(hotel.balance)}`}>
-                        {formatearMonto(hotel.balance)}
-                      </div>
-                      <div className="text-sm text-gray-500">{hotel.transacciones} transacciones</div>
-                    </div>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="pt-4 space-y-4">
-                    {/* Resumen del hotel */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-green-50 p-3 rounded-lg">
-                        <div className="text-sm text-green-700 font-medium">Como Acreedor</div>
-                        <div className="text-lg font-bold text-green-800">{formatearMonto(hotel.acreedor)}</div>
-                        <div className="text-xs text-green-600">Dinero prestado a otros hoteles</div>
-                      </div>
-                      <div className="bg-red-50 p-3 rounded-lg">
-                        <div className="text-sm text-red-700 font-medium">Como Deudor</div>
-                        <div className="text-lg font-bold text-red-800">{formatearMonto(hotel.deudor)}</div>
-                        <div className="text-xs text-red-600">Dinero recibido de otros hoteles</div>
-                      </div>
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <div className="text-sm text-blue-700 font-medium">Balance Neto</div>
-                        <div className={`text-lg font-bold ${getBalanceColor(hotel.balance)}`}>
-                          {formatearMonto(hotel.balance)}
-                        </div>
-                        <div className="text-xs text-blue-600">Diferencia total</div>
-                      </div>
-                    </div>
-
-                    {/* Relaciones específicas */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Acreedor de */}
-                      {hotel.acreedorDe.length > 0 && (
-                        <div>
-                          <h4 className="font-medium text-green-700 mb-2">Acreedor de:</h4>
-                          <div className="space-y-2">
-                            {hotel.acreedorDe.map((relacion) => (
-                              <div
-                                key={relacion.hotel}
-                                className="flex justify-between items-center bg-green-50 p-2 rounded"
-                              >
-                                <span className="text-sm">{relacion.hotel}</span>
-                                <div className="text-right">
-                                  <div className="font-medium text-green-800">{formatearMonto(relacion.monto)}</div>
-                                  <div className="text-xs text-green-600">{relacion.transacciones} transacciones</div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Deudor de */}
-                      {hotel.deudorDe.length > 0 && (
-                        <div>
-                          <h4 className="font-medium text-red-700 mb-2">Deudor de:</h4>
-                          <div className="space-y-2">
-                            {hotel.deudorDe.map((relacion) => (
-                              <div
-                                key={relacion.hotel}
-                                className="flex justify-between items-center bg-red-50 p-2 rounded"
-                              >
-                                <span className="text-sm">{relacion.hotel}</span>
-                                <div className="text-right">
-                                  <div className="font-medium text-red-800">{formatearMonto(relacion.monto)}</div>
-                                  <div className="text-xs text-red-600">{relacion.transacciones} transacciones</div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Mensaje si no hay relaciones */}
-                    {hotel.acreedorDe.length === 0 && hotel.deudorDe.length === 0 && (
-                      <div className="text-center text-gray-500 py-4">
-                        <p>No hay relaciones específicas registradas</p>
-                      </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {balances.map((balance) => (
+            <Collapsible
+              key={balance.hotel}
+              open={hotelesExpandidos.has(balance.hotel)}
+              onOpenChange={() => toggleHotelExpandido(balance.hotel)}
+            >
+              <CollapsibleTrigger asChild>
+                <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    {hotelesExpandidos.has(balance.hotel) ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
                     )}
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    <span className="font-semibold">{balance.hotel}</span>
+                    {getEstadoBadge(balance.estado)}
                   </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </CardContent>
-      </Card>
-    </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-gray-600">{balance.transacciones.length} transacciones</span>
+                    <div className="text-right">
+                      <div
+                        className={`text-2xl font-bold ${
+                          balance.balanceNeto > 0
+                            ? "text-green-600"
+                            : balance.balanceNeto < 0
+                              ? "text-red-600"
+                              : "text-gray-600"
+                        }`}
+                      >
+                        {formatearMonto(balance.balanceNeto)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-4 pb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <Card className="bg-green-50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-green-600" />
+                          <span className="text-sm font-medium text-green-800">Como Acreedor</span>
+                        </div>
+                        <div className="text-2xl font-bold text-green-700 mt-2">
+                          {formatearMonto(balance.comoAcreedor)}
+                        </div>
+                        <p className="text-xs text-green-600 mt-1">Dinero prestado a otros hoteles</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-red-50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2">
+                          <TrendingDown className="h-4 w-4 text-red-600" />
+                          <span className="text-sm font-medium text-red-800">Como Deudor</span>
+                        </div>
+                        <div className="text-2xl font-bold text-red-700 mt-2">{formatearMonto(balance.comoDeudor)}</div>
+                        <p className="text-xs text-red-600 mt-1">Dinero recibido de otros hoteles</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-blue-50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm font-medium text-blue-800">Balance Neto</span>
+                        </div>
+                        <div
+                          className={`text-2xl font-bold mt-2 ${
+                            balance.balanceNeto > 0
+                              ? "text-green-700"
+                              : balance.balanceNeto < 0
+                                ? "text-red-700"
+                                : "text-gray-700"
+                          }`}
+                        >
+                          {formatearMonto(balance.balanceNeto)}
+                        </div>
+                        <p className="text-xs text-blue-600 mt-1">Diferencia total</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {balance.transacciones.length === 0 ? (
+                    <div className="text-center py-4 text-gray-500">
+                      <p>No hay transacciones registradas para este hotel</p>
+                    </div>
+                  ) : (
+                    <div className="mt-4">
+                      <h4 className="font-medium mb-2">Transacciones Relacionadas:</h4>
+                      <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {balance.transacciones.map((transaccion) => (
+                          <div
+                            key={transaccion.id}
+                            className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">
+                                {transaccion.hotel_origen} → {transaccion.hotel_destino}
+                              </span>
+                              <span className="text-xs text-gray-500">({transaccion.producto})</span>
+                              {transaccion.hotel_origen === balance.hotel && (
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                                  Prestó
+                                </Badge>
+                              )}
+                              {transaccion.hotel_destino === balance.hotel && (
+                                <Badge variant="outline" className="text-xs bg-red-50 text-red-700">
+                                  Recibió
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">{formatearMonto(transaccion.valor)}</span>
+                              <span className="text-xs text-gray-500">{transaccion.fecha}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

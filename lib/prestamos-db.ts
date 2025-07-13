@@ -1,7 +1,6 @@
 import type {
   Prestamo,
   PrestamoInput,
-  PrestamoRapidoType,
   BalanceHotel,
   RelacionHotel,
   FiltrosPrestamos,
@@ -47,14 +46,22 @@ function formatearFecha(fecha?: string): string {
   return date.toISOString().split("T")[0]
 }
 
-// Función para formatear monto
-export function formatearMonto(monto: number): string {
+// Función para formatear monto - ARREGLADA
+export function formatearMonto(monto: number | string): string {
+  // Convertir a número si es string
+  const numero = typeof monto === "string" ? Number.parseFloat(monto) : monto
+
+  // Verificar que sea un número válido
+  if (isNaN(numero)) {
+    return "$ 0"
+  }
+
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(monto)
+  }).format(numero)
 }
 
 // EXPORTACIONES PRINCIPALES
@@ -77,7 +84,7 @@ export async function crearPrestamo(input: PrestamoInput): Promise<Prestamo | nu
       fecha: formatearFecha(input.fecha),
       hotel_origen: input.hotel_origen,
       hotel_destino: input.hotel_destino,
-      monto: input.monto,
+      monto: Number(input.monto), // Asegurar que sea número
       concepto: input.concepto,
       responsable: input.responsable,
       estado: "pendiente",
@@ -103,6 +110,11 @@ export async function actualizarPrestamo(id: string, cambios: Partial<Prestamo>)
 
     if (indice === -1) {
       return null
+    }
+
+    // Asegurar que el monto sea número si se está actualizando
+    if (cambios.monto !== undefined) {
+      cambios.monto = Number(cambios.monto)
     }
 
     prestamos[indice] = {
@@ -136,39 +148,66 @@ export async function eliminarPrestamo(id: string): Promise<boolean> {
   }
 }
 
-export async function procesarIngresoRapido(input: PrestamoRapidoType): Promise<Prestamo | null> {
+export async function procesarIngresoRapido({
+  tipo,
+  hotel1,
+  hotel2,
+  monto,
+  concepto,
+  responsable,
+}: {
+  tipo: "prestamo" | "devolucion"
+  hotel1: string
+  hotel2: string
+  monto: number
+  concepto?: string
+  responsable: string
+}): Promise<Prestamo | null> {
   try {
-    let hotel_origen: string
-    let hotel_destino: string
-    let concepto: string
-
-    if (input.tipo === "prestamo") {
-      hotel_origen = input.hotel1
-      hotel_destino = input.hotel2
-      concepto = input.concepto || `Préstamo de ${input.hotel1} a ${input.hotel2}`
-    } else {
-      // Es una devolución
-      hotel_origen = input.hotel2
-      hotel_destino = input.hotel1
-      concepto = input.concepto || `Devolución de ${input.hotel2} a ${input.hotel1}`
+    // Validar hoteles
+    if (!HOTELES.includes(hotel1) || !HOTELES.includes(hotel2)) {
+      console.error("Hotel no válido:", { hotel1, hotel2 })
+      return null
     }
 
-    const prestamoInput: PrestamoInput = {
-      hotel_origen,
-      hotel_destino,
-      monto: input.monto,
-      concepto,
-      responsable: input.responsable,
+    // Validar responsable
+    if (!RESPONSABLES.includes(responsable)) {
+      console.error("Responsable no válido:", responsable)
+      return null
     }
 
-    return await crearPrestamo(prestamoInput)
+    // Crear el préstamo
+    const prestamo: Prestamo = {
+      id: `prestamo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      responsable,
+      hotel_origen: tipo === "prestamo" ? hotel1 : hotel2,
+      hotel_destino: tipo === "prestamo" ? hotel2 : hotel1,
+      producto: concepto || "Préstamo general",
+      cantidad: "1",
+      valor: monto,
+      fecha: new Date().toISOString().split("T")[0],
+      notas: concepto || "",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    // Obtener préstamos existentes
+    const prestamosExistentes = JSON.parse(localStorage.getItem("prestamos_data") || "[]")
+
+    // Agregar el nuevo préstamo
+    const todosLosPrestamos = [...prestamosExistentes, prestamo]
+
+    // Guardar en localStorage
+    localStorage.setItem("prestamos_data", JSON.stringify(todosLosPrestamos))
+
+    return prestamo
   } catch (error) {
     console.error("Error al procesar ingreso rápido:", error)
     return null
   }
 }
 
-export async function obtenerPrestamosFiltrados(filtros: FiltrosPrestamos): Promise<Prestamo[]> {
+export function obtenerPrestamosFiltrados(filtros: FiltrosPrestamos): Prestamo[] {
   try {
     let prestamos = obtenerPrestamosLocal()
 
@@ -202,11 +241,11 @@ export async function obtenerPrestamosFiltrados(filtros: FiltrosPrestamos): Prom
     }
 
     if (filtros.montoMinimo) {
-      prestamos = prestamos.filter((p) => p.monto >= filtros.montoMinimo!)
+      prestamos = prestamos.filter((p) => Number(p.monto) >= filtros.montoMinimo!)
     }
 
     if (filtros.montoMaximo) {
-      prestamos = prestamos.filter((p) => p.monto <= filtros.montoMaximo!)
+      prestamos = prestamos.filter((p) => Number(p.monto) <= filtros.montoMaximo!)
     }
 
     if (filtros.busqueda) {
@@ -227,7 +266,7 @@ export async function obtenerPrestamosFiltrados(filtros: FiltrosPrestamos): Prom
   }
 }
 
-export async function obtenerHoteles(): Promise<string[]> {
+export function obtenerHoteles(): string[] {
   try {
     const prestamos = obtenerPrestamosLocal()
     const hoteles = new Set<string>()
@@ -247,7 +286,7 @@ export async function obtenerHoteles(): Promise<string[]> {
   }
 }
 
-export async function obtenerResponsables(): Promise<string[]> {
+export function obtenerResponsables(): string[] {
   try {
     const prestamos = obtenerPrestamosLocal()
     const responsables = new Set<string>()
@@ -314,7 +353,13 @@ export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
 
       const hotelOrigen = prestamo.hotel_origen
       const hotelDestino = prestamo.hotel_destino
-      const monto = prestamo.monto
+      const monto = Number(prestamo.monto) // Asegurar que sea número
+
+      // Verificar que el monto sea válido
+      if (isNaN(monto)) {
+        console.warn(`Monto inválido en préstamo ${prestamo.id}:`, prestamo.monto)
+        return
+      }
 
       const balanceOrigen = balanceMap.get(hotelOrigen)
       const balanceDestino = balanceMap.get(hotelDestino)
@@ -361,7 +406,7 @@ export async function obtenerEstadisticas(): Promise<EstadisticasPrestamos> {
     const balance = await obtenerBalanceHoteles()
 
     const totalPrestamos = prestamos.length
-    const montoTotal = prestamos.reduce((sum, p) => sum + p.monto, 0)
+    const montoTotal = prestamos.reduce((sum, p) => sum + Number(p.monto), 0)
     const prestamosActivos = prestamos.filter((p) => p.estado === "pendiente").length
     const prestamosPagados = prestamos.filter((p) => p.estado === "pagado").length
     const prestamosCancelados = prestamos.filter((p) => p.estado === "cancelado").length
@@ -421,7 +466,13 @@ export async function importarDatos(datosJson: string): Promise<boolean> {
     const datos = JSON.parse(datosJson)
 
     if (datos.prestamos && Array.isArray(datos.prestamos)) {
-      guardarPrestamosLocal(datos.prestamos)
+      // Asegurar que todos los montos sean números
+      const prestamosCorregidos = datos.prestamos.map((p: any) => ({
+        ...p,
+        monto: Number(p.monto),
+      }))
+
+      guardarPrestamosLocal(prestamosCorregidos)
       return true
     }
 
