@@ -11,6 +11,8 @@ export interface Prestamo {
   notas?: string
   created_at: string
   updated_at: string
+  producto?: string
+  cantidad?: number
 }
 
 export interface PrestamoInput {
@@ -21,6 +23,8 @@ export interface PrestamoInput {
   concepto: string
   responsable: string
   notas?: string
+  producto?: string
+  cantidad?: number
 }
 
 export interface PrestamoRapidoType {
@@ -30,6 +34,8 @@ export interface PrestamoRapidoType {
   monto: number
   concepto?: string
   responsable: string
+  producto?: string
+  cantidad?: number
 }
 
 export interface RelacionHotel {
@@ -72,8 +78,23 @@ export interface EstadisticasPrestamos {
   hotelMayorDeudor: string
 }
 
-// Constantes
-export const HOTELES = ["Argentina", "Mallak", "Monaco", "Jaguel", "Playa", "Otros"]
+// Constantes actualizadas
+export const HOTELES = [
+  "Jaguel",
+  "Monaco",
+  "Mallak",
+  "Argentina",
+  "Falkner",
+  "Stromboli",
+  "San Miguel",
+  "Colores",
+  "Puntarenas",
+  "Tupe",
+  "Munich",
+  "Tiburones",
+  "Barlovento",
+  "Carama",
+]
 
 export const RESPONSABLES = [
   "Nicolás Cannata",
