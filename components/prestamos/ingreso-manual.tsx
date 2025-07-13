@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,7 +16,6 @@ import { useToast } from "@/hooks/use-toast"
 import {
   crearPrestamo,
   obtenerHoteles,
-  obtenerResponsables,
   verificarConexion,
   verificarTablaPrestamons,
   type PrestamoInput,
@@ -30,18 +30,46 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [conectado, setConectado] = useState(false)
   const [tablaExiste, setTablaExiste] = useState(false)
-  const [hoteles, setHoteles] = useState<string[]>([])
-  const [responsables, setResponsables] = useState<string[]>([])
+  const [hotelesExistentes, setHotelesExistentes] = useState<string[]>([])
+
+  // Estados para campos personalizados
+  const [hotelOrigenCustom, setHotelOrigenCustom] = useState("")
+  const [hotelDestinoCustom, setHotelDestinoCustom] = useState("")
+  const [mostrarOrigenCustom, setMostrarOrigenCustom] = useState(false)
+  const [mostrarDestinoCustom, setMostrarDestinoCustom] = useState(false)
+
   const [formData, setFormData] = useState<PrestamoInput>({
+    fecha: new Date().toLocaleDateString("es-AR"),
     responsable: "",
     hotel_origen: "",
     hotel_destino: "",
     producto: "",
     cantidad: "",
-    valor: 0,
+    valor: "",
     notas: "",
     estado: "pendiente",
   })
+
+  // Lista predefinida de hoteles
+  const hotelesBase = [
+    "Jaguel",
+    "Monaco",
+    "Mallak",
+    "Argentina",
+    "Falkner",
+    "Stromboli",
+    "San Miguel",
+    "Colores",
+    "Puntarenas",
+    "Tupe",
+    "Munich",
+    "Tiburones",
+    "Barlovento",
+    "Carama",
+    "Juan Manuel",
+    "Nacho",
+    "Diego",
+  ]
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -52,33 +80,18 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
         setTablaExiste(tabla.existe)
 
         if (conexion.conectado && tabla.existe) {
-          const [hotelesData, responsablesData] = await Promise.all([obtenerHoteles(), obtenerResponsables()])
-          setHoteles(hotelesData)
-          setResponsables(responsablesData)
+          const hotelesData = await obtenerHoteles()
+          // Combinar hoteles base con hoteles existentes en BD
+          const todosHoteles = [...new Set([...hotelesBase, ...hotelesData])].sort()
+          setHotelesExistentes(todosHoteles)
         } else {
-          // Usar datos predefinidos si no hay conexión o tabla
-          setHoteles([
-            "Jaguel",
-            "Monaco",
-            "Mallak",
-            "Argentina",
-            "Falkner",
-            "Stromboli",
-            "San Miguel",
-            "Colores",
-            "Puntarenas",
-            "Tupe",
-            "Munich",
-            "Tiburones",
-            "Barlovento",
-            "Carama",
-          ])
-          setResponsables(["Nicolas Cannata", "Juan Manuel", "Nacho", "Diego", "Administrador", "Gerente"])
+          setHotelesExistentes(hotelesBase)
         }
       } catch (error) {
         console.error("Error al cargar datos:", error)
         setConectado(false)
         setTablaExiste(false)
+        setHotelesExistentes(hotelesBase)
       }
     }
     cargarDatos()
@@ -87,13 +100,12 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (
-      !formData.responsable ||
-      !formData.hotel_origen ||
-      !formData.hotel_destino ||
-      !formData.producto ||
-      !formData.valor
-    ) {
+    // Determinar hoteles finales (custom o seleccionado)
+    const hotelOrigen = mostrarOrigenCustom ? hotelOrigenCustom : formData.hotel_origen
+    const hotelDestino = mostrarDestinoCustom ? hotelDestinoCustom : formData.hotel_destino
+
+    // Validaciones
+    if (!formData.responsable || !hotelOrigen || !hotelDestino || !formData.producto || !formData.valor) {
       toast({
         title: "Campos requeridos",
         description: "Por favor completa todos los campos obligatorios",
@@ -102,7 +114,7 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
       return
     }
 
-    if (formData.hotel_origen === formData.hotel_destino) {
+    if (hotelOrigen === hotelDestino) {
       toast({
         title: "Error en hoteles",
         description: "El hotel origen y destino no pueden ser el mismo",
@@ -111,10 +123,14 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
       return
     }
 
-    if (formData.valor <= 0) {
+    // Validar valor
+    const valorNumerico =
+      typeof formData.valor === "string" ? Number.parseFloat(formData.valor.replace(/[^0-9.-]/g, "")) : formData.valor
+
+    if (isNaN(valorNumerico) || valorNumerico <= 0) {
       toast({
         title: "Error en valor",
-        description: "El valor debe ser mayor a 0",
+        description: "El valor debe ser un número mayor a 0",
         variant: "destructive",
       })
       return
@@ -131,25 +147,39 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
 
     setIsLoading(true)
     try {
-      const prestamo = await crearPrestamo(formData)
+      const prestamoData: PrestamoInput = {
+        ...formData,
+        hotel_origen: hotelOrigen,
+        hotel_destino: hotelDestino,
+        valor: valorNumerico,
+      }
+
+      const prestamo = await crearPrestamo(prestamoData)
 
       if (prestamo) {
         toast({
           title: "✅ Préstamo creado",
-          description: `Préstamo de ${formData.hotel_origen} a ${formData.hotel_destino} por $${formData.valor.toLocaleString()}`,
+          description: `Préstamo de ${hotelOrigen} a ${hotelDestino} por $${valorNumerico.toLocaleString()}`,
         })
 
-        // Limpiar formulario
+        // Limpiar formulario manteniendo responsable y fecha
         setFormData({
-          responsable: formData.responsable, // Mantener responsable
+          fecha: formData.fecha,
+          responsable: formData.responsable,
           hotel_origen: "",
           hotel_destino: "",
           producto: "",
           cantidad: "",
-          valor: 0,
+          valor: "",
           notas: "",
           estado: "pendiente",
         })
+
+        // Resetear campos custom
+        setHotelOrigenCustom("")
+        setHotelDestinoCustom("")
+        setMostrarOrigenCustom(false)
+        setMostrarDestinoCustom(false)
 
         onPrestamoCreado?.()
       }
@@ -165,20 +195,6 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
       setIsLoading(false)
     }
   }
-
-  const productos = [
-    "Efectivo",
-    "Toallas",
-    "Sábanas",
-    "Equipamiento",
-    "Materiales",
-    "Productos limpieza",
-    "Alimentos",
-    "Bebidas",
-    "Mantenimiento",
-    "Servicios",
-    "Otros",
-  ]
 
   const estadoConexion = () => {
     if (!conectado) {
@@ -238,121 +254,169 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Fecha y Responsable */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Responsable */}
             <div className="space-y-2">
-              <Label htmlFor="responsable">Responsable *</Label>
-              <Select
-                value={formData.responsable}
-                onValueChange={(value) => setFormData({ ...formData, responsable: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar responsable" />
-                </SelectTrigger>
-                <SelectContent>
-                  {responsables.map((responsable) => (
-                    <SelectItem key={responsable} value={responsable}>
-                      {responsable}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="fecha">Fecha *</Label>
+              <Input
+                type="text"
+                placeholder="ej: 12/7/2025"
+                value={formData.fecha}
+                onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
+                required
+              />
             </div>
 
-            {/* Fecha */}
             <div className="space-y-2">
-              <Label htmlFor="fecha">Fecha</Label>
+              <Label htmlFor="responsable">Responsable *</Label>
               <Input
-                type="date"
-                value={formData.fecha || new Date().toISOString().split("T")[0]}
-                onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
+                type="text"
+                placeholder="Nombre del responsable"
+                value={formData.responsable}
+                onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
+                required
               />
             </div>
           </div>
 
+          {/* Hoteles */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Hotel Origen */}
+            {/* Hotel que retira */}
             <div className="space-y-2">
               <Label htmlFor="hotel_origen">Hotel que retira *</Label>
-              <Select
-                value={formData.hotel_origen}
-                onValueChange={(value) => setFormData({ ...formData, hotel_origen: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Hotel que presta" />
-                </SelectTrigger>
-                <SelectContent>
-                  {hoteles.map((hotel) => (
-                    <SelectItem key={hotel} value={hotel}>
-                      {hotel}
+              {!mostrarOrigenCustom ? (
+                <Select
+                  value={formData.hotel_origen}
+                  onValueChange={(value) => {
+                    if (value === "otro") {
+                      setMostrarOrigenCustom(true)
+                      setFormData({ ...formData, hotel_origen: "" })
+                    } else {
+                      setFormData({ ...formData, hotel_origen: value })
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar hotel que presta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hotelesExistentes.map((hotel) => (
+                      <SelectItem key={hotel} value={hotel}>
+                        {hotel}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="otro">
+                      <span className="font-semibold text-blue-600">+ Otro hotel</span>
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    placeholder="Nombre del hotel"
+                    value={hotelOrigenCustom}
+                    onChange={(e) => setHotelOrigenCustom(e.target.value)}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setMostrarOrigenCustom(false)
+                      setHotelOrigenCustom("")
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              )}
             </div>
 
-            {/* Hotel Destino */}
+            {/* Hotel que recibe */}
             <div className="space-y-2">
               <Label htmlFor="hotel_destino">Hotel que recibe *</Label>
-              <Select
-                value={formData.hotel_destino}
-                onValueChange={(value) => setFormData({ ...formData, hotel_destino: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Hotel que recibe" />
-                </SelectTrigger>
-                <SelectContent>
-                  {hoteles.map((hotel) => (
-                    <SelectItem key={hotel} value={hotel}>
-                      {hotel}
+              {!mostrarDestinoCustom ? (
+                <Select
+                  value={formData.hotel_destino}
+                  onValueChange={(value) => {
+                    if (value === "otro") {
+                      setMostrarDestinoCustom(true)
+                      setFormData({ ...formData, hotel_destino: "" })
+                    } else {
+                      setFormData({ ...formData, hotel_destino: value })
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar hotel que recibe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hotelesExistentes.map((hotel) => (
+                      <SelectItem key={hotel} value={hotel}>
+                        {hotel}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="otro">
+                      <span className="font-semibold text-blue-600">+ Otro hotel</span>
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    placeholder="Nombre del hotel"
+                    value={hotelDestinoCustom}
+                    onChange={(e) => setHotelDestinoCustom(e.target.value)}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setMostrarDestinoCustom(false)
+                      setHotelDestinoCustom("")
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Producto, Cantidad y Valor */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Producto */}
             <div className="space-y-2">
-              <Label htmlFor="producto">Producto/Concepto *</Label>
-              <Select
+              <Label htmlFor="producto">Producto *</Label>
+              <Input
+                type="text"
+                placeholder="ej: Efectivo, Toallas, Equipamiento"
                 value={formData.producto}
-                onValueChange={(value) => setFormData({ ...formData, producto: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Tipo de préstamo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {productos.map((producto) => (
-                    <SelectItem key={producto} value={producto}>
-                      {producto}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(e) => setFormData({ ...formData, producto: e.target.value })}
+                required
+              />
             </div>
 
-            {/* Cantidad */}
             <div className="space-y-2">
               <Label htmlFor="cantidad">Cantidad</Label>
               <Input
-                placeholder="ej: 10 unidades"
+                type="text"
+                placeholder="ej: 10 unidades, 5 kg"
                 value={formData.cantidad}
                 onChange={(e) => setFormData({ ...formData, cantidad: e.target.value })}
               />
             </div>
 
-            {/* Valor */}
             <div className="space-y-2">
-              <Label htmlFor="valor">Valor ($) *</Label>
+              <Label htmlFor="valor">Valor *</Label>
               <Input
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={formData.valor || ""}
-                onChange={(e) => setFormData({ ...formData, valor: Number(e.target.value) })}
+                type="text"
+                placeholder="ej: 50000, 15.000"
+                value={formData.valor}
+                onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                required
               />
             </div>
           </div>
@@ -373,30 +437,33 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
                 <SelectItem value="pendiente">
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">Pendiente</Badge>
+                    <span>- Préstamo activo</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="pagado">
                   <div className="flex items-center gap-2">
                     <Badge variant="default">Pagado</Badge>
+                    <span>- Préstamo saldado</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="cancelado">
                   <div className="flex items-center gap-2">
                     <Badge variant="destructive">Cancelado</Badge>
+                    <span>- Préstamo anulado</span>
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {/* Notas */}
+          {/* Notas adicionales */}
           <div className="space-y-2">
             <Label htmlFor="notas">Notas adicionales</Label>
             <Textarea
-              placeholder="Detalles adicionales del préstamo..."
+              placeholder="Detalles adicionales, condiciones especiales, observaciones..."
               value={formData.notas}
               onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-              rows={2}
+              rows={3}
             />
           </div>
 

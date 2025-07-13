@@ -1,22 +1,9 @@
 import { createClient } from "@supabase/supabase-js"
-import type { Database } from "./database.types"
 
-// Tipos específicos para préstamos
-export interface Prestamo {
-  id: string
-  fecha: string
-  responsable: string
-  hotel_origen: string
-  hotel_destino: string
-  producto: string
-  cantidad?: string
-  valor: number
-  notas?: string
-  estado: "pendiente" | "pagado" | "cancelado"
-  created_at: string
-  updated_at: string
-  created_by?: string
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+export const supabase = createClient(supabaseUrl, supabaseKey)
 
 export interface PrestamoInput {
   fecha?: string
@@ -24,10 +11,16 @@ export interface PrestamoInput {
   hotel_origen: string
   hotel_destino: string
   producto: string
-  cantidad?: string
-  valor: number
+  cantidad: string
+  valor: number | string
   notas?: string
-  estado?: "pendiente" | "pagado" | "cancelado"
+  estado: "pendiente" | "pagado" | "cancelado"
+}
+
+export interface Prestamo extends PrestamoInput {
+  id: string
+  created_at: string
+  updated_at?: string
 }
 
 export interface BalanceHotel {
@@ -70,35 +63,9 @@ export interface EstadisticasPrestamos {
   hotelMayorDeudor: string
 }
 
-// Constantes predefinidas
-const HOTELES_PREDEFINIDOS = [
-  "Jaguel",
-  "Monaco",
-  "Mallak",
-  "Argentina",
-  "Falkner",
-  "Stromboli",
-  "San Miguel",
-  "Colores",
-  "Puntarenas",
-  "Tupe",
-  "Munich",
-  "Tiburones",
-  "Barlovento",
-  "Carama",
-]
-
-const RESPONSABLES_PREDEFINIDOS = ["Nicolas Cannata", "Juan Manuel", "Nacho", "Diego", "Administrador", "Gerente"]
-
-// Cliente de Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
-
 // Función para formatear monto
 export function formatearMonto(monto: number | string): string {
-  const numero = typeof monto === "string" ? Number.parseFloat(monto) : monto
+  const numero = typeof monto === "string" ? Number.parseFloat(monto.replace(/[^0-9.-]/g, "")) : monto
   if (isNaN(numero)) {
     return "$ 0"
   }
@@ -110,23 +77,28 @@ export function formatearMonto(monto: number | string): string {
   }).format(numero)
 }
 
-// Verificar si la tabla prestamos existe y tiene las columnas correctas
+// Verificar conexión a Supabase
+export async function verificarConexion(): Promise<{ conectado: boolean; mensaje: string }> {
+  try {
+    const { data, error } = await supabase.from("prestamos").select("count").limit(1)
+    return {
+      conectado: !error,
+      mensaje: error ? error.message : "Conectado correctamente",
+    }
+  } catch (error) {
+    return {
+      conectado: false,
+      mensaje: "Error de conexión",
+    }
+  }
+}
+
+// Verificar si existe la tabla prestamos
 export async function verificarTablaPrestamons(): Promise<{ existe: boolean; columnas: string[]; mensaje: string }> {
   try {
     const { data, error } = await supabase.from("prestamos").select("id").limit(1)
-
-    if (error) {
-      console.error("Error al verificar tabla prestamos:", error)
-      return {
-        existe: false,
-        columnas: [],
-        mensaje: `Error: ${error.message}`,
-      }
-    }
-
-    // Si llegamos aquí, la tabla existe
     return {
-      existe: true,
+      existe: !error,
       columnas: [
         "id",
         "fecha",
@@ -140,52 +112,109 @@ export async function verificarTablaPrestamons(): Promise<{ existe: boolean; col
         "estado",
         "created_at",
         "updated_at",
-        "created_by",
       ],
-      mensaje: "Tabla prestamos existe y es accesible",
+      mensaje: error ? error.message : "Tabla existe y es accesible",
     }
   } catch (error) {
-    console.error("Error al verificar tabla:", error)
     return {
       existe: false,
       columnas: [],
-      mensaje: `Error de conexión: ${error}`,
+      mensaje: "Tabla no existe",
     }
   }
 }
 
-// FUNCIONES PRINCIPALES
-
-export async function obtenerPrestamos(): Promise<Prestamo[]> {
+// Crear un nuevo préstamo
+export async function crearPrestamo(prestamo: PrestamoInput): Promise<Prestamo | null> {
   try {
-    // Verificar tabla primero
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      console.error("Tabla prestamos no existe:", verificacion.mensaje)
-      return []
-    }
+    // Convertir valor a número si es string
+    const valor =
+      typeof prestamo.valor === "string" ? Number.parseFloat(prestamo.valor.replace(/[^0-9.-]/g, "")) : prestamo.valor
 
-    const { data, error } = await supabase.from("prestamos").select("*").order("created_at", { ascending: false })
+    const { data, error } = await supabase
+      .from("prestamos")
+      .insert([
+        {
+          fecha: prestamo.fecha || new Date().toISOString().split("T")[0],
+          responsable: prestamo.responsable,
+          hotel_origen: prestamo.hotel_origen,
+          hotel_destino: prestamo.hotel_destino,
+          producto: prestamo.producto,
+          cantidad: prestamo.cantidad,
+          valor: valor,
+          notas: prestamo.notas || "",
+          estado: prestamo.estado || "pendiente",
+        },
+      ])
+      .select()
+      .single()
 
     if (error) {
-      console.error("Error al obtener préstamos:", error)
-      throw new Error(`Error de Supabase: ${error.message}`)
+      console.error("Error al crear préstamo:", error)
+      throw error
     }
 
-    return data || []
+    return data
   } catch (error) {
-    console.error("Error al obtener préstamos:", error)
+    console.error("Error en crearPrestamo:", error)
     throw error
   }
 }
 
-export async function obtenerPrestamoPorId(id: string): Promise<Prestamo | null> {
+// Crear múltiples préstamos
+export async function crearPrestamosMasivos(
+  prestamos: PrestamoInput[],
+): Promise<{ exitosos: number; errores: string[] }> {
   try {
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      return null
+    const prestamosFormateados = prestamos.map((prestamo) => ({
+      fecha: prestamo.fecha || new Date().toISOString().split("T")[0],
+      responsable: prestamo.responsable,
+      hotel_origen: prestamo.hotel_origen,
+      hotel_destino: prestamo.hotel_destino,
+      producto: prestamo.producto,
+      cantidad: prestamo.cantidad,
+      valor:
+        typeof prestamo.valor === "string"
+          ? Number.parseFloat(prestamo.valor.replace(/[^0-9.-]/g, ""))
+          : prestamo.valor,
+      notas: prestamo.notas || "",
+      estado: prestamo.estado || "pendiente",
+    }))
+
+    const { data, error } = await supabase.from("prestamos").insert(prestamosFormateados).select()
+
+    if (error) {
+      console.error("Error al crear préstamos masivos:", error)
+      return { exitosos: 0, errores: [error.message] }
     }
 
+    return { exitosos: data?.length || 0, errores: [] }
+  } catch (error) {
+    console.error("Error en crearPrestamosMasivos:", error)
+    return { exitosos: 0, errores: [String(error)] }
+  }
+}
+
+// Obtener todos los préstamos
+export async function obtenerPrestamos(): Promise<Prestamo[]> {
+  try {
+    const { data, error } = await supabase.from("prestamos").select("*").order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error al obtener préstamos:", error)
+      throw error
+    }
+
+    return data || []
+  } catch (error) {
+    console.error("Error en obtenerPrestamos:", error)
+    return []
+  }
+}
+
+// Obtener préstamo por ID
+export async function obtenerPrestamoPorId(id: string): Promise<Prestamo | null> {
+  try {
     const { data, error } = await supabase.from("prestamos").select("*").eq("id", id).single()
 
     if (error) {
@@ -195,146 +224,55 @@ export async function obtenerPrestamoPorId(id: string): Promise<Prestamo | null>
 
     return data
   } catch (error) {
-    console.error("Error al obtener préstamo:", error)
+    console.error("Error en obtenerPrestamoPorId:", error)
     return null
   }
 }
 
-export async function crearPrestamo(input: PrestamoInput): Promise<Prestamo | null> {
+// Actualizar un préstamo
+export async function actualizarPrestamo(id: string, prestamo: Partial<PrestamoInput>): Promise<Prestamo | null> {
   try {
-    // Verificar tabla primero
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      throw new Error("Tabla prestamos no existe. Ejecuta el script de creación primero.")
+    const updateData: any = { ...prestamo }
+
+    // Convertir valor a número si es string
+    if (updateData.valor && typeof updateData.valor === "string") {
+      updateData.valor = Number.parseFloat(updateData.valor.replace(/[^0-9.-]/g, ""))
     }
 
-    // Obtener el usuario actual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    const prestamoData = {
-      fecha: input.fecha || new Date().toISOString().split("T")[0],
-      responsable: input.responsable,
-      hotel_origen: input.hotel_origen,
-      hotel_destino: input.hotel_destino,
-      producto: input.producto,
-      cantidad: input.cantidad,
-      valor: Number(input.valor),
-      notas: input.notas,
-      estado: input.estado || ("pendiente" as const),
-      created_by: user?.id,
-    }
-
-    const { data, error } = await supabase.from("prestamos").insert([prestamoData]).select().single()
-
-    if (error) {
-      console.error("Error al crear préstamo:", error)
-      throw new Error(`Error al crear préstamo: ${error.message}`)
-    }
-
-    return data
-  } catch (error) {
-    console.error("Error al crear préstamo:", error)
-    throw error
-  }
-}
-
-export async function crearPrestamosMasivos(
-  prestamos: PrestamoInput[],
-): Promise<{ exitosos: number; errores: string[] }> {
-  try {
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      throw new Error("Tabla prestamos no existe. Ejecuta el script de creación primero.")
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    const prestamosData = prestamos.map((input) => ({
-      fecha: input.fecha || new Date().toISOString().split("T")[0],
-      responsable: input.responsable,
-      hotel_origen: input.hotel_origen,
-      hotel_destino: input.hotel_destino,
-      producto: input.producto,
-      cantidad: input.cantidad,
-      valor: Number(input.valor),
-      notas: input.notas,
-      estado: input.estado || ("pendiente" as const),
-      created_by: user?.id,
-    }))
-
-    const { data, error } = await supabase.from("prestamos").insert(prestamosData).select()
-
-    if (error) {
-      console.error("Error al crear préstamos masivos:", error)
-      return { exitosos: 0, errores: [error.message] }
-    }
-
-    return { exitosos: data?.length || 0, errores: [] }
-  } catch (error) {
-    console.error("Error al crear préstamos masivos:", error)
-    return { exitosos: 0, errores: [String(error)] }
-  }
-}
-
-export async function actualizarPrestamo(id: string, cambios: Partial<PrestamoInput>): Promise<Prestamo | null> {
-  try {
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      throw new Error("Tabla prestamos no existe")
-    }
-
-    // Asegurar que el valor sea número si se está actualizando
-    const cambiosLimpios = { ...cambios }
-    if (cambiosLimpios.valor !== undefined) {
-      cambiosLimpios.valor = Number(cambiosLimpios.valor)
-    }
-
-    const { data, error } = await supabase.from("prestamos").update(cambiosLimpios).eq("id", id).select().single()
+    const { data, error } = await supabase.from("prestamos").update(updateData).eq("id", id).select().single()
 
     if (error) {
       console.error("Error al actualizar préstamo:", error)
-      throw new Error(`Error al actualizar préstamo: ${error.message}`)
+      throw error
     }
 
     return data
   } catch (error) {
-    console.error("Error al actualizar préstamo:", error)
+    console.error("Error en actualizarPrestamo:", error)
     throw error
   }
 }
 
+// Eliminar un préstamo
 export async function eliminarPrestamo(id: string): Promise<boolean> {
   try {
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      return false
-    }
-
     const { error } = await supabase.from("prestamos").delete().eq("id", id)
 
     if (error) {
       console.error("Error al eliminar préstamo:", error)
-      throw new Error(`Error al eliminar préstamo: ${error.message}`)
+      throw error
     }
 
     return true
   } catch (error) {
-    console.error("Error al eliminar préstamo:", error)
+    console.error("Error en eliminarPrestamo:", error)
     return false
   }
 }
 
+// Obtener préstamos filtrados
 export async function obtenerPrestamosFiltrados(filtros: FiltrosPrestamos): Promise<Prestamo[]> {
   try {
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      return []
-    }
-
     let query = supabase.from("prestamos").select("*")
 
     // Aplicar filtros
@@ -388,81 +326,17 @@ export async function obtenerPrestamosFiltrados(filtros: FiltrosPrestamos): Prom
 
     if (error) {
       console.error("Error al obtener préstamos filtrados:", error)
-      throw new Error(`Error al filtrar préstamos: ${error.message}`)
+      throw error
     }
 
     return data || []
   } catch (error) {
-    console.error("Error al obtener préstamos filtrados:", error)
-    throw error
+    console.error("Error en obtenerPrestamosFiltrados:", error)
+    return []
   }
 }
 
-export async function obtenerHoteles(): Promise<string[]> {
-  try {
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      console.warn("Tabla prestamos no existe, usando hoteles predefinidos")
-      return HOTELES_PREDEFINIDOS.sort()
-    }
-
-    // Intentar obtener hoteles de la tabla prestamos
-    const { data, error } = await supabase.from("prestamos").select("hotel_origen, hotel_destino")
-
-    if (error) {
-      console.error("Error al obtener hoteles desde prestamos:", error)
-      // Si hay error, devolver lista predefinida
-      return HOTELES_PREDEFINIDOS.sort()
-    }
-
-    const hoteles = new Set<string>()
-
-    // Agregar hoteles de los préstamos existentes
-    data?.forEach((prestamo) => {
-      if (prestamo.hotel_origen) hoteles.add(prestamo.hotel_origen)
-      if (prestamo.hotel_destino) hoteles.add(prestamo.hotel_destino)
-    })
-
-    // Agregar hoteles predefinidos
-    HOTELES_PREDEFINIDOS.forEach((hotel) => hoteles.add(hotel))
-
-    return Array.from(hoteles).sort()
-  } catch (error) {
-    console.error("Error al obtener hoteles:", error)
-    return HOTELES_PREDEFINIDOS.sort()
-  }
-}
-
-export async function obtenerResponsables(): Promise<string[]> {
-  try {
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      console.warn("Tabla prestamos no existe, usando responsables predefinidos")
-      return RESPONSABLES_PREDEFINIDOS.sort()
-    }
-
-    const { data, error } = await supabase.from("prestamos").select("responsable").order("responsable")
-
-    if (error) {
-      console.error("Error al obtener responsables:", error)
-      return RESPONSABLES_PREDEFINIDOS.sort()
-    }
-
-    const responsables = new Set<string>()
-    data?.forEach((prestamo) => {
-      if (prestamo.responsable) responsables.add(prestamo.responsable)
-    })
-
-    // Agregar responsables predefinidos
-    RESPONSABLES_PREDEFINIDOS.forEach((responsable) => responsables.add(responsable))
-
-    return Array.from(responsables).sort()
-  } catch (error) {
-    console.error("Error al obtener responsables:", error)
-    return RESPONSABLES_PREDEFINIDOS.sort()
-  }
-}
-
+// Obtener balance de hoteles
 export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
   try {
     console.log("🔍 Iniciando cálculo de balance de hoteles...")
@@ -480,10 +354,6 @@ export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
       if (prestamo.hotel_origen) todosLosHoteles.add(prestamo.hotel_origen)
       if (prestamo.hotel_destino) todosLosHoteles.add(prestamo.hotel_destino)
     })
-
-    // Agregar hoteles predefinidos
-    const hoteles = await obtenerHoteles()
-    hoteles.forEach((hotel) => todosLosHoteles.add(hotel))
 
     console.log(`🏨 Hoteles únicos encontrados: ${Array.from(todosLosHoteles).join(", ")}`)
 
@@ -505,7 +375,10 @@ export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
     prestamosActivos.forEach((prestamo) => {
       const hotelOrigen = prestamo.hotel_origen
       const hotelDestino = prestamo.hotel_destino
-      const monto = Number(prestamo.valor)
+      const monto =
+        typeof prestamo.valor === "string"
+          ? Number.parseFloat(prestamo.valor.replace(/[^0-9.-]/g, ""))
+          : Number(prestamo.valor)
 
       console.log(`💰 Procesando: ${hotelOrigen} → ${hotelDestino}: ${formatearMonto(monto)}`)
 
@@ -592,13 +465,63 @@ export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
   }
 }
 
+// Obtener hoteles únicos
+export async function obtenerHoteles(): Promise<string[]> {
+  try {
+    const { data, error } = await supabase.from("prestamos").select("hotel_origen, hotel_destino")
+
+    if (error) {
+      console.error("Error al obtener hoteles:", error)
+      return []
+    }
+
+    const hotelesSet = new Set<string>()
+    data?.forEach((prestamo) => {
+      if (prestamo.hotel_origen) hotelesSet.add(prestamo.hotel_origen)
+      if (prestamo.hotel_destino) hotelesSet.add(prestamo.hotel_destino)
+    })
+
+    return Array.from(hotelesSet).sort()
+  } catch (error) {
+    console.error("Error en obtenerHoteles:", error)
+    return []
+  }
+}
+
+// Obtener responsables únicos
+export async function obtenerResponsables(): Promise<string[]> {
+  try {
+    const { data, error } = await supabase.from("prestamos").select("responsable")
+
+    if (error) {
+      console.error("Error al obtener responsables:", error)
+      return []
+    }
+
+    const responsablesSet = new Set<string>()
+    data?.forEach((prestamo) => {
+      if (prestamo.responsable) responsablesSet.add(prestamo.responsable)
+    })
+
+    return Array.from(responsablesSet).sort()
+  } catch (error) {
+    console.error("Error en obtenerResponsables:", error)
+    return []
+  }
+}
+
+// Obtener estadísticas
 export async function obtenerEstadisticas(): Promise<EstadisticasPrestamos> {
   try {
     const prestamos = await obtenerPrestamos()
     const balance = await obtenerBalanceHoteles()
 
     const totalPrestamos = prestamos.length
-    const montoTotal = prestamos.reduce((sum, p) => sum + Number(p.valor || 0), 0)
+    const montoTotal = prestamos.reduce((sum, p) => {
+      const valor = typeof p.valor === "string" ? Number.parseFloat(p.valor.replace(/[^0-9.-]/g, "")) : Number(p.valor)
+      return sum + (isNaN(valor) ? 0 : valor)
+    }, 0)
+
     const prestamosActivos = prestamos.filter((p) => p.estado === "pendiente").length
     const prestamosPagados = prestamos.filter((p) => p.estado === "pagado").length
     const prestamosCancelados = prestamos.filter((p) => p.estado === "cancelado").length
@@ -632,6 +555,7 @@ export async function obtenerEstadisticas(): Promise<EstadisticasPrestamos> {
   }
 }
 
+// Exportar datos
 export async function exportarDatos(): Promise<string> {
   try {
     const prestamos = await obtenerPrestamos()
@@ -651,103 +575,5 @@ export async function exportarDatos(): Promise<string> {
   } catch (error) {
     console.error("Error al exportar datos:", error)
     return "{}"
-  }
-}
-
-// Función para migrar datos de localStorage a Supabase
-export async function migrarDatosLocalStorage(): Promise<{ exito: boolean; mensaje: string; migrados: number }> {
-  try {
-    // Verificar tabla primero
-    const verificacion = await verificarTablaPrestamons()
-    if (!verificacion.existe) {
-      return { exito: false, mensaje: "Tabla prestamos no existe. Ejecuta el script de creación primero.", migrados: 0 }
-    }
-
-    // Verificar si hay datos en localStorage
-    const datosLocal = localStorage.getItem("prestamos_data")
-    if (!datosLocal) {
-      return { exito: false, mensaje: "No hay datos en localStorage para migrar", migrados: 0 }
-    }
-
-    const prestamosLocal = JSON.parse(datosLocal)
-    if (!Array.isArray(prestamosLocal) || prestamosLocal.length === 0) {
-      return { exito: false, mensaje: "No hay préstamos válidos en localStorage", migrados: 0 }
-    }
-
-    // Obtener usuario actual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      return { exito: false, mensaje: "Usuario no autenticado", migrados: 0 }
-    }
-
-    let migrados = 0
-    const errores: string[] = []
-
-    // Migrar cada préstamo
-    for (const prestamoLocal of prestamosLocal) {
-      try {
-        const prestamoData = {
-          fecha: prestamoLocal.fecha || new Date().toISOString().split("T")[0],
-          responsable: prestamoLocal.responsable,
-          hotel_origen: prestamoLocal.hotel_origen || prestamoLocal.hotelOrigen,
-          hotel_destino: prestamoLocal.hotel_destino || prestamoLocal.hotelDestino,
-          producto: prestamoLocal.producto,
-          cantidad: prestamoLocal.cantidad,
-          valor: Number(prestamoLocal.valor || prestamoLocal.monto || 0),
-          notas: prestamoLocal.notas,
-          estado: prestamoLocal.estado || "pendiente",
-          created_by: user.id,
-        }
-
-        const { error } = await supabase.from("prestamos").insert([prestamoData])
-
-        if (error) {
-          errores.push(`Error al migrar préstamo: ${error.message}`)
-        } else {
-          migrados++
-        }
-      } catch (error) {
-        errores.push(`Error al procesar préstamo: ${error}`)
-      }
-    }
-
-    if (migrados > 0) {
-      // Limpiar localStorage después de migración exitosa
-      localStorage.removeItem("prestamos_data")
-      return {
-        exito: true,
-        mensaje: `${migrados} préstamos migrados exitosamente${errores.length > 0 ? ` (${errores.length} errores)` : ""}`,
-        migrados,
-      }
-    } else {
-      return {
-        exito: false,
-        mensaje: `No se pudo migrar ningún préstamo. Errores: ${errores.join(", ")}`,
-        migrados: 0,
-      }
-    }
-  } catch (error) {
-    console.error("Error en migración:", error)
-    return { exito: false, mensaje: `Error en migración: ${error}`, migrados: 0 }
-  }
-}
-
-// Verificar conexión a Supabase
-export async function verificarConexion(): Promise<{ conectado: boolean; mensaje: string }> {
-  try {
-    const verificacion = await verificarTablaPrestamons()
-
-    if (!verificacion.existe) {
-      return {
-        conectado: false,
-        mensaje: `Tabla prestamos no existe: ${verificacion.mensaje}`,
-      }
-    }
-
-    return { conectado: true, mensaje: "Conectado a Supabase correctamente" }
-  } catch (error) {
-    return { conectado: false, mensaje: `Error de red: ${error}` }
   }
 }
