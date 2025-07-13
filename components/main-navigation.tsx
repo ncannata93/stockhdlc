@@ -40,13 +40,12 @@ const navigationItems = [
 export function MainNavigation() {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, signOut } = useAuth()
+  const { user, logout } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
 
   const handleLogout = async () => {
     try {
-      signOut()
-      router.push("/login")
+      logout()
     } catch (error) {
       console.error("Error al cerrar sesión:", error)
     }
@@ -107,7 +106,7 @@ export function MainNavigation() {
               <div className="flex items-center space-x-3">
                 <div className="flex items-center space-x-2 text-sm text-gray-700">
                   <User className="h-4 w-4" />
-                  <span>Bienvenido, {user.username}</span>
+                  <span>Bienvenido, {user.displayName || user.username}</span>
                 </div>
                 <Button
                   variant="outline"
@@ -148,7 +147,7 @@ export function MainNavigation() {
                     <div className="p-4 border-b">
                       <div className="flex items-center space-x-2 text-sm text-gray-700">
                         <User className="h-4 w-4" />
-                        <span>{user.username}</span>
+                        <span>{user.displayName || user.username}</span>
                       </div>
                     </div>
                   )}

@@ -4,20 +4,23 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Eye, EyeOff, LogIn } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/components/ui/use-toast"
-import Image from "next/image"
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+
   const { signIn } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
@@ -25,36 +28,34 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setError("")
 
     try {
-      console.log("Attempting login with:", { username, password: "***" })
-
+      console.log("Attempting login with:", username)
       const result = await signIn({ username, password })
-
-      console.log("Login result:", result)
 
       if (result.success) {
         toast({
           title: "Login exitoso",
-          description: result.message || "Bienvenido al sistema",
+          description: `Bienvenido, ${result.user?.displayName || username}`,
         })
 
         // Force redirect to home page
-        setTimeout(() => {
-          window.location.href = "/"
-        }, 500)
+        window.location.href = "/"
       } else {
+        setError(result.error || "Error de autenticación")
         toast({
           title: "Error de login",
-          description: result.message || "Credenciales incorrectas",
+          description: result.error || "Credenciales incorrectas",
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("Login error:", error)
+      setError("Error interno del servidor")
       toast({
         title: "Error",
-        description: "Error interno del sistema",
+        description: "Error interno del servidor",
         variant: "destructive",
       })
     } finally {
@@ -65,18 +66,19 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
+        <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <Image
               src="/images/logo-hoteles-costa.png"
               alt="Hoteles de la Costa"
-              width={120}
+              width={200}
               height={60}
-              className="object-contain"
+              className="h-12 w-auto"
+              priority
             />
           </div>
           <CardTitle className="text-2xl font-bold">Iniciar Sesión</CardTitle>
-          <CardDescription>Accede al sistema de gestión hotelera</CardDescription>
+          <CardDescription>Ingresa tus credenciales para acceder al sistema</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -85,9 +87,9 @@ export default function LoginPage() {
               <Input
                 id="username"
                 type="text"
+                placeholder="Ingresa tu usuario"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Ingresa tu usuario"
                 required
                 disabled={isLoading}
               />
@@ -98,9 +100,9 @@ export default function LoginPage() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
+                  placeholder="Ingresa tu contraseña"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Ingresa tu contraseña"
                   required
                   disabled={isLoading}
                 />
@@ -116,25 +118,28 @@ export default function LoginPage() {
                 </Button>
               </div>
             </div>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
-                <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Iniciando sesión...
-                </div>
+                </>
               ) : (
-                <div className="flex items-center">
-                  <LogIn className="h-4 w-4 mr-2" />
-                  Iniciar Sesión
-                </div>
+                "Iniciar Sesión"
               )}
             </Button>
           </form>
 
-          {/* Credenciales de prueba */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Credenciales de acceso:</h3>
-            <div className="text-xs text-gray-600 space-y-1">
+            <div className="space-y-1 text-xs text-gray-600">
               <div>
                 <strong>Usuario:</strong> ncannata
               </div>

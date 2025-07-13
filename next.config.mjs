@@ -1,16 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js']
+    // Remove deprecated options for Next.js 15
   },
+  serverExternalPackages: ['@firebase/util'],
   images: {
-    domains: ['localhost', 'vercel.app'],
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-    ],
+    domains: ['localhost'],
+    unoptimized: true,
   },
   eslint: {
     ignoreDuringBuilds: true,
