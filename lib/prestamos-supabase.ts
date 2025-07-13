@@ -465,20 +465,30 @@ export async function obtenerResponsables(): Promise<string[]> {
 
 export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
   try {
-    const prestamos = await obtenerPrestamos()
-    const balanceMap = new Map<string, BalanceHotel>()
+    console.log("🔍 Iniciando cálculo de balance de hoteles...")
 
-    // Inicializar balance para todos los hoteles conocidos
+    const prestamos = await obtenerPrestamos()
+    console.log(`📊 Préstamos obtenidos: ${prestamos.length}`)
+
+    // Filtrar solo préstamos activos (no cancelados)
+    const prestamosActivos = prestamos.filter((p) => p.estado !== "cancelado")
+    console.log(`✅ Préstamos activos: ${prestamosActivos.length}`)
+
+    // Obtener todos los hoteles únicos
     const todosLosHoteles = new Set<string>()
-    prestamos.forEach((prestamo) => {
-      todosLosHoteles.add(prestamo.hotel_origen)
-      todosLosHoteles.add(prestamo.hotel_destino)
+    prestamosActivos.forEach((prestamo) => {
+      if (prestamo.hotel_origen) todosLosHoteles.add(prestamo.hotel_origen)
+      if (prestamo.hotel_destino) todosLosHoteles.add(prestamo.hotel_destino)
     })
 
     // Agregar hoteles predefinidos
     const hoteles = await obtenerHoteles()
     hoteles.forEach((hotel) => todosLosHoteles.add(hotel))
 
+    console.log(`🏨 Hoteles únicos encontrados: ${Array.from(todosLosHoteles).join(", ")}`)
+
+    // Inicializar balance para todos los hoteles
+    const balanceMap = new Map<string, BalanceHotel>()
     todosLosHoteles.forEach((hotel) => {
       balanceMap.set(hotel, {
         hotel,
@@ -491,78 +501,69 @@ export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
       })
     })
 
-    // Primera pasada: calcular totales brutos
-    const relacionesBrutas = new Map<string, { acreedorDe: Map<string, number>; deudorDe: Map<string, number> }>()
-
-    prestamos.forEach((prestamo) => {
-      if (prestamo.estado === "cancelado") return
-
+    // Procesar cada préstamo
+    prestamosActivos.forEach((prestamo) => {
       const hotelOrigen = prestamo.hotel_origen
       const hotelDestino = prestamo.hotel_destino
       const monto = Number(prestamo.valor)
 
-      if (isNaN(monto)) {
-        console.warn(`Monto inválido en préstamo ${prestamo.id}:`, prestamo.valor)
+      console.log(`💰 Procesando: ${hotelOrigen} → ${hotelDestino}: ${formatearMonto(monto)}`)
+
+      if (isNaN(monto) || monto <= 0) {
+        console.warn(`⚠️ Monto inválido en préstamo ${prestamo.id}:`, prestamo.valor)
         return
       }
 
-      // Inicializar mapas si no existen
-      if (!relacionesBrutas.has(hotelOrigen)) {
-        relacionesBrutas.set(hotelOrigen, { acreedorDe: new Map(), deudorDe: new Map() })
-      }
-      if (!relacionesBrutas.has(hotelDestino)) {
-        relacionesBrutas.set(hotelDestino, { acreedorDe: new Map(), deudorDe: new Map() })
-      }
+      // Hotel origen es acreedor (le deben)
+      const balanceOrigen = balanceMap.get(hotelOrigen)
+      if (balanceOrigen) {
+        balanceOrigen.acreedor += monto
+        balanceOrigen.transacciones += 1
 
-      // Acumular relaciones brutas
-      const relacionOrigen = relacionesBrutas.get(hotelOrigen)!
-      const relacionDestino = relacionesBrutas.get(hotelDestino)!
-
-      // Hotel origen es acreedor de hotel destino
-      const montoActualAcreedor = relacionOrigen.acreedorDe.get(hotelDestino) || 0
-      relacionOrigen.acreedorDe.set(hotelDestino, montoActualAcreedor + monto)
-
-      // Hotel destino es deudor de hotel origen
-      const montoActualDeudor = relacionDestino.deudorDe.get(hotelOrigen) || 0
-      relacionDestino.deudorDe.set(hotelOrigen, montoActualDeudor + monto)
-    })
-
-    // Segunda pasada: aplicar compensación y calcular balances netos
-    relacionesBrutas.forEach((relaciones, hotel) => {
-      const balance = balanceMap.get(hotel)!
-
-      // Procesar relaciones como acreedor con compensación
-      relaciones.acreedorDe.forEach((monto, otroHotel) => {
-        const relacionesOtroHotel = relacionesBrutas.get(otroHotel)
-        const montoQueLeDebenAEsteHotel = relacionesOtroHotel?.acreedorDe.get(hotel) || 0
-
-        // Calcular el neto
-        const montoNeto = monto - montoQueLeDebenAEsteHotel
-
-        if (montoNeto > 0) {
-          // Este hotel es acreedor neto
-          balance.acreedor += montoNeto
-          balance.acreedorDe.push({
-            hotel: otroHotel,
-            monto: montoNeto,
-            transacciones: 1,
-          })
-        } else if (montoNeto < 0) {
-          // Este hotel es deudor neto
-          balance.deudor += Math.abs(montoNeto)
-          balance.deudorDe.push({
-            hotel: otroHotel,
-            monto: Math.abs(montoNeto),
+        // Buscar si ya existe relación con este hotel
+        const relacionExistente = balanceOrigen.acreedorDe.find((r) => r.hotel === hotelDestino)
+        if (relacionExistente) {
+          relacionExistente.monto += monto
+          relacionExistente.transacciones += 1
+        } else {
+          balanceOrigen.acreedorDe.push({
+            hotel: hotelDestino,
+            monto: monto,
             transacciones: 1,
           })
         }
-      })
 
-      // Contar transacciones totales
-      balance.transacciones = prestamos.filter((p) => p.hotel_origen === hotel || p.hotel_destino === hotel).length
+        console.log(
+          `📈 ${hotelOrigen} acreedor: +${formatearMonto(monto)} (total: ${formatearMonto(balanceOrigen.acreedor)})`,
+        )
+      }
+
+      // Hotel destino es deudor (debe)
+      const balanceDestino = balanceMap.get(hotelDestino)
+      if (balanceDestino) {
+        balanceDestino.deudor += monto
+        balanceDestino.transacciones += 1
+
+        // Buscar si ya existe relación con este hotel
+        const relacionExistente = balanceDestino.deudorDe.find((r) => r.hotel === hotelOrigen)
+        if (relacionExistente) {
+          relacionExistente.monto += monto
+          relacionExistente.transacciones += 1
+        } else {
+          balanceDestino.deudorDe.push({
+            hotel: hotelOrigen,
+            monto: monto,
+            transacciones: 1,
+          })
+        }
+
+        console.log(
+          `📉 ${hotelDestino} deudor: +${formatearMonto(monto)} (total: ${formatearMonto(balanceDestino.deudor)})`,
+        )
+      }
     })
 
-    // Calcular balance neto final
+    // Calcular balance neto y ordenar relaciones
     const resultado = Array.from(balanceMap.values()).map((balance) => {
       balance.balance = balance.acreedor - balance.deudor
 
@@ -570,13 +571,23 @@ export async function obtenerBalanceHoteles(): Promise<BalanceHotel[]> {
       balance.acreedorDe.sort((a, b) => b.monto - a.monto)
       balance.deudorDe.sort((a, b) => b.monto - a.monto)
 
+      console.log(
+        `🏨 ${balance.hotel}: Acreedor ${formatearMonto(balance.acreedor)}, Deudor ${formatearMonto(balance.deudor)}, Balance ${formatearMonto(balance.balance)}`,
+      )
+
       return balance
     })
 
     // Filtrar hoteles sin transacciones y ordenar por balance descendente
-    return resultado.filter((balance) => balance.transacciones > 0).sort((a, b) => b.balance - a.balance)
+    const resultadoFiltrado = resultado
+      .filter((balance) => balance.transacciones > 0)
+      .sort((a, b) => b.balance - a.balance)
+
+    console.log(`✅ Balance calculado para ${resultadoFiltrado.length} hoteles con transacciones`)
+
+    return resultadoFiltrado
   } catch (error) {
-    console.error("Error al obtener balance de hoteles:", error)
+    console.error("❌ Error al obtener balance de hoteles:", error)
     throw error
   }
 }
