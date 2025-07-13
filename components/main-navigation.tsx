@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -66,8 +67,15 @@ export function MainNavigation() {
           <div className="flex">
             {/* Logo */}
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                Hoteles Costa
+              <Link href="/" className="flex items-center">
+                <Image
+                  src="/images/logo-hoteles-costa.png"
+                  alt="Hoteles de la Costa"
+                  width={180}
+                  height={40}
+                  className="h-8 w-auto"
+                  priority
+                />
               </Link>
             </div>
 
@@ -126,7 +134,13 @@ export function MainNavigation() {
                 <div className="flex flex-col h-full">
                   {/* Header móvil */}
                   <div className="flex items-center justify-between p-4 border-b">
-                    <h2 className="text-lg font-semibold">Menú</h2>
+                    <Image
+                      src="/images/logo-hoteles-costa.png"
+                      alt="Hoteles de la Costa"
+                      width={140}
+                      height={30}
+                      className="h-6 w-auto"
+                    />
                   </div>
 
                   {/* Usuario móvil */}
