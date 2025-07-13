@@ -1,11 +1,20 @@
-import { Suspense } from "react"
-import ServiceClientPage from "./client-page"
-import LoadingScreen from "@/components/loading-screen"
+"use client"
+
+import { useEffect } from "react"
+
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import ServiciosClientPage from "./client-page"
 
 export default function ServiciosPage() {
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <ServiceClientPage />
-    </Suspense>
-  )
+  const { isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login")
+    }
+  }, [isAuthenticated, isLoading, router])
+
+  return <ServiciosClientPage />
 }

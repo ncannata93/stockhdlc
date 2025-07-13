@@ -75,7 +75,7 @@ export function getUserDisplayName(user: User | null): string {
   return "Usuario"
 }
 
-// Función para convertir username a email (función faltante)
+// Función para convertir username a email
 export function usernameToEmail(username: string): string {
   // Si ya es un email, devolverlo tal como está
   if (username.includes("@")) {
@@ -112,10 +112,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Función de login
   const signIn = async (credentials: { username: string; password: string }) => {
     try {
-      console.log("Iniciando proceso de login...")
+      console.log("Iniciando proceso de login para:", credentials.username)
 
       const { username, password } = credentials
       const localUser = LOCAL_USERS[username as keyof typeof LOCAL_USERS]
+
+      console.log("Usuario encontrado:", !!localUser)
+      console.log("Contraseña correcta:", localUser?.password === password)
 
       if (localUser && localUser.password === password) {
         const userData: User = {
@@ -130,10 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("auth_user", JSON.stringify(userData))
         console.log("Login exitoso, usuario establecido:", userData.fullName)
 
-        return { success: true }
+        return { success: true, message: `Bienvenido, ${userData.fullName}` }
       } else {
         console.log("Login fallido: credenciales incorrectas")
-        return { success: false, message: "Credenciales incorrectas" }
+        return { success: false, message: "Usuario o contraseña incorrectos" }
       }
     } catch (error) {
       console.error("Error en login:", error)

@@ -51,6 +51,11 @@ export default function HomePage() {
     })
   }
 
+  const handleLogout = async () => {
+    await logout()
+    router.push("/login")
+  }
+
   const modules = [
     {
       title: "Empleados",
@@ -91,13 +96,7 @@ export default function HomePage() {
               <h1 className="text-xl font-semibold text-gray-900">Hoteles de la Costa</h1>
             </div>
             <div className="flex items-center">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  logout()
-                  router.push("/login")
-                }}
-              >
+              <Button variant="outline" onClick={handleLogout}>
                 Cerrar Sesión
               </Button>
             </div>

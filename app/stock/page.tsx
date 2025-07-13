@@ -1,20 +1,13 @@
 "use client"
 
-import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
-import StockManagement from "@/components/stock-management"
+import StockClientPage from "./client-page"
 
 export default function StockPage() {
   const router = useRouter()
   const { isAuthenticated, isLoading } = useAuth()
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push("/login")
-    }
-  }, [isAuthenticated, isLoading, router])
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -29,9 +22,5 @@ export default function StockPage() {
     )
   }
 
-  return (
-    <main className="min-h-screen p-4 md:p-8 bg-gray-50">
-      <StockManagement />
-    </main>
-  )
+  return <StockClientPage />
 }
