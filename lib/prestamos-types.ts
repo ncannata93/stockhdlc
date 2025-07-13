@@ -78,7 +78,7 @@ export interface EstadisticasPrestamos {
   hotelMayorDeudor: string
 }
 
-// Constantes actualizadas
+// Constantes - BOTH HOTELES and RESPONSABLES exported
 export const HOTELES = [
   "Jaguel",
   "Monaco",
@@ -94,6 +94,9 @@ export const HOTELES = [
   "Tiburones",
   "Barlovento",
   "Carama",
+  "Juan Manuel",
+  "Nacho",
+  "Diego",
 ]
 
 export const RESPONSABLES = [
