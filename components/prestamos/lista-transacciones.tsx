@@ -1,357 +1,313 @@
 "use client"
-
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import {
-  RefreshCw,
-  Search,
-  Calendar,
-  DollarSign,
-  Building2,
-  User,
-  AlertCircle,
-  Edit,
-  Trash2,
-  Save,
-  X,
-} from "lucide-react"
-import { HOTELES, RESPONSABLES } from "@/lib/prestamos-types"
-import { useToast } from "@/hooks/use-toast"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-
-interface Prestamo {
-  id: string
-  responsable: string
-  hotel_origen: string
-  hotel_destino: string
-  producto: string
-  cantidad: string
-  valor: number
-  fecha: string
-  notas?: string
-  created_at?: string
-  updated_at?: string
-}
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { List, Search, Filter, Trash2, Eye, AlertCircle, Cloud, WifiOff, Database, RefreshCw } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import {
+  obtenerPrestamosFiltrados,
+  obtenerHoteles,
+  obtenerResponsables,
+  eliminarPrestamo,
+  verificarConexion,
+  verificarTablaPrestamons,
+  formatearMonto,
+  type Prestamo,
+  type FiltrosPrestamos,
+} from "@/lib/prestamos-supabase"
 
 interface ListaTransaccionesProps {
-  refreshTrigger?: number
-  onTransaccionActualizada?: () => void
+  onPrestamoEditado?: () => void
 }
 
-export function ListaTransacciones({ refreshTrigger, onTransaccionActualizada }: ListaTransaccionesProps) {
+export function ListaTransacciones({ onPrestamoEditado }: ListaTransaccionesProps) {
   const { toast } = useToast()
   const [prestamos, setPrestamos] = useState<Prestamo[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [filtros, setFiltros] = useState({
-    hotelOrigen: "",
-    hotelDestino: "",
-    responsable: "",
-  })
-  const [busqueda, setBusqueda] = useState("")
-  const [editandoPrestamo, setEditandoPrestamo] = useState<Prestamo | null>(null)
-  const [formularioEdicion, setFormularioEdicion] = useState<Prestamo | null>(null)
-  const [guardandoEdicion, setGuardandoEdicion] = useState(false)
+  const [prestamosFiltrados, setPrestamosFiltrados] = useState<Prestamo[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [conectado, setConectado] = useState(false)
+  const [tablaExiste, setTablaExiste] = useState(false)
+  const [hoteles, setHoteles] = useState<string[]>([])
+  const [responsables, setResponsables] = useState<string[]>([])
+  const [prestamoSeleccionado, setPrestamoSeleccionado] = useState<Prestamo | null>(null)
+  const [filtros, setFiltros] = useState<FiltrosPrestamos>({})
 
-  const formatearMonto = (monto: number): string => {
-    // Asegurar que monto sea un número válido
-    const montoNumerico = typeof monto === "string" ? Number.parseFloat(monto) : monto
-    if (isNaN(montoNumerico)) {
-      return "$0"
+  // Cargar datos iniciales
+  useEffect(() => {
+    const cargarDatos = async () => {
+      try {
+        const [conexion, tabla] = await Promise.all([verificarConexion(), verificarTablaPrestamons()])
+        setConectado(conexion.conectado)
+        setTablaExiste(tabla.existe)
+
+        if (conexion.conectado && tabla.existe) {
+          const [prestamosData, hotelesData, responsablesData] = await Promise.all([
+            obtenerPrestamosFiltrados({}),
+            obtenerHoteles(),
+            obtenerResponsables(),
+          ])
+          setPrestamos(prestamosData)
+          setPrestamosFiltrados(prestamosData)
+          setHoteles(hotelesData)
+          setResponsables(responsablesData)
+        } else {
+          // Usar datos predefinidos si no hay conexión o tabla
+          setHoteles([
+            "Jaguel",
+            "Monaco",
+            "Mallak",
+            "Argentina",
+            "Falkner",
+            "Stromboli",
+            "San Miguel",
+            "Colores",
+            "Puntarenas",
+            "Tupe",
+            "Munich",
+            "Tiburones",
+            "Barlovento",
+            "Carama",
+          ])
+          setResponsables(["Nicolas Cannata", "Juan Manuel", "Nacho", "Diego", "Administrador", "Gerente"])
+        }
+      } catch (error) {
+        console.error("Error al cargar datos:", error)
+        setConectado(false)
+        setTablaExiste(false)
+      }
+    }
+    cargarDatos()
+  }, [])
+
+  // Aplicar filtros
+  const aplicarFiltros = async () => {
+    if (!conectado || !tablaExiste) {
+      setPrestamosFiltrados([])
+      return
     }
 
-    return new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(montoNumerico)
-  }
-
-  const cargarPrestamos = async () => {
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      setError(null)
-
-      // Cargar desde localStorage
-      const prestamosData = JSON.parse(localStorage.getItem("prestamos_data") || "[]")
-      setPrestamos(prestamosData)
+      const prestamosData = await obtenerPrestamosFiltrados(filtros)
+      setPrestamosFiltrados(prestamosData)
     } catch (error) {
-      console.error("Error al cargar préstamos:", error)
-      setError("Error al cargar las transacciones")
+      console.error("Error al aplicar filtros:", error)
+      toast({
+        title: "Error al filtrar",
+        description: "No se pudieron aplicar los filtros",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Aplicar filtros cuando cambien
   useEffect(() => {
-    cargarPrestamos()
-  }, [refreshTrigger])
+    aplicarFiltros()
+  }, [filtros, conectado, tablaExiste])
 
-  const eliminarPrestamo = async (id: string) => {
+  const handleEliminar = async (id: string) => {
     if (!confirm("¿Estás seguro de que quieres eliminar este préstamo?")) {
       return
     }
 
     try {
-      const prestamosActualizados = prestamos.filter((p) => p.id !== id)
-      localStorage.setItem("prestamos_data", JSON.stringify(prestamosActualizados))
-      setPrestamos(prestamosActualizados)
-
-      toast({
-        title: "Éxito",
-        description: "Préstamo eliminado correctamente",
-      })
-
-      onTransaccionActualizada?.()
+      const eliminado = await eliminarPrestamo(id)
+      if (eliminado) {
+        toast({
+          title: "✅ Préstamo eliminado",
+          description: "El préstamo ha sido eliminado exitosamente",
+        })
+        aplicarFiltros()
+        onPrestamoEditado?.()
+      }
     } catch (error) {
       console.error("Error al eliminar préstamo:", error)
       toast({
-        title: "Error",
+        title: "Error al eliminar",
         description: "No se pudo eliminar el préstamo",
         variant: "destructive",
       })
     }
   }
 
-  const iniciarEdicion = (prestamo: Prestamo) => {
-    setEditandoPrestamo(prestamo)
-    setFormularioEdicion({ ...prestamo })
+  const limpiarFiltros = () => {
+    setFiltros({})
   }
 
-  const cancelarEdicion = () => {
-    setEditandoPrestamo(null)
-    setFormularioEdicion(null)
-  }
-
-  const guardarEdicion = async () => {
-    if (!formularioEdicion) return
-
-    // Validaciones
-    if (
-      !formularioEdicion.responsable ||
-      !formularioEdicion.hotel_origen ||
-      !formularioEdicion.hotel_destino ||
-      !formularioEdicion.producto ||
-      !formularioEdicion.valor
-    ) {
-      toast({
-        title: "Error",
-        description: "Por favor completa todos los campos obligatorios",
-        variant: "destructive",
-      })
-      return
+  const estadoConexion = () => {
+    if (!conectado) {
+      return (
+        <div className="flex items-center gap-1">
+          <WifiOff className="h-4 w-4 text-red-600" />
+          <span className="text-xs text-red-600">Sin conexión</span>
+        </div>
+      )
     }
 
-    if (formularioEdicion.hotel_origen === formularioEdicion.hotel_destino) {
-      toast({
-        title: "Error",
-        description: "El hotel origen y destino deben ser diferentes",
-        variant: "destructive",
-      })
-      return
+    if (!tablaExiste) {
+      return (
+        <div className="flex items-center gap-1">
+          <Database className="h-4 w-4 text-orange-600" />
+          <span className="text-xs text-orange-600">Tabla no existe</span>
+        </div>
+      )
     }
 
-    if (formularioEdicion.valor <= 0) {
-      toast({
-        title: "Error",
-        description: "El valor debe ser mayor a 0",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setGuardandoEdicion(true)
-    try {
-      const prestamoActualizado = {
-        ...formularioEdicion,
-        valor:
-          typeof formularioEdicion.valor === "string"
-            ? Number.parseFloat(formularioEdicion.valor)
-            : formularioEdicion.valor,
-        updated_at: new Date().toISOString(),
-      }
-
-      const prestamosActualizados = prestamos.map((p) => (p.id === prestamoActualizado.id ? prestamoActualizado : p))
-
-      localStorage.setItem("prestamos_data", JSON.stringify(prestamosActualizados))
-      setPrestamos(prestamosActualizados)
-
-      toast({
-        title: "Éxito",
-        description: "Préstamo actualizado correctamente",
-      })
-
-      cancelarEdicion()
-      onTransaccionActualizada?.()
-    } catch (error) {
-      console.error("Error al actualizar préstamo:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el préstamo",
-        variant: "destructive",
-      })
-    } finally {
-      setGuardandoEdicion(false)
-    }
-  }
-
-  const prestamosFiltrados = prestamos.filter((prestamo) => {
-    // Filtro por búsqueda
-    if (busqueda) {
-      const busquedaLower = busqueda.toLowerCase()
-      const coincide =
-        prestamo.producto.toLowerCase().includes(busquedaLower) ||
-        prestamo.hotel_origen.toLowerCase().includes(busquedaLower) ||
-        prestamo.hotel_destino.toLowerCase().includes(busquedaLower) ||
-        prestamo.responsable.toLowerCase().includes(busquedaLower)
-
-      if (!coincide) return false
-    }
-
-    // Filtros específicos
-    if (filtros.hotelOrigen && prestamo.hotel_origen !== filtros.hotelOrigen) return false
-    if (filtros.hotelDestino && prestamo.hotel_destino !== filtros.hotelDestino) return false
-    if (filtros.responsable && prestamo.responsable !== filtros.responsable) return false
-
-    return true
-  })
-
-  if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Lista de Transacciones
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
-            <span className="ml-2">Cargando transacciones...</span>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-1">
+        <Cloud className="h-4 w-4 text-green-600" />
+        <span className="text-xs text-green-600">Supabase OK</span>
+      </div>
     )
   }
 
-  if (error) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Lista de Transacciones
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              {error}
-              <Button variant="outline" size="sm" onClick={cargarPrestamos} className="ml-2 bg-transparent">
-                Reintentar
-              </Button>
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    )
+  const getBadgeVariant = (estado: string) => {
+    switch (estado) {
+      case "pendiente":
+        return "secondary"
+      case "pagado":
+        return "default"
+      case "cancelado":
+        return "destructive"
+      default:
+        return "outline"
+    }
   }
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Lista de Transacciones
-              </CardTitle>
-              <CardDescription>{prestamosFiltrados.length} transacciones encontradas</CardDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={cargarPrestamos}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Actualizar
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <List className="h-5 w-5 text-blue-600" />
+          Lista de Transacciones
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={aplicarFiltros}
+              disabled={isLoading || !conectado || !tablaExiste}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            </Button>
+            {estadoConexion()}
+          </div>
+        </CardTitle>
+        <CardDescription>
+          Visualiza y gestiona todos los préstamos registrados ({prestamosFiltrados.length} transacciones)
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!conectado && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>Sin conexión a Supabase. No se pueden cargar las transacciones.</AlertDescription>
+          </Alert>
+        )}
+
+        {conectado && !tablaExiste && (
+          <Alert variant="destructive" className="mb-4">
+            <Database className="h-4 w-4" />
+            <AlertDescription>
+              La tabla 'prestamos' no existe en Supabase. Ejecuta el script 'create-prestamos-table-complete.sql'
+              primero.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Filtros */}
+        <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+          <div className="flex items-center gap-2 mb-3">
+            <Filter className="h-4 w-4" />
+            <span className="font-medium">Filtros</span>
+            <Button variant="ghost" size="sm" onClick={limpiarFiltros}>
+              Limpiar
             </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          {/* Filtros y Búsqueda */}
-          <div className="space-y-4 mb-6">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Búsqueda */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Buscar por producto, hotel o responsable..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-10"
-              />
+            <div className="space-y-2">
+              <Label>Búsqueda</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                <Input
+                  placeholder="Buscar..."
+                  value={filtros.busqueda || ""}
+                  onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
+                  className="pl-8"
+                />
+              </div>
             </div>
 
-            {/* Filtros */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Hotel */}
+            <div className="space-y-2">
+              <Label>Hotel</Label>
               <Select
-                value={filtros.hotelOrigen || "Todos los hoteles"}
-                onValueChange={(value) =>
-                  setFiltros({ ...filtros, hotelOrigen: value === "Todos los hoteles" ? "" : value })
-                }
+                value={filtros.hotel || "all"}
+                onValueChange={(value) => setFiltros({ ...filtros, hotel: value === "all" ? undefined : value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Hotel origen" />
+                  <SelectValue placeholder="Todos los hoteles" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Todos los hoteles">Todos los hoteles</SelectItem>
-                  {HOTELES.map((hotel) => (
+                  <SelectItem value="all">Todos los hoteles</SelectItem>
+                  {hoteles.map((hotel) => (
                     <SelectItem key={hotel} value={hotel}>
                       {hotel}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
 
+            {/* Estado */}
+            <div className="space-y-2">
+              <Label>Estado</Label>
               <Select
-                value={filtros.hotelDestino || "Todos los hoteles"}
-                onValueChange={(value) =>
-                  setFiltros({ ...filtros, hotelDestino: value === "Todos los hoteles" ? "" : value })
-                }
+                value={filtros.estado || "all"}
+                onValueChange={(value) => setFiltros({ ...filtros, estado: value === "all" ? undefined : value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Hotel destino" />
+                  <SelectValue placeholder="Todos los estados" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Todos los hoteles">Todos los hoteles</SelectItem>
-                  {HOTELES.map((hotel) => (
-                    <SelectItem key={hotel} value={hotel}>
-                      {hotel}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                  <SelectItem value="pagado">Pagado</SelectItem>
+                  <SelectItem value="cancelado">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
 
+            {/* Responsable */}
+            <div className="space-y-2">
+              <Label>Responsable</Label>
               <Select
-                value={filtros.responsable || "Todos los responsables"}
-                onValueChange={(value) =>
-                  setFiltros({ ...filtros, responsable: value === "Todos los responsables" ? "" : value })
-                }
+                value={filtros.responsable || "all"}
+                onValueChange={(value) => setFiltros({ ...filtros, responsable: value === "all" ? undefined : value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Responsable" />
+                  <SelectValue placeholder="Todos los responsables" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Todos los responsables">Todos los responsables</SelectItem>
-                  {RESPONSABLES.map((responsable) => (
+                  <SelectItem value="all">Todos los responsables</SelectItem>
+                  {responsables.map((responsable) => (
                     <SelectItem key={responsable} value={responsable}>
                       {responsable}
                     </SelectItem>
@@ -360,257 +316,149 @@ export function ListaTransacciones({ refreshTrigger, onTransaccionActualizada }:
               </Select>
             </div>
           </div>
+        </div>
 
-          {/* Tabla de Transacciones */}
-          {prestamosFiltrados.length === 0 ? (
-            <div className="text-center py-8">
-              <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No se encontraron transacciones</p>
-              {prestamos.length === 0 && (
-                <p className="text-sm text-gray-400 mt-2">
-                  Registra tu primer préstamo usando las pestañas "Ingreso Rápido" o "Ingreso Manual"
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Origen</TableHead>
-                    <TableHead>Destino</TableHead>
-                    <TableHead>Producto</TableHead>
-                    <TableHead>Cantidad</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Responsable</TableHead>
-                    <TableHead>Acciones</TableHead>
+        {/* Tabla de transacciones */}
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Responsable</TableHead>
+                <TableHead>Origen → Destino</TableHead>
+                <TableHead>Producto</TableHead>
+                <TableHead>Cantidad</TableHead>
+                <TableHead>Valor</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8">
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Cargando transacciones...
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : prestamosFiltrados.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    {conectado && tablaExiste
+                      ? "No hay transacciones que coincidan con los filtros"
+                      : "No hay datos disponibles"}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                prestamosFiltrados.map((prestamo) => (
+                  <TableRow key={prestamo.id}>
+                    <TableCell className="font-mono text-sm">{new Date(prestamo.fecha).toLocaleDateString()}</TableCell>
+                    <TableCell className="font-medium">{prestamo.responsable}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="text-blue-600 font-medium">{prestamo.hotel_origen}</span>
+                        <span>→</span>
+                        <span className="text-green-600 font-medium">{prestamo.hotel_destino}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{prestamo.producto}</TableCell>
+                    <TableCell>{prestamo.cantidad || "-"}</TableCell>
+                    <TableCell className="font-bold">{formatearMonto(prestamo.valor)}</TableCell>
+                    <TableCell>
+                      <Badge variant={getBadgeVariant(prestamo.estado)}>{prestamo.estado}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="sm" onClick={() => setPrestamoSeleccionado(prestamo)}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Detalles del Préstamo</DialogTitle>
+                              <DialogDescription>Información completa de la transacción</DialogDescription>
+                            </DialogHeader>
+                            {prestamoSeleccionado && (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <Label className="text-sm font-medium">Fecha</Label>
+                                    <p className="text-sm">
+                                      {new Date(prestamoSeleccionado.fecha).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium">Responsable</Label>
+                                    <p className="text-sm">{prestamoSeleccionado.responsable}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium">Hotel Origen</Label>
+                                    <p className="text-sm text-blue-600">{prestamoSeleccionado.hotel_origen}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium">Hotel Destino</Label>
+                                    <p className="text-sm text-green-600">{prestamoSeleccionado.hotel_destino}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium">Producto</Label>
+                                    <p className="text-sm">{prestamoSeleccionado.producto}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium">Cantidad</Label>
+                                    <p className="text-sm">{prestamoSeleccionado.cantidad || "No especificada"}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium">Valor</Label>
+                                    <p className="text-sm font-bold">{formatearMonto(prestamoSeleccionado.valor)}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium">Estado</Label>
+                                    <Badge variant={getBadgeVariant(prestamoSeleccionado.estado)}>
+                                      {prestamoSeleccionado.estado}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                {prestamoSeleccionado.notas && (
+                                  <div>
+                                    <Label className="text-sm font-medium">Notas</Label>
+                                    <p className="text-sm bg-gray-50 p-2 rounded">{prestamoSeleccionado.notas}</p>
+                                  </div>
+                                )}
+                                <div className="text-xs text-gray-500">
+                                  <p>Creado: {new Date(prestamoSeleccionado.created_at).toLocaleString()}</p>
+                                  <p>Actualizado: {new Date(prestamoSeleccionado.updated_at).toLocaleString()}</p>
+                                </div>
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEliminar(prestamo.id)}
+                          disabled={!conectado || !tablaExiste}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {prestamosFiltrados.map((prestamo) => (
-                    <TableRow key={prestamo.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-gray-400" />
-                          {new Date(prestamo.fecha).toLocaleDateString()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-red-600" />
-                          {prestamo.hotel_origen}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-green-600" />
-                          {prestamo.hotel_destino}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs truncate" title={prestamo.producto}>
-                          {prestamo.producto}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{prestamo.cantidad}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-semibold text-lg">{formatearMonto(prestamo.valor)}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-gray-400" />
-                          {prestamo.responsable}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => iniciarEdicion(prestamo)}
-                            className="bg-blue-50 hover:bg-blue-100 text-blue-700"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => eliminarPrestamo(prestamo.id)}
-                            className="bg-red-50 hover:bg-red-100 text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-      {/* Dialog de Edición */}
-      <Dialog open={!!editandoPrestamo} onOpenChange={(open) => !open && cancelarEdicion()}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5 text-blue-600" />
-              Editar Préstamo
-            </DialogTitle>
-            <DialogDescription>
-              Modifica los datos del préstamo. Todos los campos marcados con * son obligatorios.
-            </DialogDescription>
-          </DialogHeader>
-
-          {formularioEdicion && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fecha">Fecha *</Label>
-                  <Input
-                    id="fecha"
-                    type="date"
-                    value={formularioEdicion.fecha}
-                    onChange={(e) => setFormularioEdicion({ ...formularioEdicion, fecha: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="responsable">Responsable *</Label>
-                  <Select
-                    value={formularioEdicion.responsable}
-                    onValueChange={(value) => setFormularioEdicion({ ...formularioEdicion, responsable: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar responsable" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {RESPONSABLES.map((responsable) => (
-                        <SelectItem key={responsable} value={responsable}>
-                          {responsable}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="hotel_origen">Hotel Origen *</Label>
-                  <Select
-                    value={formularioEdicion.hotel_origen}
-                    onValueChange={(value) => setFormularioEdicion({ ...formularioEdicion, hotel_origen: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar hotel origen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {HOTELES.map((hotel) => (
-                        <SelectItem key={hotel} value={hotel}>
-                          {hotel}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="hotel_destino">Hotel Destino *</Label>
-                  <Select
-                    value={formularioEdicion.hotel_destino}
-                    onValueChange={(value) => setFormularioEdicion({ ...formularioEdicion, hotel_destino: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar hotel destino" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {HOTELES.map((hotel) => (
-                        <SelectItem key={hotel} value={hotel}>
-                          {hotel}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="producto">Producto/Concepto *</Label>
-                <Input
-                  id="producto"
-                  value={formularioEdicion.producto}
-                  onChange={(e) => setFormularioEdicion({ ...formularioEdicion, producto: e.target.value })}
-                  placeholder="Ej: Toallas, Efectivo, Productos de limpieza"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cantidad">Cantidad</Label>
-                  <Input
-                    id="cantidad"
-                    value={formularioEdicion.cantidad}
-                    onChange={(e) => setFormularioEdicion({ ...formularioEdicion, cantidad: e.target.value })}
-                    placeholder="Ej: 20 unidades, 15 juegos"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="valor">Valor ($) *</Label>
-                  <Input
-                    id="valor"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formularioEdicion.valor}
-                    onChange={(e) =>
-                      setFormularioEdicion({ ...formularioEdicion, valor: Number.parseFloat(e.target.value) || 0 })
-                    }
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notas">Notas</Label>
-                <Textarea
-                  id="notas"
-                  value={formularioEdicion.notas || ""}
-                  onChange={(e) => setFormularioEdicion({ ...formularioEdicion, notas: e.target.value })}
-                  placeholder="Información adicional..."
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={cancelarEdicion} disabled={guardandoEdicion}>
-                  <X className="h-4 w-4 mr-2" />
-                  Cancelar
-                </Button>
-                <Button onClick={guardarEdicion} disabled={guardandoEdicion}>
-                  {guardandoEdicion ? (
-                    "Guardando..."
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Guardar Cambios
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+        {conectado && tablaExiste && prestamosFiltrados.length > 0 && (
+          <div className="mt-4 text-sm text-gray-600 text-center">
+            Mostrando {prestamosFiltrados.length} de {prestamos.length} transacciones
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

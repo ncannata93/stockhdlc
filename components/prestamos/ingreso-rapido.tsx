@@ -1,320 +1,295 @@
 "use client"
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import type React from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Zap, CheckCircle, XCircle, AlertCircle } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-
-interface ResultadoProcesamiento {
-  linea: string
-  exito: boolean
-  mensaje: string
-  datos?: {
-    responsable: string
-    hotel_origen: string
-    hotel_destino: string
-    producto: string
-    cantidad: string
-    valor: number
-  }
-}
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Zap, Upload, AlertCircle, CheckCircle, Cloud, WifiOff, Database, Info } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import {
+  crearPrestamosMasivos,
+  verificarConexion,
+  verificarTablaPrestamons,
+  type PrestamoInput,
+} from "@/lib/prestamos-supabase"
 
 interface IngresoRapidoProps {
-  onTransaccionCreada?: () => void
+  onPrestamoCreado?: () => void
 }
 
-export function IngresoRapido({ onTransaccionCreada }: IngresoRapidoProps) {
+export function IngresoRapido({ onPrestamoCreado }: IngresoRapidoProps) {
   const { toast } = useToast()
-  const [responsableDefecto, setResponsableDefecto] = useState("")
-  const [texto, setTexto] = useState("")
-  const [procesando, setProcesando] = useState(false)
-  const [resultados, setResultados] = useState<ResultadoProcesamiento[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [conectado, setConectado] = useState(false)
+  const [tablaExiste, setTablaExiste] = useState(false)
+  const [textoMasivo, setTextoMasivo] = useState("")
+  const [preview, setPreview] = useState<PrestamoInput[]>([])
 
-  const procesarLinea = (linea: string, responsableDefecto: string): ResultadoProcesamiento => {
-    const lineaTrimmed = linea.trim()
-    if (!lineaTrimmed) {
-      return {
-        linea,
-        exito: false,
-        mensaje: "Línea vacía",
+  // Cargar datos iniciales
+  useEffect(() => {
+    const cargarDatos = async () => {
+      try {
+        const [conexion, tabla] = await Promise.all([verificarConexion(), verificarTablaPrestamons()])
+        setConectado(conexion.conectado)
+        setTablaExiste(tabla.existe)
+      } catch (error) {
+        console.error("Error al cargar datos:", error)
+        setConectado(false)
+        setTablaExiste(false)
       }
     }
+    cargarDatos()
+  }, [])
 
-    // Dividir por comas y limpiar espacios
-    const partes = lineaTrimmed.split(",").map((parte) => parte.trim())
+  // Parsear texto masivo
+  const parsearTextoMasivo = (texto: string): PrestamoInput[] => {
+    if (!texto.trim()) return []
 
-    // Verificar que tenga exactamente 6 campos o 5 (sin responsable)
-    if (partes.length === 5) {
-      // Formato: Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor
-      // Usar responsable por defecto
-      if (!responsableDefecto) {
-        return {
-          linea,
-          exito: false,
-          mensaje: "Falta responsable por defecto para formato de 5 campos",
-        }
+    const lineas = texto.trim().split("\n")
+    const prestamos: PrestamoInput[] = []
+
+    for (const linea of lineas) {
+      if (!linea.trim()) continue
+
+      // Formato: Responsable, Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor
+      const partes = linea.split(",").map((p) => p.trim())
+
+      if (partes.length < 6) {
+        console.warn(`Línea incompleta ignorada: ${linea}`)
+        continue
       }
-      partes.unshift(responsableDefecto) // Agregar responsable al inicio
-    } else if (partes.length !== 6) {
-      return {
-        linea,
-        exito: false,
-        mensaje: `Formato incorrecto. Se esperan 6 campos: Responsable, Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor. Se encontraron ${partes.length} campos.`,
+
+      const [responsable, hotel_origen, hotel_destino, producto, cantidad, valorStr] = partes
+      const valor = Number.parseFloat(valorStr.replace(/[^\d.-]/g, "")) || 0
+
+      if (valor <= 0) {
+        console.warn(`Valor inválido en línea: ${linea}`)
+        continue
       }
-    }
 
-    const [responsable, hotel_origen, hotel_destino, producto, cantidad, valorStr] = partes
-
-    // Validar campos obligatorios
-    if (!responsable || !hotel_origen || !hotel_destino || !producto || !cantidad || !valorStr) {
-      return {
-        linea,
-        exito: false,
-        mensaje: "Todos los campos son obligatorios",
-      }
-    }
-
-    // Validar y convertir valor
-    const valor = Number.parseFloat(valorStr.replace(/[^\d.-]/g, ""))
-    if (isNaN(valor) || valor <= 0) {
-      return {
-        linea,
-        exito: false,
-        mensaje: `Valor inválido: ${valorStr}`,
-      }
-    }
-
-    return {
-      linea,
-      exito: true,
-      mensaje: "Procesado correctamente",
-      datos: {
+      prestamos.push({
         responsable,
         hotel_origen,
         hotel_destino,
         producto,
         cantidad,
         valor,
-      },
+        estado: "pendiente",
+      })
     }
+
+    return prestamos
   }
 
-  const guardarTransaccion = async (datos: {
-    responsable: string
-    hotel_origen: string
-    hotel_destino: string
-    producto: string
-    cantidad: string
-    valor: number
-  }) => {
-    try {
-      // Crear la transacción
-      const nuevaTransaccion = {
-        id: `prestamo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        responsable: datos.responsable,
-        hotel_origen: datos.hotel_origen,
-        hotel_destino: datos.hotel_destino,
-        producto: datos.producto,
-        cantidad: datos.cantidad,
-        valor: datos.valor,
-        fecha: new Date().toISOString().split("T")[0],
-        notas: `${datos.producto} - ${datos.cantidad}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
+  // Actualizar preview cuando cambia el texto
+  useEffect(() => {
+    const prestamos = parsearTextoMasivo(textoMasivo)
+    setPreview(prestamos)
+  }, [textoMasivo])
 
-      // Obtener transacciones existentes
-      const transaccionesExistentes = JSON.parse(localStorage.getItem("prestamos_data") || "[]")
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
 
-      // Agregar la nueva transacción
-      const todasLasTransacciones = [...transaccionesExistentes, nuevaTransaccion]
-
-      // Guardar en localStorage
-      localStorage.setItem("prestamos_data", JSON.stringify(todasLasTransacciones))
-
-      return true
-    } catch (error) {
-      console.error("Error al guardar transacción:", error)
-      return false
-    }
-  }
-
-  const procesarTexto = async () => {
-    if (!texto.trim()) {
+    if (!textoMasivo.trim()) {
       toast({
-        title: "Error",
-        description: "Ingresa al menos una línea de datos",
+        title: "Texto requerido",
+        description: "Por favor ingresa los datos de los préstamos",
         variant: "destructive",
       })
       return
     }
 
-    setProcesando(true)
-    const lineas = texto.split("\n").filter((linea) => linea.trim())
-    const resultadosProcesamiento: ResultadoProcesamiento[] = []
-    let exitosos = 0
-    let errores = 0
-
-    for (const linea of lineas) {
-      const resultado = procesarLinea(linea, responsableDefecto)
-      resultadosProcesamiento.push(resultado)
-
-      if (resultado.exito && resultado.datos) {
-        const guardado = await guardarTransaccion(resultado.datos)
-        if (guardado) {
-          exitosos++
-        } else {
-          resultado.exito = false
-          resultado.mensaje = "Error al guardar en localStorage"
-          errores++
-        }
-      } else {
-        errores++
-      }
-    }
-
-    setResultados(resultadosProcesamiento)
-    setProcesando(false)
-
-    // Mostrar toast de resumen
-    if (exitosos > 0) {
+    if (preview.length === 0) {
       toast({
-        title: "Procesamiento completado",
-        description: `${exitosos} transacciones guardadas, ${errores} errores`,
-      })
-      onTransaccionCreada?.()
-    } else {
-      toast({
-        title: "Error",
-        description: `No se pudo procesar ninguna transacción. ${errores} errores`,
+        title: "Datos inválidos",
+        description: "No se pudieron procesar los datos ingresados. Verifica el formato.",
         variant: "destructive",
       })
+      return
+    }
+
+    if (!tablaExiste) {
+      toast({
+        title: "Error de base de datos",
+        description: "La tabla prestamos no existe. Ejecuta el script de creación primero.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const resultado = await crearPrestamosMasivos(preview)
+
+      if (resultado.exitosos > 0) {
+        toast({
+          title: "✅ Préstamos creados",
+          description: `${resultado.exitosos} préstamos creados exitosamente${resultado.errores.length > 0 ? ` (${resultado.errores.length} errores)` : ""}`,
+        })
+
+        // Limpiar formulario
+        setTextoMasivo("")
+        setPreview([])
+        onPrestamoCreado?.()
+      } else {
+        toast({
+          title: "Error al crear préstamos",
+          description: `No se pudo crear ningún préstamo. Errores: ${resultado.errores.join(", ")}`,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error al crear préstamos:", error)
+      setConectado(false)
+      toast({
+        title: "Error al crear préstamos",
+        description: "No se pudo guardar en Supabase. Verifica tu conexión.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const limpiarFormulario = () => {
-    setTexto("")
-    setResultados([])
+  const estadoConexion = () => {
+    if (!conectado) {
+      return (
+        <div className="flex items-center gap-1">
+          <WifiOff className="h-4 w-4 text-red-600" />
+          <span className="text-xs text-red-600">Sin conexión</span>
+        </div>
+      )
+    }
+
+    if (!tablaExiste) {
+      return (
+        <div className="flex items-center gap-1">
+          <Database className="h-4 w-4 text-orange-600" />
+          <span className="text-xs text-orange-600">Tabla no existe</span>
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex items-center gap-1">
+        <Cloud className="h-4 w-4 text-green-600" />
+        <span className="text-xs text-green-600">Supabase OK</span>
+      </div>
+    )
   }
+
+  const ejemploTexto = `Nicolas Cannata, Jaguel, Monaco, Efectivo, 1, 50000
+Juan Manuel, Argentina, Falkner, Toallas, 20, 15000
+Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Zap className="h-5 w-5" />
-          Ingreso Rápido
+          <Zap className="h-5 w-5 text-yellow-600" />
+          Ingreso Rápido Masivo
+          <div className="ml-auto">{estadoConexion()}</div>
         </CardTitle>
-        <CardDescription>
-          Ingresa múltiples transacciones usando formato CSV: Responsable, Hotel que retira, Hotel que recibe, Producto,
-          Cantidad, Valor
-        </CardDescription>
+        <CardDescription>Ingresa múltiples préstamos de una vez usando texto separado por comas</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Responsable por defecto */}
-        <div className="space-y-2">
-          <Label htmlFor="responsable-defecto">Responsable por defecto (opcional)</Label>
-          <Input
-            id="responsable-defecto"
-            value={responsableDefecto}
-            onChange={(e) => setResponsableDefecto(e.target.value)}
-            placeholder="Ej: Nicolas Cannata"
-          />
-          <p className="text-xs text-gray-600">
-            Si se especifica, puedes usar formato de 5 campos omitiendo el responsable
-          </p>
-        </div>
-
-        {/* Área de texto */}
-        <div className="space-y-2">
-          <Label htmlFor="texto-rapido">Datos de transacciones</Label>
-          <Textarea
-            id="texto-rapido"
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            placeholder={`Ejemplos:
-Nicolas Cannata, Argentina, Mallak, Toallas, 20 unidades, 50000
-Diego Pili, Mallak, Monaco, Equipamiento, 5 items, 30000
-Juan Prey, Jaguel, Argentina, Materiales, 10 kg, 75000
-
-O con responsable por defecto (5 campos):
-Argentina, Mallak, Toallas, 20 unidades, 50000
-Mallak, Monaco, Equipamiento, 5 items, 30000`}
-            rows={8}
-            className="font-mono text-sm"
-          />
-        </div>
-
-        {/* Botones */}
-        <div className="flex gap-2">
-          <Button onClick={procesarTexto} disabled={procesando} className="flex-1">
-            {procesando ? "Procesando..." : "Procesar Transacciones"}
-          </Button>
-          <Button onClick={limpiarFormulario} variant="outline">
-            Limpiar
-          </Button>
-        </div>
-
-        {/* Resultados */}
-        {resultados.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="font-medium">Resultados del procesamiento:</h4>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {resultados.map((resultado, index) => (
-                <div
-                  key={index}
-                  className={`flex items-start gap-2 p-2 rounded text-sm ${
-                    resultado.exito ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
-                  }`}
-                >
-                  {resultado.exito ? (
-                    <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-mono text-xs text-gray-600 truncate">{resultado.linea}</div>
-                    <div className={resultado.exito ? "text-green-700" : "text-red-700"}>{resultado.mensaje}</div>
-                    {resultado.exito && resultado.datos && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {resultado.datos.hotel_origen} → {resultado.datos.hotel_destino}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          ${resultado.datos.valor.toLocaleString()}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+      <CardContent>
+        {!conectado && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Sin conexión a Supabase. Los préstamos no se pueden guardar en este momento.
+            </AlertDescription>
+          </Alert>
         )}
 
-        {/* Ayuda */}
-        <div className="bg-blue-50 p-3 rounded-lg">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">Formato de datos:</p>
-              <ul className="text-xs space-y-1">
-                <li>• 6 campos: Responsable, Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor</li>
-                <li>
-                  • 5 campos: Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor (requiere responsable por
-                  defecto)
-                </li>
-                <li>• Separar campos con comas</li>
-                <li>• Una transacción por línea</li>
-                <li>• El valor debe ser numérico</li>
-              </ul>
-            </div>
+        {conectado && !tablaExiste && (
+          <Alert variant="destructive" className="mb-4">
+            <Database className="h-4 w-4" />
+            <AlertDescription>
+              La tabla 'prestamos' no existe en Supabase. Ejecuta el script 'create-prestamos-table-complete.sql'
+              primero.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Alert className="mb-4">
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Formato:</strong> Responsable, Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor
+            <br />
+            <strong>Ejemplo:</strong>
+            <pre className="text-xs mt-2 bg-gray-100 p-2 rounded">{ejemploTexto}</pre>
+          </AlertDescription>
+        </Alert>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="texto-masivo">Datos de préstamos (una línea por préstamo)</Label>
+            <Textarea
+              id="texto-masivo"
+              placeholder={`Ingresa los datos separados por comas, ejemplo:\n${ejemploTexto}`}
+              value={textoMasivo}
+              onChange={(e) => setTextoMasivo(e.target.value)}
+              rows={8}
+              className="font-mono text-sm"
+            />
           </div>
-        </div>
+
+          {preview.length > 0 && (
+            <div className="space-y-2">
+              <Label>Vista previa ({preview.length} préstamos)</Label>
+              <div className="max-h-40 overflow-y-auto border rounded p-2 bg-gray-50">
+                {preview.map((prestamo, index) => (
+                  <div key={index} className="text-xs mb-1 flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {index + 1}
+                    </Badge>
+                    <span className="font-medium">{prestamo.responsable}</span>
+                    <span>→</span>
+                    <span className="text-blue-600">{prestamo.hotel_origen}</span>
+                    <span>→</span>
+                    <span className="text-green-600">{prestamo.hotel_destino}</span>
+                    <span>|</span>
+                    <span>{prestamo.producto}</span>
+                    <span>|</span>
+                    <span>{prestamo.cantidad}</span>
+                    <span>|</span>
+                    <span className="font-bold">${prestamo.valor.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isLoading || !conectado || !tablaExiste || preview.length === 0}
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                Guardando {preview.length} préstamos...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4 mr-2" />
+                Crear {preview.length} Préstamos
+              </>
+            )}
+          </Button>
+
+          {conectado && tablaExiste && (
+            <div className="flex items-center justify-center gap-2 text-sm text-green-600">
+              <CheckCircle className="h-4 w-4" />
+              <span>Conectado a Supabase - Los datos se guardan automáticamente</span>
+            </div>
+          )}
+        </form>
       </CardContent>
     </Card>
   )
