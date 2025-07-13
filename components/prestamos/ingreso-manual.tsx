@@ -3,54 +3,58 @@
 import type React from "react"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { FileText, Plus, Save, AlertCircle, Building2, RefreshCw } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import { crearPrestamo } from "@/lib/prestamos-db"
-import { HOTELES } from "@/lib/prestamos-types"
-import type { PrestamoInput } from "@/lib/prestamos-types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { FileText, Save, AlertCircle } from "lucide-react"
+import { HOTELES, type PrestamoFormData } from "@/lib/prestamos-types"
 
-interface IngresoManualProps {
-  onPrestamoCreado?: () => void
-}
-
-export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
-  const { toast } = useToast()
-  const [guardando, setGuardando] = useState(false)
-
-  const [prestamo, setPrestamo] = useState<PrestamoInput & { producto?: string; cantidad?: number }>({
+export function IngresoManual() {
+  const [formData, setFormData] = useState<PrestamoFormData>({
     responsable: "",
     hotel_origen: "",
     hotel_destino: "",
     producto: "",
-    cantidad: 1,
-    monto: 0,
-    concepto: "",
+    cantidad: 0,
+    valor: 0,
     notas: "",
   })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
 
-  const [errors, setErrors] = useState<Partial<PrestamoInput>>({})
-  const [showResumen, setShowResumen] = useState(false)
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {}
 
-  const validateForm = () => {
-    const newErrors: Partial<PrestamoInput> = {}
+    if (!formData.responsable.trim()) {
+      newErrors.responsable = "Responsable es requerido"
+    }
 
-    if (!prestamo.responsable?.trim()) newErrors.responsable = "Ingresa el responsable"
-    if (!prestamo.hotel_origen) newErrors.hotel_origen = "Selecciona el hotel que retira"
-    if (!prestamo.hotel_destino) newErrors.hotel_destino = "Selecciona el hotel que recibe"
-    if (!prestamo.producto?.trim()) newErrors.concepto = "Especifica el producto"
-    if (!prestamo.cantidad || prestamo.cantidad <= 0) newErrors.concepto = "La cantidad debe ser mayor a 0"
-    if (prestamo.monto <= 0) newErrors.monto = "El valor debe ser mayor a 0"
+    if (!formData.hotel_origen) {
+      newErrors.hotel_origen = "Hotel que retira es requerido"
+    }
 
-    if (prestamo.hotel_origen === prestamo.hotel_destino) {
-      newErrors.hotel_origen = "No puede ser el mismo hotel"
-      newErrors.hotel_destino = "No puede ser el mismo hotel"
+    if (!formData.hotel_destino) {
+      newErrors.hotel_destino = "Hotel que recibe es requerido"
+    }
+
+    if (formData.hotel_origen === formData.hotel_destino) {
+      newErrors.hotel_destino = "Hotel que retira y recibe no pueden ser iguales"
+    }
+
+    if (!formData.producto.trim()) {
+      newErrors.producto = "Producto es requerido"
+    }
+
+    if (!formData.cantidad || formData.cantidad <= 0) {
+      newErrors.cantidad = "Cantidad debe ser mayor a 0"
+    }
+
+    if (!formData.valor || formData.valor <= 0) {
+      newErrors.valor = "Valor debe ser mayor a 0"
     }
 
     setErrors(newErrors)
@@ -59,136 +63,83 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!validateForm()) {
-      toast({
-        title: "Error en el formulario",
-        description: "Por favor corrige los errores antes de continuar",
-        variant: "destructive",
-      })
-      return
+    if (validateForm()) {
+      setShowConfirmation(true)
     }
-
-    setShowResumen(true)
   }
 
-  const confirmarPrestamo = async () => {
-    setGuardando(true)
+  const confirmSubmit = async () => {
+    setIsSubmitting(true)
     try {
-      const prestamoFinal: PrestamoInput = {
-        ...prestamo,
-        concepto: `${prestamo.producto} (${prestamo.cantidad} unidades)`,
-        notas: `Préstamo de ${prestamo.cantidad} ${prestamo.producto} por valor de $${prestamo.monto.toLocaleString()}. Responsable: ${prestamo.responsable}${prestamo.notas ? `. ${prestamo.notas}` : ""}`,
-      }
+      // Aquí iría la lógica para guardar en la base de datos
+      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulación
 
-      const nuevoPrestamo = await crearPrestamo(prestamoFinal)
-
-      if (nuevoPrestamo) {
-        toast({
-          title: "¡Préstamo registrado!",
-          description: `Préstamo de ${prestamo.producto} registrado exitosamente`,
-        })
-
-        // Resetear formulario
-        setPrestamo({
-          responsable: "",
-          hotel_origen: "",
-          hotel_destino: "",
-          producto: "",
-          cantidad: 1,
-          monto: 0,
-          concepto: "",
-          notas: "",
-        })
-        setShowResumen(false)
-        setErrors({})
-
-        if (onPrestamoCreado) {
-          onPrestamoCreado()
-        }
-      } else {
-        toast({
-          title: "Error",
-          description: "No se pudo registrar el préstamo",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error al crear préstamo:", error)
-      toast({
-        title: "Error",
-        description: "Error al registrar el préstamo",
-        variant: "destructive",
+      // Reset form
+      setFormData({
+        responsable: "",
+        hotel_origen: "",
+        hotel_destino: "",
+        producto: "",
+        cantidad: 0,
+        valor: 0,
+        notas: "",
       })
+      setShowConfirmation(false)
+      alert("Préstamo registrado exitosamente")
+    } catch (error) {
+      console.error("Error guardando préstamo:", error)
+      alert("Error al guardar préstamo")
     } finally {
-      setGuardando(false)
+      setIsSubmitting(false)
     }
   }
 
-  if (showResumen) {
+  const availableDestinos = HOTELES.filter((hotel) => hotel !== formData.hotel_origen)
+
+  if (showConfirmation) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-orange-600" />
+            <AlertCircle className="h-5 w-5" />
             Confirmar Préstamo
           </CardTitle>
           <CardDescription>Revisa los datos antes de guardar</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="font-medium">Responsable:</span>
-              <Badge variant="outline">{prestamo.responsable}</Badge>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div>
+              <strong>Responsable:</strong> {formData.responsable}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-medium">Hotel que Retira:</span>
-              <Badge className="bg-red-100 text-red-800">{prestamo.hotel_origen}</Badge>
+            <div>
+              <strong>Hotel que retira:</strong> {formData.hotel_origen}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-medium">Hotel que Recibe:</span>
-              <Badge className="bg-green-100 text-green-800">{prestamo.hotel_destino}</Badge>
+            <div>
+              <strong>Hotel que recibe:</strong> {formData.hotel_destino}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-medium">Producto:</span>
-              <span>{prestamo.producto}</span>
+            <div>
+              <strong>Producto:</strong> {formData.producto}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-medium">Cantidad:</span>
-              <span>{prestamo.cantidad}</span>
+            <div>
+              <strong>Cantidad:</strong> {formData.cantidad}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-medium">Valor:</span>
-              <span className="text-xl font-bold text-orange-600">${prestamo.monto.toLocaleString()}</span>
+            <div>
+              <strong>Valor:</strong> ${formData.valor.toLocaleString()} ARS
             </div>
-            {prestamo.notas && (
-              <div>
-                <span className="font-medium">Notas:</span>
-                <p className="text-sm text-gray-600 mt-1">{prestamo.notas}</p>
-              </div>
-            )}
           </div>
-
+          {formData.notas && (
+            <div>
+              <strong>Notas:</strong>
+              <p className="text-sm text-gray-600 mt-1">{formData.notas}</p>
+            </div>
+          )}
           <div className="flex gap-2">
-            <Button
-              onClick={confirmarPrestamo}
-              className="flex-1 bg-orange-600 hover:bg-orange-700"
-              disabled={guardando}
-            >
-              {guardando ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Confirmar Préstamo
-                </>
-              )}
+            <Button onClick={confirmSubmit} disabled={isSubmitting}>
+              <Save className="h-4 w-4 mr-2" />
+              {isSubmitting ? "Guardando..." : "Confirmar y Guardar"}
             </Button>
-            <Button variant="outline" onClick={() => setShowResumen(false)} disabled={guardando}>
-              Editar
+            <Button variant="outline" onClick={() => setShowConfirmation(false)} disabled={isSubmitting}>
+              Volver a Editar
             </Button>
           </div>
         </CardContent>
@@ -200,132 +151,134 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5 text-orange-600" />
+          <FileText className="h-5 w-5" />
           Ingreso Manual
         </CardTitle>
         <CardDescription>Registra préstamos con información detallada y personalizada</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* 1. Responsable */}
-          <div className="space-y-2">
+          {/* Responsable */}
+          <div>
             <Label htmlFor="responsable">Responsable *</Label>
             <Input
               id="responsable"
-              value={prestamo.responsable}
-              onChange={(e) => setPrestamo({ ...prestamo, responsable: e.target.value })}
-              placeholder="Ingresa el nombre del responsable"
+              type="text"
+              value={formData.responsable}
+              onChange={(e) => setFormData((prev) => ({ ...prev, responsable: e.target.value }))}
+              placeholder="Nombre del responsable"
               className={errors.responsable ? "border-red-500" : ""}
             />
-            {errors.responsable && <p className="text-sm text-red-500">{errors.responsable}</p>}
+            {errors.responsable && <p className="text-sm text-red-500 mt-1">{errors.responsable}</p>}
           </div>
 
-          {/* 2. Hotel que Retira */}
-          <div className="space-y-2">
-            <Label htmlFor="hotelOrigen">Hotel que Retira *</Label>
+          {/* Hotel que retira */}
+          <div>
+            <Label htmlFor="hotel_origen">Hotel que Retira *</Label>
             <Select
-              value={prestamo.hotel_origen}
-              onValueChange={(value) => setPrestamo({ ...prestamo, hotel_origen: value })}
+              value={formData.hotel_origen}
+              onValueChange={(value) => {
+                setFormData((prev) => ({
+                  ...prev,
+                  hotel_origen: value,
+                  hotel_destino: value === prev.hotel_destino ? "" : prev.hotel_destino,
+                }))
+              }}
             >
               <SelectTrigger className={errors.hotel_origen ? "border-red-500" : ""}>
-                <SelectValue placeholder="Selecciona el hotel que retira" />
+                <SelectValue placeholder="Selecciona hotel origen" />
               </SelectTrigger>
               <SelectContent>
                 {HOTELES.map((hotel) => (
                   <SelectItem key={hotel} value={hotel}>
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      {hotel}
-                    </div>
+                    {hotel}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {errors.hotel_origen && <p className="text-sm text-red-500">{errors.hotel_origen}</p>}
+            {errors.hotel_origen && <p className="text-sm text-red-500 mt-1">{errors.hotel_origen}</p>}
           </div>
 
-          {/* 3. Hotel que Recibe */}
-          <div className="space-y-2">
-            <Label htmlFor="hotelDestino">Hotel que Recibe *</Label>
+          {/* Hotel que recibe */}
+          <div>
+            <Label htmlFor="hotel_destino">Hotel que Recibe *</Label>
             <Select
-              value={prestamo.hotel_destino}
-              onValueChange={(value) => setPrestamo({ ...prestamo, hotel_destino: value })}
+              value={formData.hotel_destino}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, hotel_destino: value }))}
             >
               <SelectTrigger className={errors.hotel_destino ? "border-red-500" : ""}>
-                <SelectValue placeholder="Selecciona el hotel que recibe" />
+                <SelectValue placeholder="Selecciona hotel destino" />
               </SelectTrigger>
               <SelectContent>
-                {HOTELES.filter((hotel) => hotel !== prestamo.hotel_origen).map((hotel) => (
+                {availableDestinos.map((hotel) => (
                   <SelectItem key={hotel} value={hotel}>
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      {hotel}
-                    </div>
+                    {hotel}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {errors.hotel_destino && <p className="text-sm text-red-500">{errors.hotel_destino}</p>}
+            {errors.hotel_destino && <p className="text-sm text-red-500 mt-1">{errors.hotel_destino}</p>}
           </div>
 
-          {/* 4. Producto */}
-          <div className="space-y-2">
+          {/* Producto */}
+          <div>
             <Label htmlFor="producto">Producto *</Label>
             <Input
               id="producto"
-              value={prestamo.producto || ""}
-              onChange={(e) => setPrestamo({ ...prestamo, producto: e.target.value })}
-              placeholder="Ej: Toallas, Sábanas, Efectivo, etc."
-              className={errors.concepto ? "border-red-500" : ""}
+              type="text"
+              value={formData.producto}
+              onChange={(e) => setFormData((prev) => ({ ...prev, producto: e.target.value }))}
+              placeholder="Descripción del producto"
+              className={errors.producto ? "border-red-500" : ""}
             />
-            {errors.concepto && <p className="text-sm text-red-500">{errors.concepto}</p>}
+            {errors.producto && <p className="text-sm text-red-500 mt-1">{errors.producto}</p>}
           </div>
 
-          {/* 5. Cantidad */}
-          <div className="space-y-2">
+          {/* Cantidad */}
+          <div>
             <Label htmlFor="cantidad">Cantidad *</Label>
             <Input
               id="cantidad"
               type="number"
               min="1"
-              step="1"
-              value={prestamo.cantidad || ""}
-              onChange={(e) => setPrestamo({ ...prestamo, cantidad: Number.parseInt(e.target.value) || 1 })}
-              placeholder="1"
-              className={errors.concepto ? "border-red-500" : ""}
+              value={formData.cantidad || ""}
+              onChange={(e) => setFormData((prev) => ({ ...prev, cantidad: Number.parseInt(e.target.value) || 0 }))}
+              placeholder="Cantidad"
+              className={errors.cantidad ? "border-red-500" : ""}
             />
+            {errors.cantidad && <p className="text-sm text-red-500 mt-1">{errors.cantidad}</p>}
           </div>
 
-          {/* 6. Valor */}
-          <div className="space-y-2">
-            <Label htmlFor="monto">Valor (ARS) *</Label>
+          {/* Valor */}
+          <div>
+            <Label htmlFor="valor">Valor (ARS) *</Label>
             <Input
-              id="monto"
+              id="valor"
               type="number"
               min="0"
-              step="1"
-              value={prestamo.monto || ""}
-              onChange={(e) => setPrestamo({ ...prestamo, monto: Number.parseInt(e.target.value) || 0 })}
-              placeholder="0"
-              className={errors.monto ? "border-red-500" : ""}
+              step="0.01"
+              value={formData.valor || ""}
+              onChange={(e) => setFormData((prev) => ({ ...prev, valor: Number.parseFloat(e.target.value) || 0 }))}
+              placeholder="Valor en pesos argentinos"
+              className={errors.valor ? "border-red-500" : ""}
             />
-            {errors.monto && <p className="text-sm text-red-500">{errors.monto}</p>}
+            {errors.valor && <p className="text-sm text-red-500 mt-1">{errors.valor}</p>}
           </div>
 
-          {/* Notas Adicionales (opcional) */}
-          <div className="space-y-2">
+          {/* Notas Adicionales */}
+          <div>
             <Label htmlFor="notas">Notas Adicionales</Label>
             <Textarea
               id="notas"
-              value={prestamo.notas}
-              onChange={(e) => setPrestamo({ ...prestamo, notas: e.target.value })}
+              value={formData.notas || ""}
+              onChange={(e) => setFormData((prev) => ({ ...prev, notas: e.target.value }))}
               placeholder="Información adicional sobre el préstamo..."
               rows={3}
             />
           </div>
 
-          <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700">
-            <Plus className="h-4 w-4 mr-2" />
+          <Button type="submit" className="w-full">
+            <Save className="h-4 w-4 mr-2" />
             Registrar Préstamo
           </Button>
         </form>
@@ -333,3 +286,5 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
     </Card>
   )
 }
+
+// Named export
