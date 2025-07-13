@@ -4,12 +4,32 @@ import type React from "react"
 import { MainNavigation } from "@/components/main-navigation"
 import { ChevronRight } from "lucide-react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
 
-export default function StockLayout({
+export default function PrestamosLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const pathname = usePathname()
+  const { user, signOut } = useAuth()
+
+  const handleLogout = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error)
+    }
+  }
+
+  const isActive = (href: string) => {
+    if (href === "/") {
+      return pathname === "/"
+    }
+    return pathname.startsWith(href)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <MainNavigation />
@@ -22,7 +42,7 @@ export default function StockLayout({
               Inicio
             </Link>
             <ChevronRight className="h-4 w-4 mx-2" />
-            <span className="text-gray-900 font-medium">Control de Stock</span>
+            <span className="text-gray-900 font-medium">Sistema de Préstamos</span>
           </div>
         </div>
       </div>

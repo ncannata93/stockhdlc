@@ -24,12 +24,12 @@ export enum UserRole {
   CUSTOM = "CUSTOM",
 }
 
-export type ModuleName = "stock" | "empleados" | "servicios" | "admin"
+export type ModuleName = "stock" | "empleados" | "servicios" | "admin" | "prestamos"
 
 // Configuración de permisos por rol (plantillas base)
 const ROLE_PERMISSIONS: Record<UserRole, ModuleName[]> = {
-  [UserRole.SUPER_ADMIN]: ["stock", "empleados", "servicios", "admin"],
-  [UserRole.MANAGER]: ["stock", "empleados", "servicios"],
+  [UserRole.SUPER_ADMIN]: ["stock", "empleados", "servicios", "admin", "prestamos"],
+  [UserRole.MANAGER]: ["stock", "empleados", "servicios", "prestamos"],
   [UserRole.EMPLOYEE]: ["stock", "empleados"],
   [UserRole.CUSTOM]: [], // Los permisos personalizados se definen individualmente
 }
@@ -475,6 +475,13 @@ export async function isUserAdmin(username: string): Promise<boolean> {
  */
 export async function canAccessServices(username: string): Promise<boolean> {
   return await canAccessModule(username, "servicios")
+}
+
+/**
+ * Verifica si un usuario puede acceder a préstamos
+ */
+export async function canAccessPrestamos(username: string): Promise<boolean> {
+  return await canAccessModule(username, "prestamos")
 }
 
 /**

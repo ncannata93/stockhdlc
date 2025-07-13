@@ -1,159 +1,181 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Loader2, User, Key, AlertTriangle, Info } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Eye, EyeOff, User, Lock, LogIn } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
-import { ensurePredefinedUsers } from "@/lib/local-auth"
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get("redirectTo") || "/stock"
   const { signIn, isAuthenticated, isLoading: authLoading } = useAuth()
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      ensurePredefinedUsers()
-    }
-  }, [])
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
 
+  // Redirigir si ya está autenticado
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      router.replace(redirectTo)
+      const redirectTo = searchParams.get("redirectTo") || "/"
+      router.push(redirectTo)
     }
-  }, [isAuthenticated, authLoading, redirectTo, router])
+  }, [isAuthenticated, authLoading, router, searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    setMessage(null)
+
+    if (!username.trim() || !password.trim()) {
+      setError("Por favor ingresa usuario y contraseña")
+      return
+    }
+
     setIsLoading(true)
+    setError("")
 
     try {
-      const result = await signIn(username, password)
+      const result = await signIn({ username: username.trim(), password })
 
       if (result.success) {
-        // La redirección se maneja en el useEffect
+        const redirectTo = searchParams.get("redirectTo") || "/"
+        router.push(redirectTo)
       } else {
-        setError(result.error || "Error al iniciar sesión")
+        setError(result.message || "Error de autenticación")
       }
     } catch (error) {
-      setError(`Error: ${error instanceof Error ? error.message : String(error)}`)
+      console.error("Error en login:", error)
+      setError("Error interno del sistema")
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Mostrar loading mientras verifica autenticación
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-medium text-gray-700">Cargando...</h2>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
+  // No mostrar nada si ya está autenticado (evita flash)
   if (isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-medium text-gray-700">Redirigiendo...</h2>
-        </div>
-      </div>
-    )
+    return null
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="p-6">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-800">HOTELES DE LA COSTA</h1>
-            <h2 className="text-lg text-gray-600">Sistema de Gestión de Stock</h2>
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900">HOTELES DE LA COSTA</h1>
+          <p className="mt-2 text-gray-600">Sistema de Gestión de Stock</p>
+        </div>
 
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 flex items-start">
-              <AlertTriangle className="h-5 w-5 text-red-600 mr-2 mt-0.5" />
-              <p className="text-red-700">{error}</p>
-            </div>
-          )}
+        {/* Formulario de Login */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-center">Iniciar Sesión</CardTitle>
+            <CardDescription className="text-center">Ingresa tus credenciales para acceder al sistema</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Error Alert */}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-          {message && (
-            <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6 flex items-start">
-              <Info className="h-5 w-5 text-green-600 mr-2 mt-0.5" />
-              <p className="text-green-700">{message}</p>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre de usuario
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400" />
+              {/* Campo Usuario */}
+              <div className="space-y-2">
+                <Label htmlFor="username">Nombre de usuario</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Ingresa tu usuario"
+                    className="pl-10"
+                    disabled={isLoading}
+                    autoComplete="username"
+                  />
                 </div>
-                <input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
               </div>
-            </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Contraseña
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Key className="h-5 w-5 text-gray-400" />
+              {/* Campo Contraseña */}
+              <div className="space-y-2">
+                <Label htmlFor="password">Contraseña</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Ingresa tu contraseña"
+                    className="pl-10 pr-10"
+                    disabled={isLoading}
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    disabled={isLoading}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
               </div>
-            </div>
 
-            <div className="flex flex-col space-y-2">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
+              {/* Botón Submit */}
+              <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
                   <>
-                    <Loader2 className="animate-spin h-5 w-5 mr-2" />
-                    Procesando...
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Iniciando sesión...
                   </>
                 ) : (
-                  "Iniciar sesión"
+                  <>
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Iniciar sesión
+                  </>
                 )}
-              </button>
+              </Button>
+            </form>
+
+            {/* Usuarios de prueba */}
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Usuarios de prueba:</h3>
+              <div className="text-xs text-gray-600 space-y-1">
+                <div>
+                  <strong>ncannata</strong> / nacho1234N (Admin)
+                </div>
+                <div>
+                  <strong>admin</strong> / admin123 (Admin)
+                </div>
+                <div>
+                  <strong>dpili</strong> / pili123 (Usuario)
+                </div>
+                <div>
+                  <strong>jprey</strong> / qw425540 (Usuario)
+                </div>
+              </div>
             </div>
-          </form>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
