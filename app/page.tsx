@@ -26,7 +26,7 @@ const modules = [
   },
   {
     title: "Servicios",
-    description: "Gestión de servicios y reservaciones",
+    description: "Gestión y pago de servicios",
     icon: Wrench,
     href: "/servicios",
     color: "bg-orange-500",

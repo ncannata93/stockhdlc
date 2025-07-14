@@ -49,10 +49,10 @@ export function IngresoRapido({ onPrestamosCreados }: IngresoRapidoProps) {
   const [prestamosParseados, setPrestamosParseados] = useState<PrestamoParseado[]>([])
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false)
 
-  // Ejemplo de formato
-  const ejemploTexto = `Nicolas Cannata, Jaguel, Monaco, Efectivo, 1, 50000
-Juan Manuel, Argentina, Falkner, Toallas, 20, 15000
-Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
+  // Ejemplo de formato con espacios
+  const ejemploTexto = `Nicolas Cannata Jaguel Monaco Efectivo 1 50000
+Juan Manuel Argentina Falkner Toallas 20 15000
+Nacho Stromboli San Miguel Sábanas 10 25000`
 
   // Verificar conexión al cargar
   useEffect(() => {
@@ -84,42 +84,54 @@ Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
     const prestamosParseados: PrestamoParseado[] = []
 
     lineas.forEach((linea, index) => {
-      const partes = linea.split(",").map((parte) => parte.trim())
+      // Dividir por espacios múltiples o espacios simples
+      const partes = linea.trim().split(/\s+/)
       const errores: string[] = []
 
       // Validar que tenga al menos 6 partes
       if (partes.length < 6) {
-        errores.push(`Faltan datos. Formato: Responsable, Hotel origen, Hotel destino, Producto, Cantidad, Valor`)
+        errores.push(`Faltan datos. Formato: Responsable HotelOrigen HotelDestino Producto Cantidad Valor`)
       }
 
-      const [responsable, hotelOrigen, hotelDestino, producto, cantidad, valorTexto] = partes
+      // Tomar las últimas 2 partes como cantidad y valor
+      const valor = partes[partes.length - 1]
+      const cantidad = partes[partes.length - 2]
+
+      // El producto puede ser múltiples palabras, tomar desde índice 3 hasta cantidad
+      const producto = partes.slice(3, partes.length - 2).join(" ")
+
+      // Los primeros 3 elementos
+      const responsable = partes[0] || ""
+      const hotelOrigen = partes[1] || ""
+      const hotelDestino = partes[2] || ""
 
       // Validaciones
       if (!responsable) errores.push("Responsable requerido")
       if (!hotelOrigen) errores.push("Hotel origen requerido")
       if (!hotelDestino) errores.push("Hotel destino requerido")
       if (!producto) errores.push("Producto requerido")
-      if (!valorTexto) errores.push("Valor requerido")
+      if (!cantidad) errores.push("Cantidad requerida")
+      if (!valor) errores.push("Valor requerido")
 
       if (hotelOrigen === hotelDestino) {
         errores.push("Hotel origen y destino no pueden ser iguales")
       }
 
       // Validar valor numérico
-      const valor = Number.parseFloat(valorTexto?.replace(/[^0-9.-]/g, "") || "0")
-      if (isNaN(valor) || valor <= 0) {
+      const valorNumerico = Number.parseFloat(valor?.replace(/[^0-9.-]/g, "") || "0")
+      if (isNaN(valorNumerico) || valorNumerico <= 0) {
         errores.push("Valor debe ser un número mayor a 0")
       }
 
       const prestamo: PrestamoParseado = {
         linea: index + 1,
         fecha: new Date().toISOString().split("T")[0], // Formato ISO yyyy-MM-dd
-        responsable: responsable || "",
-        hotel_origen: hotelOrigen || "",
-        hotel_destino: hotelDestino || "",
-        producto: producto || "",
-        cantidad: cantidad || "",
-        valor: valor,
+        responsable: responsable,
+        hotel_origen: hotelOrigen,
+        hotel_destino: hotelDestino,
+        producto: producto,
+        cantidad: cantidad,
+        valor: valorNumerico,
         estado: "pendiente",
         valido: errores.length === 0,
         errores,
@@ -229,7 +241,9 @@ Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
           </div>
           <div className="sm:ml-auto">{estadoConexion()}</div>
         </CardTitle>
-        <CardDescription className="text-sm">Ingresa múltiples préstamos de una vez usando formato CSV</CardDescription>
+        <CardDescription className="text-sm">
+          Ingresa múltiples préstamos de una vez separados por espacios
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {!conectado && (
@@ -256,7 +270,7 @@ Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
             <h4 className="font-medium text-blue-800 flex items-center gap-2 text-sm sm:text-base">
               <FileText className="h-3 w-3 sm:h-4 sm:w-4" />
-              Formato requerido
+              Formato requerido (separado por espacios)
             </h4>
             <Button
               variant="outline"
@@ -269,7 +283,10 @@ Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
             </Button>
           </div>
           <p className="text-xs sm:text-sm text-blue-700 mb-2">
-            <strong>Formato:</strong> Responsable, Hotel que retira, Hotel que recibe, Producto, Cantidad, Valor
+            <strong>Formato:</strong> Responsable HotelOrigen HotelDestino Producto Cantidad Valor
+          </p>
+          <p className="text-xs text-blue-600 mb-2">
+            <strong>Nota:</strong> Si el producto tiene múltiples palabras, se detectará automáticamente
           </p>
           <div className="bg-white p-2 sm:p-3 rounded border font-mono text-xs overflow-x-auto">
             <div className="whitespace-nowrap sm:whitespace-normal">
@@ -280,16 +297,23 @@ Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
               ))}
             </div>
           </div>
+          <div className="mt-2 text-xs text-blue-600">
+            <strong>Ejemplos con productos de múltiples palabras:</strong>
+            <div className="font-mono text-gray-600 mt-1">
+              <div>Nacho Monaco Jaguel Repuestos Lavarropas 2 85000</div>
+              <div>Juan Argentina Falkner Toallas de Baño 15 12000</div>
+            </div>
+          </div>
         </div>
 
         {/* Área de texto */}
         <div className="space-y-2">
           <Label htmlFor="texto-entrada" className="text-sm font-medium">
-            Datos de préstamos (una línea por préstamo)
+            Datos de préstamos (una línea por préstamo, separado por espacios)
           </Label>
           <Textarea
             id="texto-entrada"
-            placeholder="Pega aquí los datos de los préstamos..."
+            placeholder="Ejemplo: Nicolas Jaguel Monaco Efectivo 1 50000"
             value={textoEntrada}
             onChange={(e) => setTextoEntrada(e.target.value)}
             rows={6}

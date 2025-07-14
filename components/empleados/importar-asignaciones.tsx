@@ -40,11 +40,11 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
   const { getEmployees, saveEmployee, saveAssignment, getPaidWeeks, markWeekAsPaid } = useEmployeeDB()
   const { toast } = useToast()
 
-  // Ejemplo de formato
-  const exampleData = `01/04/2025	Tucu	San Miguel, Colores
-01/04/2025	Diego	San Miguel, Colores
-02/04/2025	Tucu	Monaco
-02/04/2025	Diego	Jaguel, Argentina`
+  // Ejemplo de formato actualizado con espacios simples
+  const exampleData = `01/04/2025 Tucu San Miguel, Colores
+01/04/2025 Diego San Miguel, Colores
+02/04/2025 Tucu Monaco
+02/04/2025 Diego Jaguel, Argentina`
 
   const parseData = () => {
     if (!textData.trim()) {
@@ -63,8 +63,8 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
       const trimmedLine = line.trim()
       if (!trimmedLine) return
 
-      // Separar por tabulación o múltiples espacios
-      const parts = trimmedLine.split(/\t+|\s{2,}/).map((p) => p.trim())
+      // Separar por un solo espacio - parsing inteligente
+      const parts = trimmedLine.split(" ").filter((part) => part.trim())
 
       const row: ParsedRow = {
         fecha: "",
@@ -74,12 +74,12 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         errors: [],
       }
 
-      // Validar que tenga al menos 3 partes
+      // Validar que tenga al menos 3 partes (fecha, empleado, al menos un hotel)
       if (parts.length < 3) {
         row.valid = false
-        row.errors.push(`Línea ${index + 1}: Formato incorrecto. Debe tener: Fecha, Empleado, Hoteles`)
+        row.errors.push(`Línea ${index + 1}: Formato incorrecto. Debe tener: Fecha Empleado Hoteles`)
       } else {
-        // Fecha
+        // Primera parte: Fecha
         const fechaPart = parts[0]
         if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fechaPart)) {
           row.valid = false
@@ -90,19 +90,51 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
           row.fecha = `${año}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`
         }
 
-        // Empleado
+        // Segunda parte: Empleado
         row.empleado = parts[1]
         if (!row.empleado) {
           row.valid = false
           row.errors.push(`Línea ${index + 1}: Nombre del empleado es requerido`)
         }
 
-        // Hoteles
+        // Resto: Hoteles (pueden estar separados por comas o ser múltiples palabras)
         const hotelesStr = parts.slice(2).join(" ")
-        row.hoteles = hotelesStr
-          .split(",")
-          .map((h) => h.trim())
-          .filter((h) => h)
+
+        // Si contiene comas, separar por comas
+        if (hotelesStr.includes(",")) {
+          row.hoteles = hotelesStr
+            .split(",")
+            .map((h) => h.trim())
+            .filter((h) => h)
+        } else {
+          // Si no hay comas, considerar cada palabra restante como un hotel separado
+          // Pero primero verificar si coincide con hoteles conocidos
+          const remainingParts = parts.slice(2)
+          const possibleHotels: string[] = []
+
+          // Intentar agrupar palabras para formar nombres de hoteles válidos
+          let currentHotel = ""
+          for (const part of remainingParts) {
+            if (currentHotel) {
+              currentHotel += " " + part
+            } else {
+              currentHotel = part
+            }
+
+            // Verificar si el hotel actual es válido
+            if (HOTELS.includes(currentHotel)) {
+              possibleHotels.push(currentHotel)
+              currentHotel = ""
+            }
+          }
+
+          // Si quedó algo sin procesar, agregarlo como hotel
+          if (currentHotel) {
+            possibleHotels.push(currentHotel)
+          }
+
+          row.hoteles = possibleHotels.filter((h) => h)
+        }
 
         if (row.hoteles.length === 0) {
           row.valid = false
@@ -364,17 +396,21 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             <AlertDescription>
               <div className="space-y-3">
                 <div>
-                  <strong>Formato esperado:</strong> Fecha (DD/MM/YYYY) + TAB + Nombre + TAB + Hoteles (separados por
-                  comas)
+                  <strong>Formato esperado:</strong> Fecha (DD/MM/YYYY) + ESPACIO + Nombre + ESPACIO + Hoteles
+                  (separados por comas o espacios)
                 </div>
                 <div>
                   <strong>Ejemplo:</strong>
                   <div className="mt-2 text-xs bg-gray-100 p-3 rounded-lg space-y-1 font-mono">
-                    <div className="break-all">01/04/2025 → Tucu → San Miguel, Colores</div>
-                    <div className="break-all">01/04/2025 → Diego → San Miguel, Colores</div>
-                    <div className="break-all">02/04/2025 → Tucu → Monaco</div>
-                    <div className="break-all">02/04/2025 → Diego → Jaguel, Argentina</div>
+                    <div className="break-all">01/04/2025 Tucu San Miguel, Colores</div>
+                    <div className="break-all">01/04/2025 Diego San Miguel, Colores</div>
+                    <div className="break-all">02/04/2025 Tucu Monaco</div>
+                    <div className="break-all">02/04/2025 Diego Jaguel, Argentina</div>
                   </div>
+                </div>
+                <div className="text-sm text-blue-600">
+                  <strong>💡 Nuevo:</strong> Ahora puedes separar con un solo espacio. Los hoteles pueden estar
+                  separados por comas o espacios.
                 </div>
               </div>
             </AlertDescription>
@@ -385,7 +421,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             <Textarea
               value={textData}
               onChange={(e) => setTextData(e.target.value)}
-              placeholder="Pega aquí los datos en el formato especificado..."
+              placeholder="Pega aquí los datos en el formato especificado...&#10;Ejemplo:&#10;01/04/2025 Tucu San Miguel, Colores&#10;01/04/2025 Diego Monaco&#10;02/04/2025 Nacho Jaguel, Argentina"
               rows={8}
               className="font-mono text-sm resize-none"
             />

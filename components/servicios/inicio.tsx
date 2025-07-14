@@ -310,6 +310,12 @@ export function Inicio() {
 
   return (
     <div className="space-y-6">
+      {/* Header con descripción corregida */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">Servicios</h1>
+        <p className="text-gray-600">Gestión y pago de servicios</p>
+      </div>
+
       {/* Estado de la Base de Datos */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex items-center justify-between">
