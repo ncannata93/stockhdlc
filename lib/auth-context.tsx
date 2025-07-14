@@ -8,6 +8,7 @@ interface User {
   username: string
   displayName: string
   role: string
+  email?: string
 }
 
 interface AuthContextType {
@@ -27,9 +28,30 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 // User database
 const users = [
-  { id: "1", username: "ncannata", password: "nacho1234N", displayName: "Nacho Cannata", role: "admin" },
-  { id: "2", username: "admin", password: "admin123", displayName: "Administrador", role: "admin" },
-  { id: "3", username: "dpili", password: "pili123", displayName: "Diego Pili", role: "manager" },
+  {
+    id: "1",
+    username: "ncannata",
+    password: "nacho1234N",
+    displayName: "Nacho Cannata",
+    role: "admin",
+    email: "ncannata@hotelescosta.com",
+  },
+  {
+    id: "2",
+    username: "admin",
+    password: "admin123",
+    displayName: "Administrador",
+    role: "admin",
+    email: "admin@hotelescosta.com",
+  },
+  {
+    id: "3",
+    username: "dpili",
+    password: "pili123",
+    displayName: "Diego Pili",
+    role: "manager",
+    email: "dpili@hotelescosta.com",
+  },
 ]
 
 // Helper function to convert username to email format
@@ -67,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           username: foundUser.username,
           displayName: foundUser.displayName,
           role: foundUser.role,
+          email: foundUser.email,
         }
 
         setUser(userWithoutPassword)

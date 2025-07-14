@@ -40,8 +40,8 @@ export default function LoginPage() {
           description: `Bienvenido, ${result.user?.displayName || username}`,
         })
 
-        // Force redirect to home page
-        window.location.href = "/"
+        // Usar router.push en lugar de window.location.href
+        router.push("/")
       } else {
         setError(result.error || "Error de autenticación")
         toast({

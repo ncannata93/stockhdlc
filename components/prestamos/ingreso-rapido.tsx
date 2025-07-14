@@ -113,7 +113,7 @@ Nacho, Stromboli, San Miguel, Sábanas, 10, 25000`
 
       const prestamo: PrestamoParseado = {
         linea: index + 1,
-        fecha: new Date().toLocaleDateString("es-AR"),
+        fecha: new Date().toISOString().split("T")[0], // Formato ISO yyyy-MM-dd
         responsable: responsable || "",
         hotel_origen: hotelOrigen || "",
         hotel_destino: hotelDestino || "",

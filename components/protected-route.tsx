@@ -18,7 +18,7 @@ export default function ProtectedRoute({ children, adminOnly = false, allowRedir
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && pathname !== "/login" && allowRedirect) {
-      router.replace(`/login?redirectTo=${encodeURIComponent(pathname)}`)
+      router.replace("/login")
       return
     }
 
@@ -28,7 +28,7 @@ export default function ProtectedRoute({ children, adminOnly = false, allowRedir
       const isAdmin = username === "admin" || username === "ncannata"
 
       if (!isAdmin && allowRedirect) {
-        router.replace("/stock")
+        router.replace("/")
         return
       }
     }
