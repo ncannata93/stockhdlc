@@ -101,11 +101,14 @@ export const crearPrestamo = async (prestamo: PrestamoInput): Promise<Prestamo |
     const valor =
       typeof prestamo.valor === "string" ? Number.parseFloat(prestamo.valor.replace(/[^0-9.-]/g, "")) : prestamo.valor
 
+    // Usar formato ISO para la fecha
+    const fechaISO = prestamo.fecha || new Date().toISOString().split("T")[0]
+
     const { data, error } = await supabase
       .from("prestamos")
       .insert([
         {
-          fecha: prestamo.fecha || new Date().toISOString().split("T")[0],
+          fecha: fechaISO,
           responsable: prestamo.responsable,
           hotel_origen: prestamo.hotel_origen,
           hotel_destino: prestamo.hotel_destino,

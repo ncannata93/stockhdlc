@@ -1,13 +1,13 @@
 "use client"
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -16,96 +16,103 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { List, Search, Filter, Trash2, Eye, AlertCircle, Cloud, WifiOff, Database, RefreshCw } from "lucide-react"
+import {
+  Search,
+  Filter,
+  Eye,
+  Trash2,
+  RefreshCw,
+  Calendar,
+  User,
+  ArrowRight,
+  Package,
+  DollarSign,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import {
   obtenerPrestamosFiltrados,
   obtenerHoteles,
   obtenerResponsables,
   eliminarPrestamo,
-  verificarConexion,
-  verificarTablaPrestamons,
   formatearMonto,
   type Prestamo,
   type FiltrosPrestamos,
 } from "@/lib/prestamos-supabase"
 
 interface ListaTransaccionesProps {
-  onPrestamoEditado?: () => void
+  onActualizar?: () => void
 }
 
-export function ListaTransacciones({ onPrestamoEditado }: ListaTransaccionesProps) {
+export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
   const { toast } = useToast()
+  const isMobile = useMediaQuery("(max-width: 768px)")
+
   const [prestamos, setPrestamos] = useState<Prestamo[]>([])
-  const [prestamosFiltrados, setPrestamosFiltrados] = useState<Prestamo[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [conectado, setConectado] = useState(false)
-  const [tablaExiste, setTablaExiste] = useState(false)
   const [hoteles, setHoteles] = useState<string[]>([])
   const [responsables, setResponsables] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(false)
   const [prestamoSeleccionado, setPrestamoSeleccionado] = useState<Prestamo | null>(null)
-  const [filtros, setFiltros] = useState<FiltrosPrestamos>({})
+  const [mostrarFiltros, setMostrarFiltros] = useState(!isMobile)
+
+  const [filtros, setFiltros] = useState<FiltrosPrestamos>({
+    busqueda: "",
+    hotel: "all",
+    estado: "all",
+    responsable: "all",
+  })
 
   // Cargar datos iniciales
   useEffect(() => {
-    const cargarDatos = async () => {
-      try {
-        const [conexion, tabla] = await Promise.all([verificarConexion(), verificarTablaPrestamons()])
-        setConectado(conexion.conectado)
-        setTablaExiste(tabla.existe)
-
-        if (conexion.conectado && tabla.existe) {
-          const [prestamosData, hotelesData, responsablesData] = await Promise.all([
-            obtenerPrestamosFiltrados({}),
-            obtenerHoteles(),
-            obtenerResponsables(),
-          ])
-          setPrestamos(prestamosData)
-          setPrestamosFiltrados(prestamosData)
-          setHoteles(hotelesData)
-          setResponsables(responsablesData)
-        } else {
-          // Usar datos predefinidos si no hay conexión o tabla
-          setHoteles([
-            "Jaguel",
-            "Monaco",
-            "Mallak",
-            "Argentina",
-            "Falkner",
-            "Stromboli",
-            "San Miguel",
-            "Colores",
-            "Puntarenas",
-            "Tupe",
-            "Munich",
-            "Tiburones",
-            "Barlovento",
-            "Carama",
-          ])
-          setResponsables(["Nicolas Cannata", "Juan Manuel", "Nacho", "Diego", "Administrador", "Gerente"])
-        }
-      } catch (error) {
-        console.error("Error al cargar datos:", error)
-        setConectado(false)
-        setTablaExiste(false)
-      }
-    }
     cargarDatos()
   }, [])
 
-  // Aplicar filtros
-  const aplicarFiltros = async () => {
-    if (!conectado || !tablaExiste) {
-      setPrestamosFiltrados([])
-      return
-    }
+  // Aplicar filtros cuando cambien
+  useEffect(() => {
+    aplicarFiltros()
+  }, [filtros])
 
+  const cargarDatos = async () => {
     setIsLoading(true)
     try {
-      const prestamosData = await obtenerPrestamosFiltrados(filtros)
-      setPrestamosFiltrados(prestamosData)
+      const [prestamosData, hotelesData, responsablesData] = await Promise.all([
+        obtenerPrestamosFiltrados({}),
+        obtenerHoteles(),
+        obtenerResponsables(),
+      ])
+
+      setPrestamos(prestamosData)
+      setHoteles(hotelesData)
+      setResponsables(responsablesData)
     } catch (error) {
-      console.error("Error al aplicar filtros:", error)
+      console.error("Error al cargar datos:", error)
+      toast({
+        title: "Error al cargar transacciones",
+        description: "No se pudieron cargar las transacciones",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const aplicarFiltros = async () => {
+    setIsLoading(true)
+    try {
+      const filtrosLimpios: FiltrosPrestamos = {}
+
+      if (filtros.busqueda) filtrosLimpios.busqueda = filtros.busqueda
+      if (filtros.hotel && filtros.hotel !== "all") filtrosLimpios.hotel = filtros.hotel
+      if (filtros.estado && filtros.estado !== "all") filtrosLimpios.estado = filtros.estado
+      if (filtros.responsable && filtros.responsable !== "all") filtrosLimpios.responsable = filtros.responsable
+
+      const prestamosData = await obtenerPrestamosFiltrados(filtrosLimpios)
+      setPrestamos(prestamosData)
+    } catch (error) {
+      console.error("Error al filtrar:", error)
       toast({
         title: "Error al filtrar",
         description: "No se pudieron aplicar los filtros",
@@ -116,152 +123,331 @@ export function ListaTransacciones({ onPrestamoEditado }: ListaTransaccionesProp
     }
   }
 
-  // Aplicar filtros cuando cambien
-  useEffect(() => {
-    aplicarFiltros()
-  }, [filtros, conectado, tablaExiste])
-
   const handleEliminar = async (id: string) => {
-    if (!confirm("¿Estás seguro de que quieres eliminar este préstamo?")) {
-      return
-    }
-
     try {
-      const eliminado = await eliminarPrestamo(id)
-      if (eliminado) {
-        toast({
-          title: "✅ Préstamo eliminado",
-          description: "El préstamo ha sido eliminado exitosamente",
-        })
-        aplicarFiltros()
-        onPrestamoEditado?.()
-      }
+      await eliminarPrestamo(id)
+      toast({
+        title: "✅ Transacción eliminada",
+        description: "La transacción ha sido eliminada correctamente",
+      })
+      aplicarFiltros()
+      onActualizar?.()
     } catch (error) {
-      console.error("Error al eliminar préstamo:", error)
+      console.error("Error al eliminar:", error)
       toast({
         title: "Error al eliminar",
-        description: "No se pudo eliminar el préstamo",
+        description: "No se pudo eliminar la transacción",
         variant: "destructive",
       })
     }
   }
 
-  const limpiarFiltros = () => {
-    setFiltros({})
+  const getEstadoBadge = (estado: string) => {
+    const variants = {
+      pendiente: "destructive" as const,
+      pagado: "default" as const,
+      cancelado: "secondary" as const,
+    }
+    return variants[estado as keyof typeof variants] || "default"
   }
 
-  const estadoConexion = () => {
-    if (!conectado) {
-      return (
-        <div className="flex items-center gap-1">
-          <WifiOff className="h-4 w-4 text-red-600" />
-          <span className="text-xs text-red-600">Sin conexión</span>
-        </div>
-      )
-    }
-
-    if (!tablaExiste) {
-      return (
-        <div className="flex items-center gap-1">
-          <Database className="h-4 w-4 text-orange-600" />
-          <span className="text-xs text-orange-600">Tabla no existe</span>
-        </div>
-      )
-    }
-
-    return (
-      <div className="flex items-center gap-1">
-        <Cloud className="h-4 w-4 text-green-600" />
-        <span className="text-xs text-green-600">Supabase OK</span>
-      </div>
-    )
+  const formatearFecha = (fecha: string) => {
+    return new Date(fecha).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
   }
 
-  const getBadgeVariant = (estado: string) => {
-    switch (estado) {
-      case "pendiente":
-        return "secondary"
-      case "pagado":
-        return "default"
-      case "cancelado":
-        return "destructive"
-      default:
-        return "outline"
-    }
-  }
+  // Vista móvil con tarjetas
+  const renderMobileView = () => (
+    <div className="space-y-4">
+      {prestamos.map((prestamo) => (
+        <Card key={prestamo.id} className="border-l-4 border-l-blue-500">
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              {/* Header con fecha y responsable */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Calendar className="h-4 w-4" />
+                  {formatearFecha(prestamo.fecha)}
+                </div>
+                <Badge variant={getEstadoBadge(prestamo.estado)}>{prestamo.estado}</Badge>
+              </div>
+
+              {/* Responsable */}
+              <div className="flex items-center gap-2 text-sm">
+                <User className="h-4 w-4 text-gray-500" />
+                <span className="font-medium">{prestamo.responsable}</span>
+              </div>
+
+              {/* Ruta origen → destino */}
+              <div className="flex items-center gap-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                    {prestamo.hotel_origen}
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-gray-400" />
+                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                    {prestamo.hotel_destino}
+                  </span>
+                </div>
+              </div>
+
+              {/* Producto y cantidad */}
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <Package className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium text-gray-900">{prestamo.producto}</span>
+                </div>
+                <div className="text-sm text-gray-600">Cantidad: {prestamo.cantidad}</div>
+              </div>
+
+              {/* Valor */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-green-600" />
+                  <span className="text-xl font-bold text-green-600">{formatearMonto(prestamo.valor)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="sm" onClick={() => setPrestamoSeleccionado(prestamo)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Detalle de Transacción</DialogTitle>
+                        <DialogDescription>Información completa de la transacción</DialogDescription>
+                      </DialogHeader>
+                      {prestamoSeleccionado && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-600">Fecha:</span>
+                              <p>{formatearFecha(prestamoSeleccionado.fecha)}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Estado:</span>
+                              <p>
+                                <Badge variant={getEstadoBadge(prestamoSeleccionado.estado)}>
+                                  {prestamoSeleccionado.estado}
+                                </Badge>
+                              </p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Responsable:</span>
+                              <p>{prestamoSeleccionado.responsable}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Valor:</span>
+                              <p className="font-bold text-green-600">{formatearMonto(prestamoSeleccionado.valor)}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Origen:</span>
+                              <p>{prestamoSeleccionado.hotel_origen}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Destino:</span>
+                              <p>{prestamoSeleccionado.hotel_destino}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="font-medium text-gray-600">Producto:</span>
+                              <p>{prestamoSeleccionado.producto}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="font-medium text-gray-600">Cantidad:</span>
+                              <p>{prestamoSeleccionado.cantidad}</p>
+                            </div>
+                            {prestamoSeleccionado.notas && (
+                              <div className="col-span-2">
+                                <span className="font-medium text-gray-600">Notas:</span>
+                                <p className="text-gray-800">{prestamoSeleccionado.notas}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </DialogContent>
+                  </Dialog>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEliminar(prestamo.id)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Notas si existen */}
+              {prestamo.notas && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-800">Notas:</p>
+                      <p className="text-sm text-yellow-700">{prestamo.notas}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+
+  // Vista de escritorio con tabla
+  const renderDesktopView = () => (
+    <div className="border rounded-lg">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Responsable</TableHead>
+            <TableHead>Origen</TableHead>
+            <TableHead>Destino</TableHead>
+            <TableHead>Producto</TableHead>
+            <TableHead>Cantidad</TableHead>
+            <TableHead>Valor</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Acciones</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {prestamos.map((prestamo) => (
+            <TableRow key={prestamo.id}>
+              <TableCell>{formatearFecha(prestamo.fecha)}</TableCell>
+              <TableCell className="font-medium">{prestamo.responsable}</TableCell>
+              <TableCell>{prestamo.hotel_origen}</TableCell>
+              <TableCell>{prestamo.hotel_destino}</TableCell>
+              <TableCell>{prestamo.producto}</TableCell>
+              <TableCell>{prestamo.cantidad}</TableCell>
+              <TableCell className="font-bold text-green-600">{formatearMonto(prestamo.valor)}</TableCell>
+              <TableCell>
+                <Badge variant={getEstadoBadge(prestamo.estado)}>{prestamo.estado}</Badge>
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-2">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="sm" onClick={() => setPrestamoSeleccionado(prestamo)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Detalle de Transacción</DialogTitle>
+                        <DialogDescription>Información completa de la transacción</DialogDescription>
+                      </DialogHeader>
+                      {prestamoSeleccionado && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-600">Fecha:</span>
+                              <p>{formatearFecha(prestamoSeleccionado.fecha)}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Estado:</span>
+                              <p>
+                                <Badge variant={getEstadoBadge(prestamoSeleccionado.estado)}>
+                                  {prestamoSeleccionado.estado}
+                                </Badge>
+                              </p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Responsable:</span>
+                              <p>{prestamoSeleccionado.responsable}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Valor:</span>
+                              <p className="font-bold text-green-600">{formatearMonto(prestamoSeleccionado.valor)}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Origen:</span>
+                              <p>{prestamoSeleccionado.hotel_origen}</p>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-600">Destino:</span>
+                              <p>{prestamoSeleccionado.hotel_destino}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="font-medium text-gray-600">Producto:</span>
+                              <p>{prestamoSeleccionado.producto}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="font-medium text-gray-600">Cantidad:</span>
+                              <p>{prestamoSeleccionado.cantidad}</p>
+                            </div>
+                            {prestamoSeleccionado.notas && (
+                              <div className="col-span-2">
+                                <span className="font-medium text-gray-600">Notas:</span>
+                                <p className="text-gray-800">{prestamoSeleccionado.notas}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </DialogContent>
+                  </Dialog>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEliminar(prestamo.id)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <List className="h-5 w-5 text-blue-600" />
+          <Search className="h-5 w-5 text-blue-600" />
           Lista de Transacciones
           <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={aplicarFiltros}
-              disabled={isLoading || !conectado || !tablaExiste}
-            >
+            <Button variant="outline" size="sm" onClick={cargarDatos} disabled={isLoading}>
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
-            {estadoConexion()}
+            {isMobile && (
+              <Button variant="outline" size="sm" onClick={() => setMostrarFiltros(!mostrarFiltros)}>
+                <Filter className="h-4 w-4" />
+                {mostrarFiltros ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
+              </Button>
+            )}
           </div>
         </CardTitle>
         <CardDescription>
-          Visualiza y gestiona todos los préstamos registrados ({prestamosFiltrados.length} transacciones)
+          Gestiona y visualiza todas las transacciones de préstamos ({prestamos.length} transacciones)
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {!conectado && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>Sin conexión a Supabase. No se pueden cargar las transacciones.</AlertDescription>
-          </Alert>
-        )}
-
-        {conectado && !tablaExiste && (
-          <Alert variant="destructive" className="mb-4">
-            <Database className="h-4 w-4" />
-            <AlertDescription>
-              La tabla 'prestamos' no existe en Supabase. Ejecuta el script 'create-prestamos-table-complete.sql'
-              primero.
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Filtros */}
-        <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-          <div className="flex items-center gap-2 mb-3">
-            <Filter className="h-4 w-4" />
-            <span className="font-medium">Filtros</span>
-            <Button variant="ghost" size="sm" onClick={limpiarFiltros}>
-              Limpiar
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Búsqueda */}
-            <div className="space-y-2">
-              <Label>Búsqueda</Label>
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
-                <Input
-                  placeholder="Buscar..."
-                  value={filtros.busqueda || ""}
-                  onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
-                  className="pl-8"
-                />
-              </div>
+        {mostrarFiltros && (
+          <div className={`mb-6 p-4 bg-gray-50 rounded-lg ${isMobile ? "space-y-4" : "grid grid-cols-4 gap-4"}`}>
+            <div>
+              <label className="block text-sm font-medium mb-1">Buscar</label>
+              <Input
+                placeholder="Buscar por producto, responsable..."
+                value={filtros.busqueda}
+                onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
+              />
             </div>
-
-            {/* Hotel */}
-            <div className="space-y-2">
-              <Label>Hotel</Label>
-              <Select
-                value={filtros.hotel || "all"}
-                onValueChange={(value) => setFiltros({ ...filtros, hotel: value === "all" ? undefined : value })}
-              >
+            <div>
+              <label className="block text-sm font-medium mb-1">Hotel</label>
+              <Select value={filtros.hotel} onValueChange={(value) => setFiltros({ ...filtros, hotel: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos los hoteles" />
                 </SelectTrigger>
@@ -275,14 +461,9 @@ export function ListaTransacciones({ onPrestamoEditado }: ListaTransaccionesProp
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Estado */}
-            <div className="space-y-2">
-              <Label>Estado</Label>
-              <Select
-                value={filtros.estado || "all"}
-                onValueChange={(value) => setFiltros({ ...filtros, estado: value === "all" ? undefined : value })}
-              >
+            <div>
+              <label className="block text-sm font-medium mb-1">Estado</label>
+              <Select value={filtros.estado} onValueChange={(value) => setFiltros({ ...filtros, estado: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos los estados" />
                 </SelectTrigger>
@@ -294,13 +475,11 @@ export function ListaTransacciones({ onPrestamoEditado }: ListaTransaccionesProp
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Responsable */}
-            <div className="space-y-2">
-              <Label>Responsable</Label>
+            <div>
+              <label className="block text-sm font-medium mb-1">Responsable</label>
               <Select
-                value={filtros.responsable || "all"}
-                onValueChange={(value) => setFiltros({ ...filtros, responsable: value === "all" ? undefined : value })}
+                value={filtros.responsable}
+                onValueChange={(value) => setFiltros({ ...filtros, responsable: value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Todos los responsables" />
@@ -316,147 +495,26 @@ export function ListaTransacciones({ onPrestamoEditado }: ListaTransaccionesProp
               </Select>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Tabla de transacciones */}
-        <div className="border rounded-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Responsable</TableHead>
-                <TableHead>Origen → Destino</TableHead>
-                <TableHead>Producto</TableHead>
-                <TableHead>Cantidad</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
-                    <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      Cargando transacciones...
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : prestamosFiltrados.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                    {conectado && tablaExiste
-                      ? "No hay transacciones que coincidan con los filtros"
-                      : "No hay datos disponibles"}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                prestamosFiltrados.map((prestamo) => (
-                  <TableRow key={prestamo.id}>
-                    <TableCell className="font-mono text-sm">{new Date(prestamo.fecha).toLocaleDateString()}</TableCell>
-                    <TableCell className="font-medium">{prestamo.responsable}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="text-blue-600 font-medium">{prestamo.hotel_origen}</span>
-                        <span>→</span>
-                        <span className="text-green-600 font-medium">{prestamo.hotel_destino}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{prestamo.producto}</TableCell>
-                    <TableCell>{prestamo.cantidad || "-"}</TableCell>
-                    <TableCell className="font-bold">{formatearMonto(prestamo.valor)}</TableCell>
-                    <TableCell>
-                      <Badge variant={getBadgeVariant(prestamo.estado)}>{prestamo.estado}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm" onClick={() => setPrestamoSeleccionado(prestamo)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Detalles del Préstamo</DialogTitle>
-                              <DialogDescription>Información completa de la transacción</DialogDescription>
-                            </DialogHeader>
-                            {prestamoSeleccionado && (
-                              <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                    <Label className="text-sm font-medium">Fecha</Label>
-                                    <p className="text-sm">
-                                      {new Date(prestamoSeleccionado.fecha).toLocaleDateString()}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium">Responsable</Label>
-                                    <p className="text-sm">{prestamoSeleccionado.responsable}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium">Hotel Origen</Label>
-                                    <p className="text-sm text-blue-600">{prestamoSeleccionado.hotel_origen}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium">Hotel Destino</Label>
-                                    <p className="text-sm text-green-600">{prestamoSeleccionado.hotel_destino}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium">Producto</Label>
-                                    <p className="text-sm">{prestamoSeleccionado.producto}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium">Cantidad</Label>
-                                    <p className="text-sm">{prestamoSeleccionado.cantidad || "No especificada"}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium">Valor</Label>
-                                    <p className="text-sm font-bold">{formatearMonto(prestamoSeleccionado.valor)}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium">Estado</Label>
-                                    <Badge variant={getBadgeVariant(prestamoSeleccionado.estado)}>
-                                      {prestamoSeleccionado.estado}
-                                    </Badge>
-                                  </div>
-                                </div>
-                                {prestamoSeleccionado.notas && (
-                                  <div>
-                                    <Label className="text-sm font-medium">Notas</Label>
-                                    <p className="text-sm bg-gray-50 p-2 rounded">{prestamoSeleccionado.notas}</p>
-                                  </div>
-                                )}
-                                <div className="text-xs text-gray-500">
-                                  <p>Creado: {new Date(prestamoSeleccionado.created_at).toLocaleString()}</p>
-                                  <p>Actualizado: {new Date(prestamoSeleccionado.updated_at).toLocaleString()}</p>
-                                </div>
-                              </div>
-                            )}
-                          </DialogContent>
-                        </Dialog>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEliminar(prestamo.id)}
-                          disabled={!conectado || !tablaExiste}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {conectado && tablaExiste && prestamosFiltrados.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600 text-center">
-            Mostrando {prestamosFiltrados.length} de {prestamos.length} transacciones
+        {/* Lista de transacciones */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Cargando transacciones...
+            </div>
           </div>
+        ) : prestamos.length === 0 ? (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>No se encontraron transacciones con los filtros aplicados.</AlertDescription>
+          </Alert>
+        ) : (
+          <>
+            {isMobile ? renderMobileView() : renderDesktopView()}
+            <div className="mt-4 text-sm text-gray-600 text-center">Mostrando {prestamos.length} transacciones</div>
+          </>
         )}
       </CardContent>
     </Card>
