@@ -49,9 +49,8 @@ export function IngresoRapido({ onPrestamosCreados }: IngresoRapidoProps) {
   const [prestamosParseados, setPrestamosParseados] = useState<PrestamoParseado[]>([])
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false)
 
-  // Ejemplo de formato con espacios
-  const ejemploTexto = `Nicolas Cannata Jaguel Monaco Efectivo 1 50000
-Juan Manuel Argentina Falkner Toallas 20 15000
+  // Ejemplo de formato con espacios - actualizado según solicitud
+  const ejemploTexto = `Juan Manuel Argentina Falkner Toallas 20 15000
 Nacho Stromboli San Miguel Sábanas 10 25000`
 
   // Verificar conexión al cargar
@@ -313,7 +312,7 @@ Nacho Stromboli San Miguel Sábanas 10 25000`
           </Label>
           <Textarea
             id="texto-entrada"
-            placeholder="Ejemplo: Nicolas Jaguel Monaco Efectivo 1 50000"
+            placeholder="Ejemplo: Juan Manuel Argentina Falkner Toallas 20 15000"
             value={textoEntrada}
             onChange={(e) => setTextoEntrada(e.target.value)}
             rows={6}
