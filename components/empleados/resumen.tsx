@@ -20,6 +20,10 @@ import {
   CheckCircle,
   BarChart3,
   Building2,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  DollarSign,
 } from "lucide-react"
 import { useEmployeeDB } from "@/lib/employee-db"
 import type { Employee, EmployeeAssignment } from "@/lib/employee-types"
@@ -30,6 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 import { getWeekRange } from "@/lib/week-utils"
 import { createClient } from "@supabase/supabase-js"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 const getHotelColor = (hotelName: string) => {
   const colors: Record<string, string> = {
@@ -179,6 +184,9 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [activeTab, setActiveTab] = useState("semanal")
 
+  // Estado para controlar qué empleados están expandidos
+  const [expandedEmployees, setExpandedEmployees] = useState<Set<number>>(new Set())
+
   // 🔒 REFS PARA PREVENIR CAMBIOS DURANTE OPERACIONES
   const operationInProgress = useRef(false)
   const mountedRef = useRef(false)
@@ -242,6 +250,9 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
         endDate.setDate(startDate.getDate() + 6)
         const endDateStr = endDate.toISOString().split("T")[0]
 
+        console.log(`📅 Rango de semana: ${weekStr} - ${endDateStr}`)
+
+        // Cargar datos en paralelo
         const [employeesData, allAssignmentsData, paidWeeksData] = await Promise.all([
           getEmployees(),
           getAssignments({}),
@@ -265,8 +276,10 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
         setPaidWeeks(paidWeeksData)
         setLastUpdate(Date.now())
 
-        console.log(`✅ Datos cargados: ${employeesData.length} empleados, ${finalAssignments.length} asignaciones`)
-        console.log(`📊 Semanas pagadas cargadas:`, paidWeeksData.length)
+        console.log(`✅ Datos cargados:`)
+        console.log(`   - Empleados: ${employeesData.length}`)
+        console.log(`   - Asignaciones: ${finalAssignments.length}`)
+        console.log(`   - Semanas pagadas: ${paidWeeksData.length}`)
         return true
       } catch (error) {
         console.error("❌ Error cargando datos:", error)
@@ -543,6 +556,19 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
     }
   }, [loadWeekData, onStatsChange])
 
+  // Función para alternar la expansión de un empleado
+  const toggleEmployeeExpansion = (employeeId: number) => {
+    setExpandedEmployees((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(employeeId)) {
+        newSet.delete(employeeId)
+      } else {
+        newSet.add(employeeId)
+      }
+      return newSet
+    })
+  }
+
   // 🧮 CALCULAR FECHAS ACTUALES
   const currentStartDate = safeParseDateString(persistentWeek)
   const currentEndDate = currentStartDate
@@ -643,112 +669,169 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
       return summary.daysWorked > 0
     })
 
-  // 📱 COMPONENTE PARA VISTA MÓVIL
-  const MobileEmployeeCard = ({ summary }: { summary: any }) => (
-    <Card key={`${summary.employee.id}-${lastUpdate}`} className="mb-4">
-      <CardContent className="p-4">
-        {/* Header con nombre y estado */}
-        <div className="flex justify-between items-start mb-3">
-          <div className="flex items-center gap-3">
-            <User className="h-5 w-5 text-blue-600 flex-shrink-0" />
-            <div>
-              <div className="font-semibold text-lg">{summary.employee.name}</div>
-              <div className="text-sm text-muted-foreground">{summary.employee.role}</div>
+  // 📱 COMPONENTE PARA VISTA MÓVIL CON DETALLES DESPLEGABLES
+  const MobileEmployeeCard = ({ summary }: { summary: any }) => {
+    const isExpanded = expandedEmployees.has(summary.employee.id)
+
+    return (
+      <Card key={`${summary.employee.id}-${lastUpdate}`} className="mb-4">
+        <Collapsible open={isExpanded} onOpenChange={() => toggleEmployeeExpansion(summary.employee.id)}>
+          <CardContent className="p-4">
+            {/* Header con nombre y estado */}
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex items-center gap-3">
+                <User className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                <div>
+                  <div className="font-semibold text-lg">{summary.employee.name}</div>
+                  <div className="text-sm text-muted-foreground">{summary.employee.role}</div>
+                </div>
+              </div>
+              <Badge
+                variant={summary.isPaid ? "default" : "outline"}
+                className={`text-sm ${
+                  summary.isPaid
+                    ? "bg-green-100 text-green-800 border-green-300"
+                    : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                }`}
+              >
+                {summary.isPaid ? (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    Pagada
+                  </>
+                ) : (
+                  <>
+                    <Clock className="h-4 w-4 mr-1" />
+                    Pendiente
+                  </>
+                )}
+              </Badge>
             </div>
-          </div>
-          <Badge
-            variant={summary.isPaid ? "default" : "outline"}
-            className={`text-sm ${
-              summary.isPaid
-                ? "bg-green-100 text-green-800 border-green-300"
-                : "bg-yellow-100 text-yellow-800 border-yellow-300"
-            }`}
-          >
-            {summary.isPaid ? (
-              <>
-                <CheckCircle className="h-4 w-4 mr-1" />
-                Pagada
-              </>
-            ) : (
-              <>
-                <Clock className="h-4 w-4 mr-1" />
-                Pendiente
-              </>
-            )}
-          </Badge>
-        </div>
 
-        {/* Información principal */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">{summary.daysWorked}</div>
-            <div className="text-sm text-muted-foreground">Días trabajados</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
-            <div className="text-sm text-muted-foreground">Total a pagar</div>
-          </div>
-        </div>
+            {/* Información principal */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{summary.daysWorked}</div>
+                <div className="text-sm text-muted-foreground">Días trabajados</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
+                <div className="text-sm text-muted-foreground">Total a pagar</div>
+              </div>
+            </div>
 
-        {/* Tarifa histórica */}
-        <div className="text-center mb-4 p-2 bg-gray-50 rounded">
-          <div className="text-sm font-medium">
-            ${Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
-          </div>
-          {summary.averageHistoricalRate !== summary.employee.daily_rate && (
-            <div className="text-xs text-orange-600">(Actual: ${summary.employee.daily_rate.toLocaleString()})</div>
-          )}
-        </div>
+            {/* Botón para expandir/colapsar detalles */}
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" className="w-full mb-4 bg-transparent">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                {isExpanded ? "Ocultar detalles" : "Ver detalles"}
+                {isExpanded ? <ChevronUp className="h-4 w-4 ml-2" /> : <ChevronDown className="h-4 w-4 ml-2" />}
+              </Button>
+            </CollapsibleTrigger>
 
-        {/* Hoteles */}
-        <div className="mb-4">
-          <div className="text-sm font-medium mb-2">Hoteles asignados:</div>
-          <div className="flex flex-wrap gap-1">
-            {summary.hotels.slice(0, 4).map((hotel: string) => (
-              <Badge key={hotel} className={`${getHotelColor(hotel)} text-xs`}>
-                {hotel}
-              </Badge>
-            ))}
-            {summary.hotels.length > 4 && (
-              <Badge variant="outline" className="text-xs">
-                +{summary.hotels.length - 4} más
-              </Badge>
-            )}
-          </div>
-        </div>
+            {/* Contenido desplegable con detalles */}
+            <CollapsibleContent className="space-y-4">
+              {/* Tarifa histórica */}
+              <div className="text-center p-3 bg-gray-50 rounded">
+                <div className="text-sm font-medium">
+                  ${Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
+                </div>
+                {summary.averageHistoricalRate !== summary.employee.daily_rate && (
+                  <div className="text-xs text-orange-600">
+                    (Actual: ${summary.employee.daily_rate.toLocaleString()})
+                  </div>
+                )}
+              </div>
 
-        {/* Botón de acción */}
-        <Button
-          variant={summary.isPaid ? "outline" : "default"}
-          size="lg"
-          onClick={() => {
-            console.log("🖱️ CLICK EN BOTÓN MÓVIL:", {
-              employeeId: summary.employee.id,
-              employeeName: summary.employee.name,
-              currentStatus: summary.isPaid ? "pagado" : "pendiente",
-              newStatus: summary.isPaid ? "pendiente" : "pagado",
-              amount: summary.totalAmount,
-            })
-            handlePaymentStatusChange(summary.employee.id, summary.isPaid ? "pendiente" : "pagado", summary.totalAmount)
-          }}
-          disabled={updatingPayment === summary.employee.id}
-          className={`w-full text-base py-3 ${
-            summary.isPaid
-              ? "bg-green-100 text-green-800 hover:bg-green-200 border-green-300"
-              : "bg-blue-600 hover:bg-blue-700 text-white"
-          }`}
-        >
-          {updatingPayment === summary.employee.id ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : summary.isPaid ? (
-            "✅ Marcar como Pendiente"
-          ) : (
-            "💰 Marcar como Pagado"
-          )}
-        </Button>
-      </CardContent>
-    </Card>
-  )
+              {/* Hoteles */}
+              <div>
+                <div className="text-sm font-medium mb-2">Hoteles asignados:</div>
+                <div className="flex flex-wrap gap-1">
+                  {summary.hotels.map((hotel: string) => (
+                    <Badge key={hotel} className={`${getHotelColor(hotel)} text-xs`}>
+                      {hotel}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Detalles por día */}
+              <div>
+                <div className="text-sm font-medium mb-2">Detalles por día:</div>
+                <div className="space-y-2">
+                  {summary.assignmentDetails
+                    .sort((a: any, b: any) => a.date.localeCompare(b.date))
+                    .map((detail: any) => (
+                      <div key={detail.date} className="bg-white border rounded p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-blue-600" />
+                            <span className="font-medium">{safeFormatDateString(detail.date)}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-4 w-4 text-green-600" />
+                            <span className="font-bold text-green-600">${detail.totalForDay.toLocaleString()}</span>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          {detail.assignments.map((assignment: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-3 w-3 text-gray-500" />
+                                <Badge className={`${getHotelColor(assignment.hotel_name)} text-xs`}>
+                                  {assignment.hotel_name}
+                                </Badge>
+                              </div>
+                              <span className="text-green-600 font-medium">
+                                ${(assignment.daily_rate_used || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </CollapsibleContent>
+
+            {/* Botón de acción */}
+            <Button
+              variant={summary.isPaid ? "outline" : "default"}
+              size="lg"
+              onClick={() => {
+                console.log("🖱️ CLICK EN BOTÓN MÓVIL:", {
+                  employeeId: summary.employee.id,
+                  employeeName: summary.employee.name,
+                  currentStatus: summary.isPaid ? "pagado" : "pendiente",
+                  newStatus: summary.isPaid ? "pendiente" : "pagado",
+                  amount: summary.totalAmount,
+                })
+                handlePaymentStatusChange(
+                  summary.employee.id,
+                  summary.isPaid ? "pendiente" : "pagado",
+                  summary.totalAmount,
+                )
+              }}
+              disabled={updatingPayment === summary.employee.id}
+              className={`w-full text-base py-3 mt-4 ${
+                summary.isPaid
+                  ? "bg-green-100 text-green-800 hover:bg-green-200 border-green-300"
+                  : "bg-blue-600 hover:bg-blue-700 text-white"
+              }`}
+            >
+              {updatingPayment === summary.employee.id ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : summary.isPaid ? (
+                "✅ Marcar como Pendiente"
+              ) : (
+                "💰 Marcar como Pagado"
+              )}
+            </Button>
+          </CardContent>
+        </Collapsible>
+      </Card>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -770,7 +853,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
               size="sm"
               onClick={reloadData}
               disabled={refreshing || operationInProgress.current}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-transparent"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               {refreshing ? "Actualizando..." : "Actualizar"}
@@ -788,7 +871,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                   variant="outline"
                   size="sm"
                   onClick={goToPreviousWeek}
-                  className="px-2"
+                  className="px-2 bg-transparent"
                   disabled={operationInProgress.current}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -804,7 +887,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                   variant="outline"
                   size="sm"
                   onClick={goToNextWeek}
-                  className="px-2"
+                  className="px-2 bg-transparent"
                   disabled={operationInProgress.current}
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -813,7 +896,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                   variant="outline"
                   size="sm"
                   onClick={goToCurrentWeek}
-                  className="px-2"
+                  className="px-2 bg-transparent"
                   disabled={operationInProgress.current}
                 >
                   <CalendarDays className="h-4 w-4" />
@@ -886,14 +969,14 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                   </CardContent>
                 </Card>
               ) : isMobile ? (
-                // Vista móvil con cards
+                // Vista móvil con cards desplegables
                 <div className="space-y-4">
                   {employeeSummary.map((summary) => (
                     <MobileEmployeeCard key={summary.employee.id} summary={summary} />
                   ))}
                 </div>
               ) : (
-                // Vista desktop con tabla
+                // Vista desktop con tabla desplegable
                 <Card>
                   <CardContent className="p-0">
                     <Table>
@@ -905,112 +988,184 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                           <TableHead className="w-[200px]">Hoteles</TableHead>
                           <TableHead className="text-center w-[100px]">Estado</TableHead>
                           <TableHead className="text-center w-[120px]">Acciones</TableHead>
+                          <TableHead className="text-center w-[80px]">Detalles</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {employeeSummary.map((summary) => (
-                          <TableRow key={`${summary.employee.id}-${lastUpdate}`}>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-blue-600" />
-                                <div>
-                                  <div className="font-medium">{summary.employee.name}</div>
-                                  <div className="text-xs text-muted-foreground">{summary.employee.role}</div>
-                                </div>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="text-center">
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                                {summary.daysWorked}
-                              </Badge>
-                            </TableCell>
-
-                            <TableCell className="text-center">
-                              <div className="font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
-                              <div className="text-xs text-muted-foreground">
-                                ${Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
-                                {summary.averageHistoricalRate !== summary.employee.daily_rate && (
-                                  <div className="text-xs text-orange-600">
-                                    (Actual: ${summary.employee.daily_rate.toLocaleString()})
+                          <>
+                            <TableRow key={`${summary.employee.id}-${lastUpdate}`}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4 text-blue-600" />
+                                  <div>
+                                    <div className="font-medium">{summary.employee.name}</div>
+                                    <div className="text-xs text-muted-foreground">{summary.employee.role}</div>
                                   </div>
-                                )}
-                              </div>
-                            </TableCell>
+                                </div>
+                              </TableCell>
 
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {summary.hotels.slice(0, 3).map((hotel) => (
-                                  <Badge key={hotel} className={`${getHotelColor(hotel)} text-xs`}>
-                                    {hotel}
-                                  </Badge>
-                                ))}
-                                {summary.hotels.length > 3 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    +{summary.hotels.length - 3}
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                                  {summary.daysWorked}
+                                </Badge>
+                              </TableCell>
 
-                            <TableCell className="text-center">
-                              <Badge
-                                variant={summary.isPaid ? "default" : "outline"}
-                                className={`text-xs ${
-                                  summary.isPaid
-                                    ? "bg-green-100 text-green-800 border-green-300"
-                                    : "bg-yellow-100 text-yellow-800 border-yellow-300"
-                                }`}
-                              >
-                                {summary.isPaid ? (
-                                  <>
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Pagada
-                                  </>
-                                ) : (
-                                  <>
-                                    <Clock className="h-3 w-3 mr-1" />
-                                    Pendiente
-                                  </>
-                                )}
-                              </Badge>
-                            </TableCell>
+                              <TableCell className="text-center">
+                                <div className="font-bold text-green-600">${summary.totalAmount.toLocaleString()}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  ${Math.round(summary.averageHistoricalRate).toLocaleString()}/día histórico
+                                  {summary.averageHistoricalRate !== summary.employee.daily_rate && (
+                                    <div className="text-xs text-orange-600">
+                                      (Actual: ${summary.employee.daily_rate.toLocaleString()})
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
 
-                            <TableCell className="text-center">
-                              <Button
-                                variant={summary.isPaid ? "outline" : "default"}
-                                size="sm"
-                                onClick={() => {
-                                  console.log("🖱️ CLICK EN BOTÓN:", {
-                                    employeeId: summary.employee.id,
-                                    employeeName: summary.employee.name,
-                                    currentStatus: summary.isPaid ? "pagado" : "pendiente",
-                                    newStatus: summary.isPaid ? "pendiente" : "pagado",
-                                    amount: summary.totalAmount,
-                                  })
-                                  handlePaymentStatusChange(
-                                    summary.employee.id,
-                                    summary.isPaid ? "pendiente" : "pagado",
-                                    summary.totalAmount,
-                                  )
-                                }}
-                                disabled={updatingPayment === summary.employee.id}
-                                className={`text-xs px-3 py-1 h-8 ${
-                                  summary.isPaid
-                                    ? "bg-green-100 text-green-800 hover:bg-green-200"
-                                    : "bg-blue-600 hover:bg-blue-700 text-white"
-                                }`}
-                              >
-                                {updatingPayment === summary.employee.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : summary.isPaid ? (
-                                  "✅ Pagado"
-                                ) : (
-                                  "💰 Pagar"
-                                )}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {summary.hotels.slice(0, 3).map((hotel) => (
+                                    <Badge key={hotel} className={`${getHotelColor(hotel)} text-xs`}>
+                                      {hotel}
+                                    </Badge>
+                                  ))}
+                                  {summary.hotels.length > 3 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{summary.hotels.length - 3}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+
+                              <TableCell className="text-center">
+                                <Badge
+                                  variant={summary.isPaid ? "default" : "outline"}
+                                  className={`text-xs ${
+                                    summary.isPaid
+                                      ? "bg-green-100 text-green-800 border-green-300"
+                                      : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                  }`}
+                                >
+                                  {summary.isPaid ? (
+                                    <>
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Pagada
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      Pendiente
+                                    </>
+                                  )}
+                                </Badge>
+                              </TableCell>
+
+                              <TableCell className="text-center">
+                                <Button
+                                  variant={summary.isPaid ? "outline" : "default"}
+                                  size="sm"
+                                  onClick={() => {
+                                    console.log("🖱️ CLICK EN BOTÓN:", {
+                                      employeeId: summary.employee.id,
+                                      employeeName: summary.employee.name,
+                                      currentStatus: summary.isPaid ? "pagado" : "pendiente",
+                                      newStatus: summary.isPaid ? "pendiente" : "pagado",
+                                      amount: summary.totalAmount,
+                                    })
+                                    handlePaymentStatusChange(
+                                      summary.employee.id,
+                                      summary.isPaid ? "pendiente" : "pagado",
+                                      summary.totalAmount,
+                                    )
+                                  }}
+                                  disabled={updatingPayment === summary.employee.id}
+                                  className={`text-xs px-3 py-1 h-8 ${
+                                    summary.isPaid
+                                      ? "bg-green-100 text-green-800 hover:bg-green-200"
+                                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                                  }`}
+                                >
+                                  {updatingPayment === summary.employee.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : summary.isPaid ? (
+                                    "✅ Pagado"
+                                  ) : (
+                                    "💰 Pagar"
+                                  )}
+                                </Button>
+                              </TableCell>
+
+                              <TableCell className="text-center">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleEmployeeExpansion(summary.employee.id)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  {expandedEmployees.has(summary.employee.id) ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+
+                            {/* Fila expandible con detalles */}
+                            {expandedEmployees.has(summary.employee.id) && (
+                              <TableRow>
+                                <TableCell colSpan={7} className="bg-gray-50 p-4">
+                                  <div className="space-y-4">
+                                    <h4 className="font-semibold text-sm flex items-center gap-2">
+                                      <BarChart3 className="h-4 w-4" />
+                                      Detalles de {summary.employee.name}
+                                    </h4>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {summary.assignmentDetails
+                                        .sort((a: any, b: any) => a.date.localeCompare(b.date))
+                                        .map((detail: any) => (
+                                          <div key={detail.date} className="bg-white border rounded p-3">
+                                            <div className="flex justify-between items-center mb-2">
+                                              <div className="flex items-center gap-2">
+                                                <Calendar className="h-4 w-4 text-blue-600" />
+                                                <span className="font-medium text-sm">
+                                                  {safeFormatDateString(detail.date)}
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-1">
+                                                <DollarSign className="h-4 w-4 text-green-600" />
+                                                <span className="font-bold text-green-600">
+                                                  ${detail.totalForDay.toLocaleString()}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                              {detail.assignments.map((assignment: any, idx: number) => (
+                                                <div key={idx} className="flex items-center justify-between text-sm">
+                                                  <div className="flex items-center gap-2">
+                                                    <MapPin className="h-3 w-3 text-gray-500" />
+                                                    <Badge
+                                                      className={`${getHotelColor(assignment.hotel_name)} text-xs`}
+                                                    >
+                                                      {assignment.hotel_name}
+                                                    </Badge>
+                                                  </div>
+                                                  <span className="text-green-600 font-medium">
+                                                    ${(assignment.daily_rate_used || 0).toLocaleString()}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </>
                         ))}
                       </TableBody>
                     </Table>
@@ -1018,6 +1173,7 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
                 </Card>
               )}
             </TabsContent>
+
             <TabsContent value="anual" className="mt-4">
               <Card>
                 <CardHeader>
