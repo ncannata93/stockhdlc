@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Settings, RefreshCw, CheckCircle, AlertTriangle, Info } from "lucide-react"
+import { getServices, updateServiceAverage, getServicePayments, addServicePayment } from "@/lib/service-db"
 
 export function Mantenimiento() {
   const [isRunning, setIsRunning] = useState(false)
@@ -18,16 +19,56 @@ export function Mantenimiento() {
 
   const updateAverages = async () => {
     setIsRunning(true)
-    addLog("Iniciando actualización de promedios...")
+    addLog("🔄 Iniciando actualización de promedios...")
 
     try {
-      // Simular proceso de actualización
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      // Obtener todos los servicios
+      const services = await getServices()
+      let serviciosActualizados = 0
 
-      addLog("✅ Promedios actualizados correctamente")
-      setStats((prev) => ({ ...prev, serviciosActualizados: prev.serviciosActualizados + 5 }))
+      for (const service of services) {
+        try {
+          // Obtener pagos abonados del servicio directamente
+          const allPayments = await getServicePayments(service.hotel_id)
+          const paidPayments = allPayments.filter((p) => p.service_id === service.id && p.status === "abonado")
+
+          if (paidPayments.length >= 1) {
+            // Calcular nuevo promedio
+            const totalAmount = paidPayments.reduce((sum, payment) => sum + payment.amount, 0)
+            const oldAverage = service.average_amount || 0
+            const newAverage = Math.round((totalAmount / paidPayments.length) * 100) / 100
+
+            if (Math.abs(newAverage - oldAverage) > 0.01) {
+              await updateServiceAverage(service.id)
+              addLog(
+                `✅ Promedio actualizado: ${service.name} (${service.hotel_name}) - Anterior: $${oldAverage.toLocaleString()} → Nuevo: $${newAverage.toLocaleString()} (basado en ${paidPayments.length} pagos)`,
+              )
+              serviciosActualizados++
+            } else {
+              addLog(
+                `ℹ️ Sin cambios: ${service.name} (${service.hotel_name}) - Promedio actual: $${oldAverage.toLocaleString()}`,
+              )
+            }
+          } else {
+            addLog(
+              `⚠️ Insuficientes datos: ${service.name} (${service.hotel_name}) - Solo ${paidPayments.length} pagos abonados`,
+            )
+          }
+        } catch (error) {
+          addLog(`❌ Error actualizando ${service.name}: ${error}`)
+          setStats((prev) => ({ ...prev, errores: prev.errores + 1 }))
+        }
+      }
+
+      if (serviciosActualizados > 0) {
+        addLog(`✅ Actualización completada: ${serviciosActualizados} servicios actualizados`)
+      } else {
+        addLog("ℹ️ No se requirieron actualizaciones de promedios")
+      }
+
+      setStats((prev) => ({ ...prev, serviciosActualizados: prev.serviciosActualizados + serviciosActualizados }))
     } catch (error) {
-      addLog("❌ Error al actualizar promedios")
+      addLog(`❌ Error general al actualizar promedios: ${error}`)
       setStats((prev) => ({ ...prev, errores: prev.errores + 1 }))
     } finally {
       setIsRunning(false)
@@ -36,30 +77,140 @@ export function Mantenimiento() {
 
   const generatePayments = async () => {
     setIsRunning(true)
-    addLog("Verificando pagos faltantes...")
+    addLog("🔍 Verificando pagos faltantes...")
 
     try {
-      // Simular proceso de generación
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const services = await getServices()
+      const currentDate = new Date()
+      const currentMonth = currentDate.getMonth() + 1
+      const currentYear = currentDate.getFullYear()
+      let pagosGenerados = 0
 
-      addLog("✅ Pagos generados correctamente")
-      setStats((prev) => ({ ...prev, pagosGenerados: prev.pagosGenerados + 12 }))
+      for (const service of services) {
+        try {
+          // Obtener todos los pagos del servicio directamente
+          const allPayments = await getServicePayments(service.hotel_id)
+          const servicePayments = allPayments.filter((p) => p.service_id === service.id)
+
+          if (servicePayments.length === 0) {
+            // Generar pagos desde el mes actual
+            const generatedCount = await generatePaymentsForService(service, currentMonth, currentYear, 12)
+            addLog(
+              `✅ Pagos generados: ${service.name} (${service.hotel_name}) - ${generatedCount} meses desde ${currentMonth}/${currentYear}`,
+            )
+            pagosGenerados += generatedCount
+            continue
+          }
+
+          // Encontrar el último pago
+          const lastPayment = servicePayments.reduce((latest, payment) => {
+            const paymentDate = new Date(payment.year, payment.month - 1)
+            const latestDate = new Date(latest.year, latest.month - 1)
+            return paymentDate > latestDate ? payment : latest
+          })
+
+          // Calcular meses hasta el último pago
+          const lastPaymentDate = new Date(lastPayment.year, lastPayment.month - 1)
+          const currentDateForComparison = new Date(currentYear, currentMonth - 1)
+          const monthsDiff =
+            (lastPaymentDate.getFullYear() - currentDateForComparison.getFullYear()) * 12 +
+            (lastPaymentDate.getMonth() - currentDateForComparison.getMonth())
+
+          if (monthsDiff < 3) {
+            // Generar pagos adicionales
+            const nextMonth = lastPayment.month === 12 ? 1 : lastPayment.month + 1
+            const nextYear = lastPayment.month === 12 ? lastPayment.year + 1 : lastPayment.year
+
+            const generatedCount = await generatePaymentsForService(service, nextMonth, nextYear, 12)
+            if (generatedCount > 0) {
+              addLog(
+                `✅ Pagos faltantes generados: ${service.name} (${service.hotel_name}) - ${generatedCount} pagos desde ${nextMonth}/${nextYear}`,
+              )
+              pagosGenerados += generatedCount
+            } else {
+              addLog(
+                `ℹ️ Sin pagos faltantes: ${service.name} (${service.hotel_name}) - Buffer suficiente hasta ${lastPayment.month}/${lastPayment.year}`,
+              )
+            }
+          } else {
+            addLog(
+              `ℹ️ Buffer suficiente: ${service.name} (${service.hotel_name}) - Pagos hasta ${lastPayment.month}/${lastPayment.year}`,
+            )
+          }
+        } catch (error) {
+          addLog(`❌ Error verificando ${service.name}: ${error}`)
+          setStats((prev) => ({ ...prev, errores: prev.errores + 1 }))
+        }
+      }
+
+      if (pagosGenerados > 0) {
+        addLog(`✅ Verificación completada: ${pagosGenerados} pagos faltantes generados`)
+      } else {
+        addLog("ℹ️ No se requirieron pagos adicionales")
+      }
+
+      setStats((prev) => ({ ...prev, pagosGenerados: prev.pagosGenerados + pagosGenerados }))
     } catch (error) {
-      addLog("❌ Error al generar pagos")
+      addLog(`❌ Error general al verificar pagos: ${error}`)
       setStats((prev) => ({ ...prev, errores: prev.errores + 1 }))
     } finally {
       setIsRunning(false)
     }
   }
 
+  const generatePaymentsForService = async (
+    service: any,
+    startMonth: number,
+    startYear: number,
+    monthsAhead: number,
+  ): Promise<number> => {
+    let generatedCount = 0
+
+    for (let i = 0; i < monthsAhead; i++) {
+      const month = ((startMonth - 1 + i) % 12) + 1
+      const year = startYear + Math.floor((startMonth - 1 + i) / 12)
+
+      // Verificar si ya existe un pago para este mes/año
+      const allPayments = await getServicePayments(service.hotel_id, { month, year })
+      const existingPayments = allPayments.filter((p) => p.service_id === service.id)
+
+      if (existingPayments.length === 0) {
+        // Generar fecha de vencimiento (día 10 del mismo mes)
+        const dueDate = `${year}-${month.toString().padStart(2, "0")}-10`
+
+        const newPayment = {
+          service_id: service.id,
+          service_name: service.name,
+          hotel_id: service.hotel_id,
+          hotel_name: service.hotel_name,
+          month,
+          year,
+          amount: service.average_amount || 0,
+          due_date: dueDate,
+          status: "pendiente" as const,
+          notes: "Generado automáticamente por mantenimiento",
+        }
+
+        try {
+          await addServicePayment(newPayment)
+          generatedCount++
+        } catch (error) {
+          console.error("Error creating payment:", error)
+        }
+      }
+    }
+
+    return generatedCount
+  }
+
   const runFullMaintenance = async () => {
     setLogs([])
     setStats({ serviciosActualizados: 0, pagosGenerados: 0, errores: 0 })
 
-    addLog("🔧 Iniciando mantenimiento completo...")
+    addLog("🔧 Iniciando mantenimiento completo del sistema...")
     await updateAverages()
     await generatePayments()
-    addLog("✅ Mantenimiento completo finalizado")
+    addLog("✅ Mantenimiento completo finalizado exitosamente")
   }
 
   const clearLogs = () => {
@@ -189,6 +340,7 @@ export function Mantenimiento() {
               <li>Los promedios se actualizan automáticamente al abonar pagos</li>
               <li>Los pagos se generan automáticamente cuando quedan menos de 3 meses</li>
               <li>Ejecuta el mantenimiento completo mensualmente para mejores resultados</li>
+              <li>El log muestra detalles específicos de cada operación realizada</li>
             </ul>
           </div>
         </div>
