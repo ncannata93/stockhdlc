@@ -1,1029 +1,457 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { DollarSign, Search, Filter, Edit, Trash2, Check } from "lucide-react"
 import {
   getServicePayments,
-  getHotels,
-  deleteServicePayment,
-  markPaymentAsPaid,
   updateServicePayment,
+  deleteServicePayment,
+  getHotels,
+  getServices,
 } from "@/lib/service-db"
-import type { ServicePayment, Hotel } from "@/lib/service-types"
-import { PAYMENT_METHODS } from "@/lib/service-types"
-import {
-  Trash2,
-  Edit,
-  Plus,
-  Search,
-  Building2,
-  DollarSign,
-  Calendar,
-  ChevronUp,
-  ChevronDown,
-  CreditCard,
-  Receipt,
-} from "lucide-react"
+import type { ServicePayment, Hotel, Service } from "@/lib/service-types"
 
-const MONTHS = {
-  1: "Enero",
-  2: "Febrero",
-  3: "Marzo",
-  4: "Abril",
-  5: "Mayo",
-  6: "Junio",
-  7: "Julio",
-  8: "Agosto",
-  9: "Septiembre",
-  10: "Octubre",
-  11: "Noviembre",
-  12: "Diciembre",
-}
+const MONTHS = [
+  { value: 1, label: "Enero" },
+  { value: 2, label: "Febrero" },
+  { value: 3, label: "Marzo" },
+  { value: 4, label: "Abril" },
+  { value: 5, label: "Mayo" },
+  { value: 6, label: "Junio" },
+  { value: 7, label: "Julio" },
+  { value: 8, label: "Agosto" },
+  { value: 9, label: "Septiembre" },
+  { value: 10, label: "Octubre" },
+  { value: 11, label: "Noviembre" },
+  { value: 12, label: "Diciembre" },
+]
 
-const STATUS_COLORS = {
-  pendiente: "bg-yellow-100 text-yellow-800",
-  abonado: "bg-green-100 text-green-800",
-  vencido: "bg-red-100 text-red-800",
-}
+const YEARS = [2024, 2025, 2026, 2027]
 
-const STATUS_LABELS = {
-  pendiente: "Pendiente",
-  abonado: "Abonado",
-  vencido: "Vencido",
-}
+const STATUS_OPTIONS = [
+  { value: "pendiente", label: "Pendiente", color: "bg-yellow-100 text-yellow-800" },
+  { value: "abonado", label: "Abonado", color: "bg-green-100 text-green-800" },
+  { value: "vencido", label: "Vencido", color: "bg-red-100 text-red-800" },
+]
+
+const PAYMENT_METHODS = [
+  { value: "efectivo", label: "Efectivo" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "cheque", label: "Cheque" },
+  { value: "tarjeta", label: "Tarjeta" },
+]
 
 export function PagosList() {
   const [payments, setPayments] = useState<ServicePayment[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
+  const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filterHotel, setFilterHotel] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
-  const [filterMonth, setFilterMonth] = useState("")
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString())
-
-  // Estado para ordenamiento
-  const [sortField, setSortField] = useState<string>("")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
-
-  // Estado para modal de pago
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [selectedPayment, setSelectedPayment] = useState<ServicePayment | null>(null)
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0])
-  const [invoiceNumber, setInvoiceNumber] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState("")
-
-  // Estado para modal de edición
-  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedHotel, setSelectedHotel] = useState<string>("all")
+  const [selectedMonth, setSelectedMonth] = useState<string>("all")
+  const [selectedYear, setSelectedYear] = useState<string>("all")
+  const [selectedStatus, setSelectedStatus] = useState<string>("all")
   const [editingPayment, setEditingPayment] = useState<ServicePayment | null>(null)
-  const [editFormData, setEditFormData] = useState({
-    serviceId: "",
-    serviceName: "",
-    hotelId: "",
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear(),
-    amount: "",
-    dueDate: "",
-    paymentDate: "",
-    status: "pendiente",
-    invoiceNumber: "",
-    paymentMethod: "",
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+
+  // Estados para el formulario de edición
+  const [editForm, setEditForm] = useState({
+    amount: 0,
+    payment_date: "",
+    invoice_number: "",
+    payment_method: "",
     notes: "",
+    status: "pendiente" as const,
   })
 
   useEffect(() => {
     loadData()
   }, [])
 
-  // Función para verificar si un pago está vencido
-  const isPaymentOverdue = (payment: ServicePayment): boolean => {
-    if (payment.status === "abonado") return false
-
-    try {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-
-      const [year, month, day] = payment.due_date.split("T")[0].split("-")
-      const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-      dueDate.setHours(0, 0, 0, 0)
-
-      return dueDate < today
-    } catch {
-      return false
-    }
-  }
-
-  // Función para actualizar estados de pagos vencidos
-  const updateOverduePayments = async (paymentsData: ServicePayment[]) => {
-    const updatedPayments = []
-    let hasUpdates = false
-
-    for (const payment of paymentsData) {
-      if (payment.status === "pendiente" && isPaymentOverdue(payment)) {
-        // Actualizar el pago a vencido en la base de datos
-        try {
-          await updateServicePayment(payment.id, { status: "vencido" })
-          updatedPayments.push({ ...payment, status: "vencido" as const })
-          hasUpdates = true
-          console.log(`Pago ${payment.id} marcado como vencido automáticamente`)
-        } catch (error) {
-          console.error(`Error actualizando pago ${payment.id}:`, error)
-          updatedPayments.push(payment)
-        }
-      } else {
-        updatedPayments.push(payment)
-      }
-    }
-
-    return { updatedPayments, hasUpdates }
-  }
-
   const loadData = async () => {
-    setLoading(true)
     try {
-      const [paymentsData, hotelsData] = await Promise.all([getServicePayments(), getHotels()])
+      setLoading(true)
+      const [paymentsData, hotelsData, servicesData] = await Promise.all([
+        getServicePayments(),
+        getHotels(),
+        getServices(),
+      ])
 
-      // Actualizar pagos vencidos automáticamente
-      const { updatedPayments, hasUpdates } = await updateOverduePayments(paymentsData)
-
-      setPayments(updatedPayments)
+      setPayments(paymentsData)
       setHotels(hotelsData)
-
-      if (hasUpdates) {
-        console.log("Se actualizaron pagos vencidos automáticamente")
-      }
+      setServices(servicesData)
     } catch (error) {
-      console.error("Error al cargar datos:", error)
+      console.error("Error loading data:", error)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSort = (field: string) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-    } else {
-      setSortField(field)
-      setSortDirection("asc")
+  const filteredPayments = payments.filter((payment) => {
+    const matchesSearch =
+      payment.service_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      payment.hotel_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      payment.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const matchesHotel = selectedHotel === "all" || payment.hotel_id === selectedHotel
+    const matchesMonth = selectedMonth === "all" || payment.month === Number.parseInt(selectedMonth)
+    const matchesYear = selectedYear === "all" || payment.year === Number.parseInt(selectedYear)
+    const matchesStatus = selectedStatus === "all" || payment.status === selectedStatus
+
+    return matchesSearch && matchesHotel && matchesMonth && matchesYear && matchesStatus
+  })
+
+  const handleEditPayment = (payment: ServicePayment) => {
+    setEditingPayment(payment)
+    setEditForm({
+      amount: payment.amount,
+      payment_date: payment.payment_date || "",
+      invoice_number: payment.invoice_number || "",
+      payment_method: payment.payment_method || "",
+      notes: payment.notes || "",
+      status: payment.status,
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingPayment) return
+
+    try {
+      await updateServicePayment(editingPayment.id, editForm)
+      await loadData()
+      setIsEditDialogOpen(false)
+      setEditingPayment(null)
+    } catch (error) {
+      console.error("Error updating payment:", error)
     }
   }
 
   const handleDeletePayment = async (id: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar este pago?")) {
+    if (confirm("¿Estás seguro de que quieres eliminar este pago?")) {
       try {
         await deleteServicePayment(id)
         await loadData()
       } catch (error) {
-        console.error("Error al eliminar pago:", error)
-        alert("Error al eliminar el pago")
+        console.error("Error deleting payment:", error)
       }
     }
   }
 
-  const handlePaymentClick = (payment: ServicePayment) => {
-    setSelectedPayment(payment)
-    setPaymentDate(new Date().toISOString().split("T")[0])
-    setInvoiceNumber("")
-    setPaymentMethod("")
-    setShowPaymentModal(true)
-  }
-
-  const handleEditClick = (payment: ServicePayment) => {
-    setEditingPayment(payment)
-    setEditFormData({
-      serviceId: payment.service_id,
-      serviceName: payment.service_name,
-      hotelId: payment.hotel_id,
-      month: payment.month,
-      year: payment.year,
-      amount: payment.amount.toString(),
-      dueDate: payment.due_date,
-      paymentDate: payment.payment_date || "",
-      status: payment.status,
-      invoiceNumber: payment.invoice_number || "",
-      paymentMethod: payment.payment_method || "",
-      notes: payment.notes || "",
-    })
-    setShowEditModal(true)
-  }
-
-  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setEditFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleUpdatePayment = async () => {
-    if (!editingPayment) return
-
+  const handleMarkAsPaid = async (payment: ServicePayment) => {
     try {
-      await updateServicePayment(editingPayment.id, {
-        service_id: editFormData.serviceId,
-        service_name: editFormData.serviceName,
-        hotel_id: editFormData.hotelId,
-        month: Number(editFormData.month),
-        year: Number(editFormData.year),
-        amount: Number(editFormData.amount),
-        due_date: editFormData.dueDate,
-        payment_date: editFormData.paymentDate || undefined,
-        status: editFormData.status,
-        invoice_number: editFormData.invoiceNumber || undefined,
-        payment_method: editFormData.paymentMethod || undefined,
-        notes: editFormData.notes,
+      await updateServicePayment(payment.id, {
+        status: "abonado",
+        payment_date: new Date().toISOString().split("T")[0],
       })
-
-      setShowEditModal(false)
-      setEditingPayment(null)
       await loadData()
     } catch (error) {
-      console.error("Error al actualizar pago:", error)
-      alert("Error al actualizar el pago. Intente nuevamente.")
+      console.error("Error marking payment as paid:", error)
     }
   }
 
-  const getMonthName = (month: number) => {
-    const months = [
-      "Enero",
-      "Febrero",
-      "Marzo",
-      "Abril",
-      "Mayo",
-      "Junio",
-      "Julio",
-      "Agosto",
-      "Septiembre",
-      "Octubre",
-      "Noviembre",
-      "Diciembre",
-    ]
-    return months[month - 1]
-  }
-
-  const handleMarkAsPaid = async () => {
-    if (!selectedPayment) return
-
-    try {
-      await markPaymentAsPaid(selectedPayment.id, paymentDate, invoiceNumber)
-
-      // También actualizar el método de pago si se proporcionó
-      if (paymentMethod) {
-        await updateServicePayment(selectedPayment.id, {
-          payment_method: paymentMethod,
-        })
-      }
-
-      setShowPaymentModal(false)
-      setSelectedPayment(null)
-      await loadData()
-    } catch (error) {
-      console.error("Error al marcar como pagado:", error)
-      alert("Error al marcar el pago como abonado")
-    }
-  }
-
-  const formatDate = (dateString: string) => {
-    try {
-      // Crear fecha sin conversión de zona horaria
-      const [year, month, day] = dateString.split("T")[0].split("-")
-      const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-      return date.toLocaleDateString("es-AR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        timeZone: "UTC",
-      })
-    } catch {
-      return "Fecha inválida"
-    }
+  const getStatusBadge = (status: string) => {
+    const statusOption = STATUS_OPTIONS.find((option) => option.value === status)
+    return <Badge className={statusOption?.color || "bg-gray-100 text-gray-800"}>{statusOption?.label || status}</Badge>
   }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
       currency: "ARS",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-      .format(amount)
-      .replace("ARS", "$")
+    }).format(amount)
   }
 
-  const getStatusBadge = (status: string) => {
-    const colorClass = STATUS_COLORS[status as keyof typeof STATUS_COLORS] || "bg-gray-100 text-gray-800"
-    const label = STATUS_LABELS[status as keyof typeof STATUS_LABELS] || status
-
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-        {label}
-      </span>
-    )
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "-"
+    return new Date(dateString).toLocaleDateString("es-AR")
   }
 
-  const getPaymentMethodLabel = (method?: string) => {
-    if (!method) return ""
-    return PAYMENT_METHODS[method as keyof typeof PAYMENT_METHODS] || method
+  const getMonthName = (month: number) => {
+    return MONTHS.find((m) => m.value === month)?.label || month.toString()
   }
 
-  const filteredPayments = payments.filter((payment) => {
-    const matchesSearch =
-      payment.service_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (payment.hotel_name && payment.hotel_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      payment.amount.toString().includes(searchTerm)
-
-    const matchesHotel = filterHotel === "" || payment.hotel_id === filterHotel
-    const matchesStatus = filterStatus === "" || payment.status === filterStatus
-    const matchesMonth = filterMonth === "" || payment.month.toString() === filterMonth
-    const matchesYear = filterYear === "" || payment.year.toString() === filterYear
-
-    return matchesSearch && matchesHotel && matchesStatus && matchesMonth && matchesYear
-  })
-
-  // Ordenar los pagos según el campo y dirección seleccionados
-  const sortedPayments = [...filteredPayments].sort((a, b) => {
-    if (!sortField) return 0
-
-    let aValue: any = a[sortField as keyof ServicePayment]
-    let bValue: any = b[sortField as keyof ServicePayment]
-
-    // Manejar casos especiales
-    if (sortField === "hotel_name") {
-      aValue = a.hotel_name || ""
-      bValue = b.hotel_name || ""
-    } else if (sortField === "period") {
-      // Ordenar por año y mes
-      const aYearMonth = `${a.year}-${a.month.toString().padStart(2, "0")}`
-      const bYearMonth = `${b.year}-${b.month.toString().padStart(2, "0")}`
-      aValue = aYearMonth
-      bValue = bYearMonth
-    } else if (sortField === "amount") {
-      // Asegurar que son números
-      aValue = Number(aValue)
-      bValue = Number(bValue)
-    } else if (sortField === "due_date") {
-      // Convertir fechas a timestamps para comparación
-      aValue = new Date(aValue).getTime()
-      bValue = new Date(bValue).getTime()
-    } else if (sortField === "payment_date") {
-      // Ordenar por fecha de pago - los sin fecha van al final
-      if (!a.payment_date && !b.payment_date) return 0
-      if (!a.payment_date) return sortDirection === "asc" ? 1 : -1
-      if (!b.payment_date) return sortDirection === "asc" ? -1 : 1
-      aValue = new Date(a.payment_date).getTime()
-      bValue = new Date(b.payment_date).getTime()
-    } else if (sortField === "payment_method") {
-      // Ordenar por forma de pago - los sin método van al final
-      if (!a.payment_method && !b.payment_method) return 0
-      if (!a.payment_method) return sortDirection === "asc" ? 1 : -1
-      if (!b.payment_method) return sortDirection === "asc" ? -1 : 1
-      aValue = getPaymentMethodLabel(a.payment_method)
-      bValue = getPaymentMethodLabel(b.payment_method)
-    }
-
-    // Comparar valores
-    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1
-    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1
-    return 0
-  })
-
-  // Renderizar indicador de ordenamiento
-  const renderSortIndicator = (field: string) => {
-    if (sortField !== field) return null
-
-    return sortDirection === "asc" ? (
-      <ChevronUp className="h-4 w-4 inline-block ml-1" />
-    ) : (
-      <ChevronDown className="h-4 w-4 inline-block ml-1" />
-    )
+  const clearFilters = () => {
+    setSearchTerm("")
+    setSelectedHotel("all")
+    setSelectedMonth("all")
+    setSelectedYear("all")
+    setSelectedStatus("all")
   }
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
+      <Card>
+        <CardContent className="p-6">
+          <div className="text-center">Cargando pagos...</div>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      {/* Header con filtros */}
-      <div className="p-4 sm:p-6 border-b border-gray-200">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Pagos de Servicios</h2>
-
-          <button
-            onClick={() => (window.location.href = "/servicios?tab=agregar-pago")}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Agregar Pago
-          </button>
-        </div>
-
-        {/* Filtros */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-          {/* Búsqueda */}
-          <div className="lg:col-span-2">
+    <div className="space-y-6">
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Buscar pagos..."
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
               />
             </div>
-          </div>
 
-          {/* Filtro por Hotel */}
-          <div>
-            <select
-              value={filterHotel}
-              onChange={(e) => setFilterHotel(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los hoteles</option>
-              {hotels.map((hotel) => (
-                <option key={hotel.id} value={hotel.id}>
-                  {hotel.name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <Select value={selectedHotel} onValueChange={setSelectedHotel}>
+              <SelectTrigger>
+                <SelectValue placeholder="Hotel" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los hoteles</SelectItem>
+                {hotels.map((hotel) => (
+                  <SelectItem key={hotel.id} value={hotel.id}>
+                    {hotel.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {/* Filtro por Estado */}
-          <div>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los estados</option>
-              <option value="pendiente">Pendiente</option>
-              <option value="abonado">Abonado</option>
-              <option value="vencido">Vencido</option>
-            </select>
-          </div>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger>
+                <SelectValue placeholder="Mes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los meses</SelectItem>
+                {MONTHS.map((month) => (
+                  <SelectItem key={month.value} value={month.value.toString()}>
+                    {month.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {/* Filtro por Mes */}
-          <div>
-            <select
-              value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los meses</option>
-              {Object.entries(MONTHS).map(([num, name]) => (
-                <option key={num} value={num}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger>
+                <SelectValue placeholder="Año" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los años</SelectItem>
+                {YEARS.map((year) => (
+                  <SelectItem key={year} value={year.toString()}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {/* Filtro por Año */}
-          <div>
-            <select
-              value={filterYear}
-              onChange={(e) => setFilterYear(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los años</option>
-              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger>
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los estados</SelectItem>
+                {STATUS_OPTIONS.map((status) => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button variant="outline" onClick={clearFilters}>
+              Limpiar
+            </Button>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Lista de pagos */}
-      {filteredPayments.length === 0 ? (
-        <div className="p-6 text-center">
-          <p className="text-gray-500">No hay pagos que coincidan con los filtros seleccionados</p>
-        </div>
-      ) : (
-        <>
-          {/* Vista desktop - Tabla */}
-          <div className="hidden lg:block overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("hotel_name")}
-                  >
-                    Hotel {renderSortIndicator("hotel_name")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("service_name")}
-                  >
-                    Servicio {renderSortIndicator("service_name")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("period")}
-                  >
-                    Período {renderSortIndicator("period")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("amount")}
-                  >
-                    Monto {renderSortIndicator("amount")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("due_date")}
-                  >
-                    Vencimiento {renderSortIndicator("due_date")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("status")}
-                  >
-                    Estado {renderSortIndicator("status")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("payment_date")}
-                  >
-                    Fecha Pago {renderSortIndicator("payment_date")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("payment_method")}
-                  >
-                    Forma de Pago {renderSortIndicator("payment_method")}
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {sortedPayments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Building2 className="h-4 w-4 text-blue-600 mr-2" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {payment.hotel_name || "Hotel no encontrado"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{payment.service_name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {MONTHS[payment.month as keyof typeof MONTHS]} {payment.year}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <DollarSign className="h-4 w-4 text-green-600 mr-1" />
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(payment.amount)}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Calendar className="h-4 w-4 text-gray-400 mr-1" />
-                        <span className="text-sm text-gray-900">{formatDate(payment.due_date)}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(payment.status)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {payment.payment_date ? (
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 text-green-600 mr-1" />
-                          <span className="text-sm text-gray-900">{formatDate(payment.payment_date)}</span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {payment.payment_method ? (
-                        <div className="flex items-center">
-                          <CreditCard className="h-4 w-4 text-blue-600 mr-1" />
-                          <span className="text-sm font-medium text-gray-900">
-                            {getPaymentMethodLabel(payment.payment_method)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-2">
-                        {(payment.status === "pendiente" || payment.status === "vencido") && (
-                          <button
-                            className="text-green-600 hover:text-green-900"
-                            onClick={() => handlePaymentClick(payment)}
-                            title="Marcar como pagado"
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Pagos de Servicios ({filteredPayments.length})
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filteredPayments.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">No se encontraron pagos con los filtros aplicados</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Servicio</TableHead>
+                    <TableHead>Hotel</TableHead>
+                    <TableHead>Período</TableHead>
+                    <TableHead>Monto</TableHead>
+                    <TableHead>Vencimiento</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Fecha Pago</TableHead>
+                    <TableHead>Factura</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredPayments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell className="font-medium">{payment.service_name}</TableCell>
+                      <TableCell>{payment.hotel_name}</TableCell>
+                      <TableCell>
+                        {getMonthName(payment.month)} {payment.year}
+                      </TableCell>
+                      <TableCell className="font-mono">{formatCurrency(payment.amount)}</TableCell>
+                      <TableCell>{formatDate(payment.due_date)}</TableCell>
+                      <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                      <TableCell>{formatDate(payment.payment_date || "")}</TableCell>
+                      <TableCell className="font-mono text-sm">{payment.invoice_number || "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {payment.status === "pendiente" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleMarkAsPaid(payment)}
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" onClick={() => handleEditPayment(payment)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeletePayment(payment.id)}
+                            className="text-red-600 hover:text-red-700"
                           >
-                            <CreditCard className="h-5 w-5" />
-                          </button>
-                        )}
-                        <button
-                          className="text-blue-600 hover:text-blue-900"
-                          onClick={() => handleEditClick(payment)}
-                          title="Editar pago"
-                        >
-                          <Edit className="h-5 w-5" />
-                        </button>
-                        <button
-                          className="text-red-600 hover:text-red-900"
-                          onClick={() => handleDeletePayment(payment.id)}
-                          title="Eliminar pago"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Vista móvil - Tarjetas */}
-          <div className="lg:hidden">
-            <div className="space-y-4 p-4">
-              {sortedPayments.map((payment) => (
-                <div key={payment.id} className="bg-white border rounded-lg shadow-sm p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <div className="flex items-center mb-1">
-                        <Building2 className="h-4 w-4 text-blue-600 mr-2" />
-                        <span className="text-sm font-medium text-blue-600">
-                          {payment.hotel_name || "Hotel no encontrado"}
-                        </span>
-                      </div>
-                      <h3 className="text-lg font-medium text-gray-900">{payment.service_name}</h3>
-                      <p className="text-sm text-gray-600">
-                        {MONTHS[payment.month as keyof typeof MONTHS]} {payment.year}
-                      </p>
-                    </div>
-                    <div className="flex space-x-2">
-                      {(payment.status === "pendiente" || payment.status === "vencido") && (
-                        <button
-                          className="text-green-600 hover:text-green-900"
-                          onClick={() => handlePaymentClick(payment)}
-                          title="Marcar como pagado"
-                        >
-                          <CreditCard className="h-5 w-5" />
-                        </button>
-                      )}
-                      <button className="text-blue-600 hover:text-blue-900" onClick={() => handleEditClick(payment)}>
-                        <Edit className="h-5 w-5" />
-                      </button>
-                      <button
-                        className="text-red-600 hover:text-red-900"
-                        onClick={() => handleDeletePayment(payment.id)}
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Monto:</span>
-                      <div className="flex items-center">
-                        <DollarSign className="h-4 w-4 text-green-600 mr-1" />
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(payment.amount)}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Vencimiento:</span>
-                      <div className="flex items-center">
-                        <Calendar className="h-4 w-4 text-gray-400 mr-1" />
-                        <span className="text-sm text-gray-900">{formatDate(payment.due_date)}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Estado:</span>
-                      {getStatusBadge(payment.status)}
-                    </div>
-
-                    {payment.status === "abonado" && (
-                      <>
-                        {payment.payment_date && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-500">Fecha de Pago:</span>
-                            <div className="flex items-center">
-                              <Calendar className="h-4 w-4 text-green-600 mr-1" />
-                              <span className="text-sm text-gray-900">{formatDate(payment.payment_date)}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {payment.payment_method && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-500">Forma de Pago:</span>
-                            <div className="flex items-center">
-                              <CreditCard className="h-4 w-4 text-blue-600 mr-1" />
-                              <span className="text-sm font-medium text-gray-900">
-                                {getPaymentMethodLabel(payment.payment_method)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {payment.invoice_number && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-500">Comprobante:</span>
-                            <div className="flex items-center">
-                              <Receipt className="h-4 w-4 text-gray-400 mr-1" />
-                              <span className="text-sm text-gray-900">{payment.invoice_number}</span>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Modal de pago */}
-      {showPaymentModal && selectedPayment && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Marcar como Pagado</h3>
-
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-600">
-                  <strong>Servicio:</strong> {selectedPayment.service_name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Hotel:</strong> {selectedPayment.hotel_name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Período:</strong> {MONTHS[selectedPayment.month as keyof typeof MONTHS]}{" "}
-                  {selectedPayment.year}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Monto:</strong> {formatCurrency(selectedPayment.amount)}
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="paymentDate" className="block text-sm font-medium text-gray-700 mb-1">
-                  Fecha de Pago *
-                </label>
-                <input
-                  type="date"
-                  id="paymentDate"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700 mb-1">
-                  Forma de Pago *
-                </label>
-                <select
-                  id="paymentMethod"
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Seleccione forma de pago</option>
-                  {Object.entries(PAYMENT_METHODS).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </select>
-              </div>
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-              <div>
-                <label htmlFor="invoiceNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                  Número de Comprobante
-                </label>
-                <input
-                  type="text"
-                  id="invoiceNumber"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  placeholder="Ej: 001-001-0000123"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+      {/* Dialog de edición */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Pago</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="amount">Monto</Label>
+              <Input
+                id="amount"
+                type="number"
+                value={editForm.amount}
+                onChange={(e) => setEditForm({ ...editForm, amount: Number.parseFloat(e.target.value) || 0 })}
+              />
             </div>
 
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowPaymentModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+            <div>
+              <Label htmlFor="status">Estado</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={(value: any) => setEditForm({ ...editForm, status: value })}
               >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((status) => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="payment_date">Fecha de Pago</Label>
+              <Input
+                id="payment_date"
+                type="date"
+                value={editForm.payment_date}
+                onChange={(e) => setEditForm({ ...editForm, payment_date: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="invoice_number">Número de Factura</Label>
+              <Input
+                id="invoice_number"
+                value={editForm.invoice_number}
+                onChange={(e) => setEditForm({ ...editForm, invoice_number: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="payment_method">Método de Pago</Label>
+              <Select
+                value={editForm.payment_method}
+                onValueChange={(value) => setEditForm({ ...editForm, payment_method: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar método" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((method) => (
+                    <SelectItem key={method.value} value={method.value}>
+                      {method.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="notes">Notas</Label>
+              <Textarea
+                id="notes"
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                 Cancelar
-              </button>
-              <button
-                onClick={handleMarkAsPaid}
-                disabled={!paymentMethod}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
-              >
-                Marcar como Pagado
-              </button>
+              </Button>
+              <Button onClick={handleSaveEdit}>Guardar</Button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Modal de edición */}
-      {showEditModal && editingPayment && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Editar Pago</h3>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Servicio</label>
-                  <input
-                    type="text"
-                    value={editFormData.serviceName}
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Hotel</label>
-                  <input
-                    type="text"
-                    value={hotels.find((h) => h.id === editFormData.hotelId)?.name || ""}
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mes *</label>
-                  <select
-                    name="month"
-                    value={editFormData.month}
-                    onChange={handleEditFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                      <option key={month} value={month}>
-                        {getMonthName(month)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Año *</label>
-                  <select
-                    name="year"
-                    value={editFormData.year}
-                    onChange={handleEditFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500">$</span>
-                    </div>
-                    <input
-                      type="number"
-                      name="amount"
-                      value={editFormData.amount}
-                      onChange={handleEditFormChange}
-                      min="0"
-                      step="0.01"
-                      className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Vencimiento *</label>
-                  <input
-                    type="date"
-                    name="dueDate"
-                    value={editFormData.dueDate}
-                    onChange={handleEditFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado *</label>
-                  <select
-                    name="status"
-                    value={editFormData.status}
-                    onChange={handleEditFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="pendiente">Pendiente</option>
-                    <option value="abonado">Abonado</option>
-                    <option value="vencido">Vencido</option>
-                  </select>
-                </div>
-
-                {editFormData.status === "abonado" && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Pago *</label>
-                      <input
-                        type="date"
-                        name="paymentDate"
-                        value={editFormData.paymentDate}
-                        onChange={handleEditFormChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pago *</label>
-                      <select
-                        name="paymentMethod"
-                        value={editFormData.paymentMethod}
-                        onChange={handleEditFormChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Seleccione forma de pago</option>
-                        {Object.entries(PAYMENT_METHODS).map(([key, label]) => (
-                          <option key={key} value={key}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Número de Comprobante</label>
-                      <input
-                        type="text"
-                        name="invoiceNumber"
-                        value={editFormData.invoiceNumber}
-                        onChange={handleEditFormChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </>
-                )}
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
-                  <textarea
-                    name="notes"
-                    value={editFormData.notes}
-                    onChange={handleEditFormChange}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleUpdatePayment}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-              >
-                Actualizar Pago
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

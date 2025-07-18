@@ -1,32 +1,45 @@
 // lib/service-db.ts
 
-// This file will contain functions related to managing services in the database.
-// Since there was no existing code, this is a new file.
-// The update instructions specify removing reservation-related functions.
-// Therefore, this file will only contain service-related functions.
-
 import { createClient } from "@supabase/supabase-js"
-import type { Service, ServicePayment, Hotel } from "./service-types"
+import type { ServicePayment, Hotel, Service } from "./service-types"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+// Crear cliente de Supabase con verificación de variables de entorno
+let supabase: any = null
 
-// Datos de hoteles por defecto
-const DEFAULT_HOTELS: Hotel[] = [
-  { id: "1", name: "Jaguel", code: "JAG", active: true },
-  { id: "2", name: "Monaco", code: "MON", active: true },
-  { id: "3", name: "Mallak", code: "MAL", active: true },
-  { id: "4", name: "Argentina", code: "ARG", active: true },
-  { id: "5", name: "Falkner", code: "FAL", active: true },
-  { id: "6", name: "Stromboli", code: "STR", active: true },
-  { id: "7", name: "San Miguel", code: "SMI", active: true },
-  { id: "8", name: "Colores", code: "COL", active: true },
-  { id: "9", name: "Puntarenas", code: "PUN", active: true },
-  { id: "10", name: "Tupe", code: "TUP", active: true },
-  { id: "11", name: "Munich", code: "MUN", active: true },
-  { id: "12", name: "Tiburones", code: "TIB", active: true },
-  { id: "13", name: "Barlovento", code: "BAR", active: true },
-  { id: "14", name: "Carama", code: "CAR", active: true },
-]
+try {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (supabaseUrl && supabaseKey) {
+    supabase = createClient(supabaseUrl, supabaseKey)
+    console.log("Cliente de Supabase creado exitosamente")
+  } else {
+    console.warn("Variables de entorno de Supabase no encontradas, usando localStorage como fallback")
+  }
+} catch (error) {
+  console.error("Error creando cliente de Supabase:", error)
+}
+
+// Funciones de localStorage como fallback
+const getFromLocalStorage = (key: string) => {
+  if (typeof window === "undefined") return []
+  try {
+    const data = localStorage.getItem(key)
+    return data ? JSON.parse(data) : []
+  } catch (error) {
+    console.error(`Error leyendo ${key} de localStorage:`, error)
+    return []
+  }
+}
+
+const saveToLocalStorage = (key: string, data: any) => {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(key, JSON.stringify(data))
+  } catch (error) {
+    console.error(`Error guardando ${key} en localStorage:`, error)
+  }
+}
 
 // Función para generar fecha de vencimiento basada en el mes (MISMO MES)
 function generateDueDate(month: number, year: number): string {
@@ -260,20 +273,43 @@ export async function updateServiceAverage(serviceId: string): Promise<void> {
   }
 }
 
-// Funciones para hoteles
+// Obtener hoteles
 export async function getHotels(): Promise<Hotel[]> {
-  try {
-    const { data, error } = await supabase.from("hotels").select("*").order("name")
+  console.log("Obteniendo hoteles...")
 
-    if (error) {
-      console.warn("Using default hotels (Supabase not available):", error.message)
-      return DEFAULT_HOTELS
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from("hotels").select("*").order("name")
+
+      if (error) {
+        console.error("Error de Supabase al obtener hoteles:", error)
+        return getFromLocalStorage("hotels")
+      }
+
+      console.log("Hoteles obtenidos de Supabase:", data?.length || 0)
+      return data || []
+    } catch (error) {
+      console.error("Error al obtener hoteles de Supabase:", error)
+      return getFromLocalStorage("hotels")
     }
-    return data || DEFAULT_HOTELS
-  } catch (error) {
-    console.warn("Using default hotels (fallback):", error)
-    return DEFAULT_HOTELS
   }
+
+  // Fallback a localStorage
+  const hotels = getFromLocalStorage("hotels")
+  console.log("Hoteles obtenidos de localStorage:", hotels.length)
+
+  // Si no hay hoteles en localStorage, crear algunos de ejemplo
+  if (hotels.length === 0) {
+    const defaultHotels = [
+      { id: "1", name: "Hotel Costa del Sol", address: "Av. Principal 123", phone: "123-456-7890" },
+      { id: "2", name: "Hotel Mar Azul", address: "Calle Marina 456", phone: "098-765-4321" },
+      { id: "3", name: "Hotel Vista Hermosa", address: "Boulevard Norte 789", phone: "555-123-4567" },
+    ]
+    saveToLocalStorage("hotels", defaultHotels)
+    return defaultHotels
+  }
+
+  return hotels
 }
 
 // Función para obtener el nombre del hotel por ID
@@ -288,80 +324,60 @@ export async function getHotelNameById(hotelId: string): Promise<string> {
   }
 }
 
-// Funciones para servicios
-export async function getServices(hotelId?: string): Promise<Service[]> {
-  try {
-    console.log("Obteniendo servicios de Supabase...")
-    let query = supabase.from("services").select("*").eq("active", true)
+// Obtener servicios
+export async function getServices(): Promise<Service[]> {
+  console.log("Obteniendo servicios...")
 
-    if (hotelId) {
-      query = query.eq("hotel_id", hotelId)
-    }
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from("services").select("*").order("name")
 
-    const { data: services, error } = await query.order("name")
-
-    if (error) {
-      console.error("Error al obtener servicios de Supabase:", error)
-      return getServicesFromLocalStorage(hotelId)
-    }
-
-    console.log("Servicios obtenidos de Supabase:", services?.length || 0)
-
-    // Obtener información de hoteles
-    const hotels = await getHotels()
-
-    // Combinar los datos
-    const servicesWithHotel = await Promise.all(
-      (services || []).map(async (service) => {
-        const hotel = hotels.find((h) => h.id === service.hotel_id)
-        return {
-          ...service,
-          hotel_name: hotel ? hotel.name : await getHotelNameById(service.hotel_id),
-        }
-      }),
-    )
-
-    return servicesWithHotel
-  } catch (error) {
-    console.error("Error general al obtener servicios:", error)
-    return getServicesFromLocalStorage(hotelId)
-  }
-}
-
-function getServicesFromLocalStorage(hotelId?: string): Service[] {
-  try {
-    const stored = localStorage.getItem("hotel-services")
-    let services = stored ? JSON.parse(stored) : []
-
-    // Asegurarse de que cada servicio tenga un hotel_name
-    services = services.map((service: Service) => {
-      if (!service.hotel_name) {
-        const hotel = DEFAULT_HOTELS.find((h) => h.id === service.hotel_id)
-        return {
-          ...service,
-          hotel_name: hotel ? hotel.name : "Hotel no encontrado",
-        }
+      if (error) {
+        console.error("Error de Supabase al obtener servicios:", error)
+        return getFromLocalStorage("services")
       }
-      return service
-    })
 
-    if (hotelId) {
-      return services.filter((service: Service) => service.hotel_id === hotelId)
+      console.log("Servicios obtenidos de Supabase:", data?.length || 0)
+      return data || []
+    } catch (error) {
+      console.error("Error al obtener servicios de Supabase:", error)
+      return getFromLocalStorage("services")
     }
-
-    return services
-  } catch (error) {
-    console.error("Error loading services from localStorage:", error)
-    return []
   }
+
+  // Fallback a localStorage
+  const services = getFromLocalStorage("services")
+  console.log("Servicios obtenidos de localStorage:", services.length)
+
+  // Si no hay servicios en localStorage, crear algunos de ejemplo
+  if (services.length === 0) {
+    const defaultServices = [
+      { id: "1", name: "Limpieza General", description: "Servicio de limpieza completa", price: 5000 },
+      { id: "2", name: "Mantenimiento", description: "Mantenimiento preventivo", price: 8000 },
+      { id: "3", name: "Jardinería", description: "Cuidado de jardines y áreas verdes", price: 3000 },
+      { id: "4", name: "Seguridad", description: "Servicio de seguridad 24/7", price: 15000 },
+    ]
+    saveToLocalStorage("services", defaultServices)
+    return defaultServices
+  }
+
+  return services
 }
 
+// Funciones para servicios
 export async function addService(service: Omit<Service, "id" | "created_at" | "updated_at">): Promise<Service> {
   try {
-    // Obtener el nombre del hotel antes de insertar
-    const hotelName = await getHotelNameById(service.hotel_id)
+    console.log("Intentando guardar servicio:", service)
 
-    console.log("Intentando guardar servicio en Supabase:", { ...service, hotel_name: hotelName })
+    if (!supabase) {
+      console.warn("Supabase client not available, using localStorage")
+      const newService = addServiceToLocalStorage(service)
+
+      // Generar pagos automáticamente después de crear el servicio
+      await generateMonthlyPayments(newService, 12)
+
+      return newService
+    }
 
     const { data, error } = await supabase
       .from("services")
@@ -373,7 +389,6 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
           provider: service.provider,
           account_number: service.account_number,
           hotel_id: service.hotel_id,
-          hotel_name: hotelName,
           notes: service.notes,
           active: service.active,
           average_amount: service.average_amount || 0,
@@ -395,16 +410,10 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
 
     console.log("Servicio guardado exitosamente en Supabase:", data)
 
-    // Asegurarse de que el servicio tenga el nombre del hotel
-    const serviceWithHotel = {
-      ...data,
-      hotel_name: hotelName,
-    }
-
     // Generar pagos automáticamente después de crear el servicio
-    await generateMonthlyPayments(serviceWithHotel, 12)
+    await generateMonthlyPayments(data, 12)
 
-    return serviceWithHotel
+    return data
   } catch (error) {
     console.error("Error general al guardar servicio:", error)
     const newService = addServiceToLocalStorage(service)
@@ -418,21 +427,16 @@ export async function addService(service: Omit<Service, "id" | "created_at" | "u
 
 function addServiceToLocalStorage(service: Omit<Service, "id" | "created_at" | "updated_at">): Service {
   try {
-    const services = getServicesFromLocalStorage()
-
-    // Obtener el nombre del hotel
-    const hotel = DEFAULT_HOTELS.find((h) => h.id === service.hotel_id)
-    const hotelName = hotel ? hotel.name : "Hotel no encontrado"
+    const services = getFromLocalStorage("services")
 
     const newService: Service = {
       ...service,
       id: Date.now().toString(),
-      hotel_name: hotelName,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
     services.push(newService)
-    localStorage.setItem("hotel-services", JSON.stringify(services))
+    saveToLocalStorage("services", services)
     return newService
   } catch (error) {
     console.error("Error adding service to localStorage:", error)
@@ -448,6 +452,12 @@ export async function updateService(id: string, updates: Partial<Service>): Prom
       updates.hotel_name = hotelName
     }
 
+    if (!supabase) {
+      console.warn("Supabase client not available, using localStorage")
+      updateServiceInLocalStorage(id, updates)
+      return
+    }
+
     const { error } = await supabase
       .from("services")
       .update({
@@ -457,6 +467,7 @@ export async function updateService(id: string, updates: Partial<Service>): Prom
       .eq("id", id)
 
     if (error) {
+      console.error("Error de Supabase al actualizar servicio:", error)
       updateServiceInLocalStorage(id, updates)
     }
 
@@ -473,18 +484,12 @@ export async function updateService(id: string, updates: Partial<Service>): Prom
 
 function updateServiceInLocalStorage(id: string, updates: Partial<Service>): void {
   try {
-    const services = getServicesFromLocalStorage()
+    const services = getFromLocalStorage("services")
     const index = services.findIndex((service) => service.id === id)
-
-    // Si se está actualizando el hotel_id, actualizar también el hotel_name
-    if (updates.hotel_id) {
-      const hotel = DEFAULT_HOTELS.find((h) => h.id === updates.hotel_id)
-      updates.hotel_name = hotel ? hotel.name : "Hotel no encontrado"
-    }
 
     if (index !== -1) {
       services[index] = { ...services[index], ...updates, updated_at: new Date().toISOString() }
-      localStorage.setItem("hotel-services", JSON.stringify(services))
+      saveToLocalStorage("services", services)
     }
   } catch (error) {
     console.error("Error updating service in localStorage:", error)
@@ -494,9 +499,15 @@ function updateServiceInLocalStorage(id: string, updates: Partial<Service>): voi
 
 export async function deleteService(id: string): Promise<void> {
   try {
+    if (!supabase) {
+      console.warn("Supabase client not available, using localStorage")
+      deleteServiceFromLocalStorage(id)
+      return
+    }
     const { error } = await supabase.from("services").update({ active: false }).eq("id", id)
 
     if (error) {
+      console.error("Error de Supabase al eliminar servicio:", error)
       deleteServiceFromLocalStorage(id)
     }
   } catch (error) {
@@ -507,16 +518,16 @@ export async function deleteService(id: string): Promise<void> {
 
 function deleteServiceFromLocalStorage(id: string): void {
   try {
-    const services = getServicesFromLocalStorage()
+    const services = getFromLocalStorage("services")
     const filtered = services.filter((service) => service.id !== id)
-    localStorage.setItem("hotel-services", JSON.stringify(filtered))
+    saveToLocalStorage("services", filtered)
   } catch (error) {
     console.error("Error deleting service from localStorage:", error)
     throw error
   }
 }
 
-// Funciones para pagos de servicios
+// Obtener pagos de servicios
 export async function getServicePayments(
   hotelId?: string,
   filters?: {
@@ -525,365 +536,214 @@ export async function getServicePayments(
     status?: string
   },
 ): Promise<ServicePayment[]> {
-  try {
-    let query = supabase.from("service_payments").select("*")
+  console.log("Obteniendo pagos de servicios...")
 
-    if (hotelId) {
-      query = query.eq("hotel_id", hotelId)
-    }
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("service_payments")
+        .select(`
+          *,
+          hotels!service_payments_hotel_id_fkey(name)
+        `)
+        .order("created_at", { ascending: false })
 
-    if (filters?.month) {
-      query = query.eq("month", filters.month)
-    }
-
-    if (filters?.year) {
-      query = query.eq("year", filters.year)
-    }
-
-    if (filters?.status) {
-      query = query.eq("status", filters.status)
-    }
-
-    const { data: payments, error } = await query.order("due_date", { ascending: false })
-
-    if (error) {
-      // Fallback a localStorage
-      return getServicePaymentsFromLocalStorage(hotelId, filters)
-    }
-
-    // Obtener información de servicios y hoteles
-    const services = await getServices()
-    const hotels = await getHotels()
-
-    // Combinar los datos
-    const paymentsWithDetails = await Promise.all(
-      (payments || []).map(async (payment) => {
-        const service = services.find((s) => s.id === payment.service_id)
-        const hotel = hotels.find((h) => h.id === payment.hotel_id)
-
-        // Si no tiene hotel_name, obtenerlo
-        let hotelName = payment.hotel_name
-        if (!hotelName) {
-          hotelName = hotel ? hotel.name : await getHotelNameById(payment.hotel_id)
-        }
-
-        return {
-          ...payment,
-          service_name: service?.name || payment.service_name || "Servicio no encontrado",
-          hotel_name: hotelName,
-        }
-      }),
-    )
-
-    return paymentsWithDetails
-  } catch (error) {
-    console.warn("Using localStorage for service payments:", error)
-    return getServicePaymentsFromLocalStorage(hotelId, filters)
-  }
-}
-
-function getServicePaymentsFromLocalStorage(
-  hotelId?: string,
-  filters?: {
-    month?: number
-    year?: number
-    status?: string
-  },
-): ServicePayment[] {
-  try {
-    const stored = localStorage.getItem("hotel-service-payments")
-    let payments = stored ? JSON.parse(stored) : []
-
-    // Asegurarse de que cada pago tenga un hotel_name
-    payments = payments.map((payment: ServicePayment) => {
-      if (!payment.hotel_name) {
-        const hotel = DEFAULT_HOTELS.find((h) => h.id === payment.hotel_id)
-        return {
-          ...payment,
-          hotel_name: hotel ? hotel.name : "Hotel no encontrado",
-        }
+      if (error) {
+        console.error("Error de Supabase al obtener pagos:", error)
+        return getFromLocalStorage("service_payments")
       }
-      return payment
-    })
 
-    if (hotelId) {
-      payments = payments.filter((payment: ServicePayment) => payment.hotel_id === hotelId)
+      // Transformar los datos para incluir hotel_name
+      const transformedData =
+        data?.map((payment) => ({
+          ...payment,
+          hotel_name: payment.hotels?.name || "Hotel no encontrado",
+        })) || []
+
+      console.log("Pagos obtenidos de Supabase:", transformedData.length)
+      return transformedData
+    } catch (error) {
+      console.error("Error al obtener pagos de Supabase:", error)
+      return getFromLocalStorage("service_payments")
     }
-
-    if (filters?.month) {
-      payments = payments.filter((payment: ServicePayment) => payment.month === filters.month)
-    }
-
-    if (filters?.year) {
-      payments = payments.filter((payment: ServicePayment) => payment.year === filters.year)
-    }
-
-    if (filters?.status) {
-      payments = payments.filter((payment: ServicePayment) => payment.status === filters.status)
-    }
-
-    return payments
-  } catch (error) {
-    console.error("Error loading service payments from localStorage:", error)
-    return []
   }
+
+  // Fallback a localStorage
+  const payments = getFromLocalStorage("service_payments")
+  const hotels = await getHotels()
+
+  // Agregar nombres de hoteles a los pagos
+  const paymentsWithHotelNames = payments.map((payment: any) => {
+    const hotel = hotels.find((h) => h.id === payment.hotel_id)
+    return {
+      ...payment,
+      hotel_name: hotel?.name || "Hotel no encontrado",
+    }
+  })
+
+  console.log("Pagos obtenidos de localStorage:", paymentsWithHotelNames.length)
+
+  // Si no hay pagos, crear algunos de ejemplo para enero y febrero
+  if (paymentsWithHotelNames.length === 0) {
+    const defaultPayments = [
+      {
+        id: "1",
+        service_id: "1",
+        service_name: "Limpieza General",
+        hotel_id: "1",
+        hotel_name: "Hotel Costa del Sol",
+        month: 1,
+        year: 2025,
+        amount: 5000,
+        due_date: "2025-01-31T00:00:00.000Z",
+        status: "pendiente",
+        created_at: "2025-01-01T00:00:00.000Z",
+      },
+      {
+        id: "2",
+        service_id: "2",
+        service_name: "Mantenimiento",
+        hotel_id: "2",
+        hotel_name: "Hotel Mar Azul",
+        month: 2,
+        year: 2025,
+        amount: 8000,
+        due_date: "2025-02-28T00:00:00.000Z",
+        status: "pendiente",
+        created_at: "2025-01-15T00:00:00.000Z",
+      },
+      {
+        id: "3",
+        service_id: "3",
+        service_name: "Jardinería",
+        hotel_id: "1",
+        hotel_name: "Hotel Costa del Sol",
+        month: 1,
+        year: 2025,
+        amount: 3000,
+        due_date: "2025-01-15T00:00:00.000Z",
+        status: "abonado",
+        payment_date: "2025-01-10T00:00:00.000Z",
+        payment_method: "transferencia",
+        invoice_number: "001-001-0000123",
+        created_at: "2025-01-01T00:00:00.000Z",
+      },
+    ]
+    saveToLocalStorage("service_payments", defaultPayments)
+    return defaultPayments
+  }
+
+  return paymentsWithHotelNames
 }
 
-export async function addServicePayment(
-  payment: Omit<ServicePayment, "id" | "created_at" | "updated_at">,
-): Promise<ServicePayment> {
-  try {
-    // Obtener el nombre del servicio
-    const services = await getServices()
-    const service = services.find((s) => s.id === payment.service_id)
+// Agregar pago de servicio
+export async function addServicePayment(payment: Omit<ServicePayment, "id" | "created_at">): Promise<void> {
+  console.log("Agregando pago de servicio:", payment)
 
-    // Obtener el nombre del hotel si no está presente
-    let hotelName = payment.hotel_name
-    if (!hotelName) {
-      hotelName = await getHotelNameById(payment.hotel_id)
-    }
-
-    const { data, error } = await supabase
-      .from("service_payments")
-      .insert([
+  if (supabase) {
+    try {
+      const { error } = await supabase.from("service_payments").insert([
         {
-          service_id: payment.service_id,
-          hotel_id: payment.hotel_id,
-          hotel_name: hotelName,
-          service_name: service?.name || payment.service_name || "Servicio",
-          month: payment.month,
-          year: payment.year,
-          amount: payment.amount,
-          due_date: payment.due_date,
-          payment_date: payment.payment_date,
-          status: payment.status || "pendiente",
-          invoice_number: payment.invoice_number,
-          notes: payment.notes,
+          ...payment,
+          created_at: new Date().toISOString(),
         },
       ])
-      .select()
-      .single()
 
-    if (error) {
-      const newPayment = addServicePaymentToLocalStorage(payment)
-
-      // Si el pago agregado está abonado, generar pagos futuros
-      if (payment.status === "abonado") {
-        await generateFuturePaymentsForService(payment.service_id)
+      if (error) {
+        console.error("Error de Supabase al agregar pago:", error)
+        throw error
       }
 
-      return newPayment
+      console.log("Pago agregado exitosamente a Supabase")
+      return
+    } catch (error) {
+      console.error("Error al agregar pago a Supabase:", error)
+      // Continuar con localStorage como fallback
     }
-
-    // Asegurarse de que el pago tenga el nombre del hotel
-    const finalPayment = {
-      ...data,
-      hotel_name: hotelName,
-    }
-
-    // Si el pago agregado está abonado, generar pagos futuros
-    if (payment.status === "abonado") {
-      await generateFuturePaymentsForService(payment.service_id)
-    }
-
-    return finalPayment
-  } catch (error) {
-    console.warn("Using localStorage for adding service payment:", error)
-    const newPayment = addServicePaymentToLocalStorage(payment)
-
-    // Si el pago agregado está abonado, generar pagos futuros
-    if (payment.status === "abonado") {
-      await generateFuturePaymentsForService(payment.service_id)
-    }
-
-    return newPayment
   }
+
+  // Fallback a localStorage
+  const payments = getFromLocalStorage("service_payments")
+  const newPayment = {
+    ...payment,
+    id: Date.now().toString(),
+    created_at: new Date().toISOString(),
+  }
+
+  payments.push(newPayment)
+  saveToLocalStorage("service_payments", payments)
+  console.log("Pago agregado a localStorage")
 }
 
-function addServicePaymentToLocalStorage(
-  payment: Omit<ServicePayment, "id" | "created_at" | "updated_at">,
-): ServicePayment {
-  try {
-    const payments = getServicePaymentsFromLocalStorage()
-
-    // Obtener el nombre del hotel si no está presente
-    let hotelName = payment.hotel_name
-    if (!hotelName) {
-      const hotel = DEFAULT_HOTELS.find((h) => h.id === payment.hotel_id)
-      hotelName = hotel ? hotel.name : "Hotel no encontrado"
-    }
-
-    const newPayment: ServicePayment = {
-      ...payment,
-      id: Date.now().toString(),
-      hotel_name: hotelName,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    payments.push(newPayment)
-    localStorage.setItem("hotel-service-payments", JSON.stringify(payments))
-
-    return newPayment
-  } catch (error) {
-    console.error("Error adding service payment to localStorage:", error)
-    throw error
-  }
-}
-
+// Actualizar pago de servicio
 export async function updateServicePayment(id: string, updates: Partial<ServicePayment>): Promise<void> {
-  try {
-    // Si se está actualizando el hotel_id, actualizar también el hotel_name
-    if (updates.hotel_id) {
-      const hotelName = await getHotelNameById(updates.hotel_id)
-      updates.hotel_name = hotelName
-    }
+  console.log("Actualizando pago:", id, updates)
 
-    const { error } = await supabase
-      .from("service_payments")
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
+  if (supabase) {
+    try {
+      const { error } = await supabase.from("service_payments").update(updates).eq("id", id)
 
-    if (error) {
-      updateServicePaymentInLocalStorage(id, updates)
-    }
-  } catch (error) {
-    console.warn("Using localStorage for updating service payment:", error)
-    updateServicePaymentInLocalStorage(id, updates)
-  }
-}
-
-function updateServicePaymentInLocalStorage(id: string, updates: Partial<ServicePayment>): void {
-  try {
-    const payments = getServicePaymentsFromLocalStorage()
-    const index = payments.findIndex((payment) => payment.id === id)
-
-    // Si se está actualizando el hotel_id, actualizar también el hotel_name
-    if (updates.hotel_id) {
-      const hotel = DEFAULT_HOTELS.find((h) => h.id === updates.hotel_id)
-      updates.hotel_name = hotel ? hotel.name : "Hotel no encontrado"
-    }
-
-    if (index !== -1) {
-      payments[index] = { ...payments[index], ...updates, updated_at: new Date().toISOString() }
-      localStorage.setItem("hotel-service-payments", JSON.stringify(payments))
-    }
-  } catch (error) {
-    console.error("Error updating service payment in localStorage:", error)
-    throw error
-  }
-}
-
-export async function deleteServicePayment(id: string): Promise<void> {
-  try {
-    const { error } = await supabase.from("service_payments").delete().eq("id", id)
-
-    if (error) {
-      deleteServicePaymentFromLocalStorage(id)
-    }
-  } catch (error) {
-    console.warn("Using localStorage for deleting service payment:", error)
-    deleteServicePaymentFromLocalStorage(id)
-  }
-}
-
-function deleteServicePaymentFromLocalStorage(id: string): void {
-  try {
-    const payments = getServicePaymentsFromLocalStorage()
-    const filtered = payments.filter((payment) => payment.id !== id)
-    localStorage.setItem("hotel-service-payments", JSON.stringify(filtered))
-  } catch (error) {
-    console.error("Error deleting service payment from localStorage:", error)
-    throw error
-  }
-}
-
-export async function markPaymentAsPaid(id: string, paymentDate: string, invoiceNumber?: string): Promise<void> {
-  try {
-    // Obtener el pago antes de actualizarlo para saber el serviceId
-    const payment = await getServicePaymentById(id)
-
-    await updateServicePayment(id, {
-      status: "abonado",
-      payment_date: paymentDate,
-      invoice_number: invoiceNumber,
-    })
-
-    // Actualizar el promedio del servicio automáticamente
-    if (payment?.service_id) {
-      await updateServiceAverage(payment.service_id)
-
-      // Generar pagos futuros automáticamente después de marcar como pagado
-      await generateFuturePaymentsForService(payment.service_id)
-    }
-  } catch (error) {
-    console.error("Error marking payment as paid:", error)
-    throw error
-  }
-}
-
-// Nueva función para obtener un pago específico por ID
-export async function getServicePaymentById(id: string): Promise<ServicePayment | null> {
-  try {
-    const { data, error } = await supabase.from("service_payments").select("*").eq("id", id).single()
-
-    if (error) {
-      // Fallback a localStorage
-      return getServicePaymentByIdFromLocalStorage(id)
-    }
-
-    // Obtener información de hoteles si no tiene hotel_name
-    let hotelName = data.hotel_name
-    if (!hotelName) {
-      hotelName = await getHotelNameById(data.hotel_id)
-    }
-
-    return {
-      ...data,
-      hotel_name: hotelName,
-    }
-  } catch (error) {
-    console.warn("Using localStorage for getting payment by ID:", error)
-    return getServicePaymentByIdFromLocalStorage(id)
-  }
-}
-
-function getServicePaymentByIdFromLocalStorage(id: string): ServicePayment | null {
-  try {
-    const payments = getServicePaymentsFromLocalStorage()
-    const payment = payments.find((p: ServicePayment) => p.id === id)
-
-    if (payment && !payment.hotel_name) {
-      const hotel = DEFAULT_HOTELS.find((h) => h.id === payment.hotel_id)
-      return {
-        ...payment,
-        hotel_name: hotel ? hotel.name : "Hotel no encontrado",
+      if (error) {
+        console.error("Error de Supabase al actualizar pago:", error)
+        throw error
       }
-    }
 
-    return payment || null
-  } catch (error) {
-    console.error("Error getting payment by ID from localStorage:", error)
-    return null
+      console.log("Pago actualizado exitosamente en Supabase")
+      return
+    } catch (error) {
+      console.error("Error al actualizar pago en Supabase:", error)
+      // Continuar con localStorage como fallback
+    }
+  }
+
+  // Fallback a localStorage
+  const payments = getFromLocalStorage("service_payments")
+  const index = payments.findIndex((p: any) => p.id === id)
+
+  if (index !== -1) {
+    payments[index] = { ...payments[index], ...updates }
+    saveToLocalStorage("service_payments", payments)
+    console.log("Pago actualizado en localStorage")
   }
 }
 
-// Estas funciones son necesarias para la compatibilidad con el código existente
-// pero no implementan la funcionalidad de reservaciones
-export async function getReservations(): Promise<any[]> {
-  console.warn("getReservations: Esta función está deshabilitada")
-  return []
+// Eliminar pago de servicio
+export async function deleteServicePayment(id: string): Promise<void> {
+  console.log("Eliminando pago:", id)
+
+  if (supabase) {
+    try {
+      const { error } = await supabase.from("service_payments").delete().eq("id", id)
+
+      if (error) {
+        console.error("Error de Supabase al eliminar pago:", error)
+        throw error
+      }
+
+      console.log("Pago eliminado exitosamente de Supabase")
+      return
+    } catch (error) {
+      console.error("Error al eliminar pago de Supabase:", error)
+      // Continuar con localStorage como fallback
+    }
+  }
+
+  // Fallback a localStorage
+  const payments = getFromLocalStorage("service_payments")
+  const filteredPayments = payments.filter((p: any) => p.id !== id)
+  saveToLocalStorage("service_payments", filteredPayments)
+  console.log("Pago eliminado de localStorage")
 }
 
-export async function addReservation(): Promise<any> {
-  console.warn("addReservation: Esta función está deshabilitada")
-  return {}
-}
+// Marcar pago como pagado
+export async function markPaymentAsPaid(id: string, paymentDate: string, invoiceNumber?: string): Promise<void> {
+  const updates = {
+    status: "abonado" as const,
+    payment_date: paymentDate,
+    invoice_number: invoiceNumber,
+  }
 
-export async function deleteReservation(): Promise<void> {
-  console.warn("deleteReservation: Esta función está deshabilitada")
+  await updateServicePayment(id, updates)
 }
 
 // Nueva función para generar pagos manualmente (sin llamadas automáticas)
@@ -911,15 +771,19 @@ export async function manuallyCheckMissingPayments(): Promise<void> {
 // Nueva función para obtener pagos sin verificaciones automáticas
 async function getServicePaymentsRaw(): Promise<ServicePayment[]> {
   try {
+    if (!supabase) {
+      console.warn("Supabase client not available, using localStorage")
+      return getFromLocalStorage("service_payments")
+    }
     const { data: payments, error } = await supabase.from("service_payments").select("*")
 
     if (error) {
-      return getServicePaymentsFromLocalStorage()
+      return getFromLocalStorage("service_payments")
     }
 
     return payments || []
   } catch (error) {
-    return getServicePaymentsFromLocalStorage()
+    return getFromLocalStorage("service_payments")
   }
 }
 
@@ -1015,6 +879,10 @@ async function addServicePaymentDirectly(
   payment: Omit<ServicePayment, "id" | "created_at" | "updated_at">,
 ): Promise<ServicePayment> {
   try {
+    if (!supabase) {
+      console.warn("Supabase client not available, using localStorage")
+      return addServicePaymentToLocalStorage(payment)
+    }
     const { data, error } = await supabase
       .from("service_payments")
       .insert([
@@ -1038,6 +906,7 @@ async function addServicePaymentDirectly(
       .single()
 
     if (error) {
+      console.error("Error de Supabase al agregar pago directamente:", error)
       return addServicePaymentToLocalStorage(payment)
     }
 
@@ -1049,4 +918,43 @@ async function addServicePaymentDirectly(
     console.warn("Using localStorage for adding service payment directly:", error)
     return addServicePaymentToLocalStorage(payment)
   }
+}
+
+function addServicePaymentToLocalStorage(
+  payment: Omit<ServicePayment, "id" | "created_at" | "updated_at">,
+): ServicePayment {
+  try {
+    const payments = getFromLocalStorage("service_payments")
+
+    const newPayment: ServicePayment = {
+      ...payment,
+      id: Date.now().toString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    payments.push(newPayment)
+    saveToLocalStorage("service_payments", payments)
+
+    return newPayment
+  } catch (error) {
+    console.error("Error adding service payment to localStorage:", error)
+    throw error
+  }
+}
+
+// FUNCIONES DE RESERVACIONES (REQUERIDAS PARA COMPATIBILIDAD)
+// Estas funciones están deshabilitadas pero son necesarias para evitar errores de importación
+
+export async function getReservations(): Promise<any[]> {
+  console.warn("getReservations: Esta función está deshabilitada en el módulo de servicios")
+  return []
+}
+
+export async function addReservation(reservation: any): Promise<any> {
+  console.warn("addReservation: Esta función está deshabilitada en el módulo de servicios")
+  return { id: "disabled", ...reservation }
+}
+
+export async function deleteReservation(id: string): Promise<void> {
+  console.warn("deleteReservation: Esta función está deshabilitada en el módulo de servicios")
 }
