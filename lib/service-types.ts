@@ -64,7 +64,6 @@ export type PaymentMethod =
   | "santander_visa"
   | "santander_amex"
   | "transferencia"
-  | "mercadopago"
   | "efectivo"
 
 export const SERVICE_CATEGORIES = {
@@ -89,14 +88,13 @@ export const PAYMENT_STATUS = {
 }
 
 export const PAYMENT_METHODS = {
-  bbva_visa: "BBVA VISA",
-  bbva_master: "BBVA MASTER",
+  bbva_visa: "VISA BBVA",
+  bbva_master: "MASTER BBVA",
+  santander_visa: "VISA SANTANDER",
+  santander_amex: "AMEX SANTANDER",
   brubank: "BRUBANK",
-  santander_visa: "SANTANDER VISA",
-  santander_amex: "SANTANDER AMEX",
-  transferencia: "TRANSFERENCIA",
-  mercadopago: "MERCADOPAGO",
   efectivo: "EFECTIVO",
+  transferencia: "TRANSFERENCIA",
 }
 
 export const MONTHS = {
