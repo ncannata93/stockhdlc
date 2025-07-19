@@ -41,7 +41,7 @@ export function Inicio() {
         if (!hasSupabaseUrl || !hasSupabaseKey) {
           setDbStatus("disconnected")
           setError("Variables de entorno de Supabase no configuradas")
-          loadMockData()
+          loadEmptyData()
           return
         }
 
@@ -55,20 +55,22 @@ export function Inicio() {
           const dataPromise = getServicePayments()
           const payments = (await Promise.race([dataPromise, timeoutPromise])) as any[]
 
+          console.log("🔍 Datos recibidos de la base de datos:", payments?.length || 0, "pagos")
+
           setDbStatus("connected")
           const calculatedStats = calculateStats(payments || [])
           setStats(calculatedStats)
         } catch (dbError) {
           console.warn("Error conectando a la base de datos:", dbError)
           setDbStatus("disconnected")
-          // Usar datos de ejemplo en caso de error
-          loadMockData()
+          setError("No se pudo conectar a la base de datos")
+          loadEmptyData()
         }
       } catch (error) {
         console.error("Error general:", error)
         setError("Error al cargar los datos")
         setDbStatus("disconnected")
-        loadMockData()
+        loadEmptyData()
       } finally {
         setLoading(false)
       }
@@ -77,41 +79,16 @@ export function Inicio() {
     checkDatabase()
   }, [])
 
-  const loadMockData = () => {
-    // Datos de ejemplo para mostrar la interfaz
-    const today = new Date()
-    const pastDate = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000) // 5 días atrás
-    const futureDate = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000) // 10 días adelante
-
+  const loadEmptyData = () => {
+    // Cargar datos vacíos en lugar de datos hardcodeados
     setStats({
-      pendientes: 3,
-      abonados: 12,
-      vencidos: 2,
-      totalPendiente: 2500.0,
-      totalAbonado: 8400.0,
-      totalVencido: 1200.0,
-      proximosVencer: [
-        {
-          id: "1",
-          service_name: "Internet Fibra Óptica",
-          hotel_name: "Hotel Jaguel",
-          month: 1,
-          year: 2025,
-          amount: 450.0,
-          due_date: futureDate.toISOString().split("T")[0],
-          status: "pendiente",
-        },
-        {
-          id: "2",
-          service_name: "Electricidad",
-          hotel_name: "Hotel Monaco",
-          month: 1,
-          year: 2025,
-          amount: 1200.0,
-          due_date: pastDate.toISOString().split("T")[0],
-          status: "vencido",
-        },
-      ],
+      pendientes: 0,
+      abonados: 0,
+      vencidos: 0,
+      totalPendiente: 0,
+      totalAbonado: 0,
+      totalVencido: 0,
+      proximosVencer: [],
     })
   }
 
@@ -119,9 +96,22 @@ export function Inicio() {
     const now = new Date()
     now.setHours(0, 0, 0, 0) // Resetear horas para comparación de solo fecha
 
-    console.log("=== CALCULANDO ESTADÍSTICAS ===")
+    console.log("=== CALCULANDO ESTADÍSTICAS REALES ===")
     console.log("Total de pagos recibidos:", payments.length)
     console.log("Fecha actual para comparación:", now.toISOString().split("T")[0])
+
+    if (payments.length === 0) {
+      console.log("⚠️ No hay pagos para procesar")
+      return {
+        pendientes: 0,
+        abonados: 0,
+        vencidos: 0,
+        totalPendiente: 0,
+        totalAbonado: 0,
+        totalVencido: 0,
+        proximosVencer: [],
+      }
+    }
 
     // Asegurarse de que los pagos tengan valores numéricos válidos
     const validPayments = payments.map((p) => ({
@@ -130,13 +120,16 @@ export function Inicio() {
     }))
 
     console.log("Pagos válidos procesados:", validPayments.length)
+    console.log("Primeros 3 pagos:", validPayments.slice(0, 3))
 
     // Separar pagos por estado real (no solo por campo status)
-    const abonados = validPayments.filter((p) => p.status === "abonado")
+    const abonados = validPayments.filter((p) => p.status === "paid" || p.status === "abonado")
     console.log("Pagos abonados:", abonados.length)
 
     // Para pendientes y vencidos, verificar tanto el status como la fecha
-    const pendientesYVencidos = validPayments.filter((p) => p.status === "pendiente" || p.status === "vencido")
+    const pendientesYVencidos = validPayments.filter(
+      (p) => p.status === "pending" || p.status === "pendiente" || p.status === "vencido",
+    )
 
     console.log("Pagos pendientes/vencidos por status:", pendientesYVencidos.length)
 
@@ -152,14 +145,13 @@ export function Inicio() {
       }
 
       try {
-        const [year, month, day] = payment.due_date.split("T")[0].split("-")
-        const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+        const dueDate = new Date(payment.due_date)
         dueDate.setHours(0, 0, 0, 0)
 
         if (dueDate < now) {
           // Está vencido
           vencidos.push(payment)
-          console.log(`Pago vencido: ${payment.service_name} - ${payment.hotel_name} - Vence: ${payment.due_date}`)
+          console.log(`Pago vencido: ${payment.service_name || "Sin nombre"} - Vence: ${payment.due_date}`)
         } else {
           // Está pendiente
           pendientes.push(payment)
@@ -188,8 +180,7 @@ export function Inicio() {
       .filter((p) => {
         if (!p.due_date) return false
         try {
-          const [year, month, day] = p.due_date.split("T")[0].split("-")
-          const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+          const dueDate = new Date(p.due_date)
           const diffTime = dueDate.getTime() - now.getTime()
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
           return diffDays >= 0 && diffDays <= 30
@@ -199,12 +190,8 @@ export function Inicio() {
       })
       .sort((a, b) => {
         try {
-          const [yearA, monthA, dayA] = a.due_date.split("T")[0].split("-")
-          const [yearB, monthB, dayB] = b.due_date.split("T")[0].split("-")
-
-          const dateA = new Date(Number.parseInt(yearA), Number.parseInt(monthA) - 1, Number.parseInt(dayA))
-          const dateB = new Date(Number.parseInt(yearB), Number.parseInt(monthB) - 1, Number.parseInt(dayB))
-
+          const dateA = new Date(a.due_date)
+          const dateB = new Date(b.due_date)
           return dateA.getTime() - dateB.getTime()
         } catch {
           return 0
@@ -230,14 +217,11 @@ export function Inicio() {
 
   const formatDate = (dateString: string) => {
     try {
-      // Crear fecha sin conversión de zona horaria
-      const [year, month, day] = dateString.split("T")[0].split("-")
-      const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      const date = new Date(dateString)
       return date.toLocaleDateString("es-AR", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
-        timeZone: "UTC",
       })
     } catch {
       return "Fecha inválida"
@@ -266,9 +250,7 @@ export function Inicio() {
     try {
       const now = new Date()
       now.setHours(0, 0, 0, 0)
-      // Crear fecha sin conversión de zona horaria
-      const [year, month, day] = dateString.split("T")[0].split("-")
-      const dueDate = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      const dueDate = new Date(dateString)
       dueDate.setHours(0, 0, 0, 0)
       const diffTime = dueDate.getTime() - now.getTime()
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
@@ -302,7 +284,7 @@ export function Inicio() {
       <div className="flex justify-center items-center h-64">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando datos...</p>
+          <p className="text-gray-600">Cargando datos de servicios...</p>
         </div>
       </div>
     )
@@ -310,10 +292,10 @@ export function Inicio() {
 
   return (
     <div className="space-y-6">
-      {/* Header con descripción corregida */}
+      {/* Header */}
       <div className="bg-white rounded-lg shadow p-6">
         <h1 className="text-2xl font-bold text-gray-800 mb-2">Servicios</h1>
-        <p className="text-gray-600">Gestión y pago de servicios</p>
+        <p className="text-gray-600">Gestión y pago de servicios por hotel</p>
       </div>
 
       {/* Estado de la Base de Datos */}
@@ -336,7 +318,7 @@ export function Inicio() {
             {dbStatus === "disconnected" && (
               <>
                 <WifiOff className="h-4 w-4 text-red-500" />
-                <span className="text-sm text-red-600">Usando datos locales</span>
+                <span className="text-sm text-red-600">Sin conexión a base de datos</span>
                 <button
                   onClick={retryConnection}
                   className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
@@ -404,9 +386,9 @@ export function Inicio() {
           <div className="flex items-center">
             <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
             <div>
-              <p className="text-sm font-medium text-yellow-800">Modo sin conexión</p>
+              <p className="text-sm font-medium text-yellow-800">Sin conexión a base de datos</p>
               <p className="text-xs text-yellow-700 mt-1">
-                Mostrando datos de ejemplo. Para ver datos reales, configura la conexión a Supabase.
+                Configura la conexión a Supabase para ver datos reales de servicios.
               </p>
             </div>
           </div>
@@ -451,11 +433,11 @@ export function Inicio() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{payment.service_name}</div>
+                      <div className="text-sm font-medium text-gray-900">{payment.service_name || "Servicio"}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {getMonthName(payment.month)} {payment.year}
+                        {payment.month ? getMonthName(payment.month) : "N/A"} {payment.year || ""}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -484,15 +466,25 @@ export function Inicio() {
       )}
 
       {/* Mensaje si no hay datos */}
-      {stats.proximosVencer.length === 0 && (
+      {stats.proximosVencer.length === 0 && dbStatus === "connected" && (
         <div className="bg-white rounded-lg shadow p-6 text-center">
           <Database className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-500">No hay pagos próximos a vencer.</p>
+          <p className="text-sm text-gray-400 mt-2">Comienza agregando servicios y sus pagos mensuales.</p>
+        </div>
+      )}
+
+      {/* Mensaje si no hay conexión */}
+      {dbStatus === "disconnected" && (
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <WifiOff className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">Sin conexión a la base de datos.</p>
           <p className="text-sm text-gray-400 mt-2">
-            {dbStatus === "connected"
-              ? "Comienza agregando servicios y sus pagos mensuales."
-              : "Configura la conexión a la base de datos para ver datos reales."}
+            Configura las variables de entorno de Supabase para ver datos reales.
           </p>
+          <button onClick={retryConnection} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+            Reintentar Conexión
+          </button>
         </div>
       )}
     </div>

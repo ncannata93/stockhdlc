@@ -1,43 +1,35 @@
--- Regenerar pagos faltantes para Argentina
--- Este script crea pagos para los próximos 12 meses para todos los servicios de Argentina
+-- Regenerar pagos faltantes para Argentina en 2025
+SELECT 'REGENERANDO PAGOS DE ARGENTINA PARA 2025' as titulo;
 
 DO $$
 DECLARE
     service_record RECORD;
-    current_month INTEGER := EXTRACT(MONTH FROM CURRENT_DATE);
-    current_year INTEGER := EXTRACT(YEAR FROM CURRENT_DATE);
-    month_iter INTEGER;
-    year_iter INTEGER;
-    due_date_calc DATE;
+    month_num INTEGER;
+    payment_exists BOOLEAN;
+    payments_created INTEGER := 0;
 BEGIN
-    RAISE NOTICE 'Iniciando regeneración de pagos para Argentina...';
-    RAISE NOTICE 'Mes actual: %, Año actual: %', current_month, current_year;
-    
     -- Para cada servicio de Argentina
     FOR service_record IN 
-        SELECT s.id, s.name, s.hotel_id, s.average_amount, h.name as hotel_name
+        SELECT s.id, s.name, s.average_amount, s.hotel_id, h.name as hotel_name
         FROM services s
         JOIN hotels h ON s.hotel_id = h.id
-        WHERE h.name ILIKE '%argentina%' AND s.active = true
+        WHERE h.name ILIKE '%argentina%'
+        AND s.active = true
     LOOP
         RAISE NOTICE 'Procesando servicio: % (ID: %)', service_record.name, service_record.id;
         
-        -- Generar pagos para los próximos 12 meses
-        FOR i IN 0..11 LOOP
-            month_iter := ((current_month - 1 + i) % 12) + 1;
-            year_iter := current_year + ((current_month - 1 + i) / 12);
+        -- Para cada mes de 2025
+        FOR month_num IN 1..12 LOOP
+            -- Verificar si ya existe el pago para este mes
+            SELECT EXISTS (
+                SELECT 1 FROM service_payments
+                WHERE service_id = service_record.id
+                AND month = month_num
+                AND year = 2025
+            ) INTO payment_exists;
             
-            -- Calcular fecha de vencimiento (día 10 del mismo mes)
-            due_date_calc := make_date(year_iter, month_iter, 10);
-            
-            -- Verificar si ya existe un pago para este servicio en este mes/año
-            IF NOT EXISTS (
-                SELECT 1 FROM service_payments 
-                WHERE service_id = service_record.id 
-                  AND month = month_iter 
-                  AND year = year_iter
-            ) THEN
-                -- Insertar el pago
+            IF NOT payment_exists THEN
+                -- Crear el pago faltante
                 INSERT INTO service_payments (
                     id,
                     service_id,
@@ -53,43 +45,51 @@ BEGIN
                     created_at,
                     updated_at
                 ) VALUES (
-                    gen_random_uuid()::text,
+                    gen_random_uuid(),
                     service_record.id,
                     service_record.name,
                     service_record.hotel_id,
                     service_record.hotel_name,
-                    month_iter,
-                    year_iter,
-                    COALESCE(service_record.average_amount, 0),
-                    due_date_calc,
+                    month_num,
+                    2025,
+                    service_record.average_amount,
+                    DATE('2025-' || LPAD(month_num::TEXT, 2, '0') || '-10'),
                     'pendiente',
                     'Generado automáticamente - Restauración Argentina',
                     NOW(),
                     NOW()
                 );
                 
-                RAISE NOTICE 'Pago creado: % - %/% - $%', 
-                    service_record.name, month_iter, year_iter, 
-                    COALESCE(service_record.average_amount, 0);
-            ELSE
-                RAISE NOTICE 'Pago ya existe: % - %/%', 
-                    service_record.name, month_iter, year_iter;
+                payments_created := payments_created + 1;
+                
+                IF month_num % 3 = 0 THEN
+                    RAISE NOTICE '  - Creados pagos hasta mes %', month_num;
+                END IF;
             END IF;
         END LOOP;
+        
+        RAISE NOTICE 'Servicio % completado', service_record.name;
     END LOOP;
     
-    RAISE NOTICE 'Regeneración de pagos completada para Argentina';
+    RAISE NOTICE 'REGENERACIÓN COMPLETADA: % pagos creados', payments_created;
 END $$;
 
--- Mostrar resumen de pagos creados
+-- Verificar pagos creados
 SELECT 
-    sp.service_name,
-    COUNT(*) as pagos_creados,
-    SUM(sp.amount) as total_amount,
-    MIN(sp.year || '-' || LPAD(sp.month::text, 2, '0')) as primer_mes,
-    MAX(sp.year || '-' || LPAD(sp.month::text, 2, '0')) as ultimo_mes
+    'PAGOS CREADOS POR MES:' as resumen,
+    sp.month,
+    CASE sp.month 
+        WHEN 1 THEN 'Enero' WHEN 2 THEN 'Febrero' WHEN 3 THEN 'Marzo'
+        WHEN 4 THEN 'Abril' WHEN 5 THEN 'Mayo' WHEN 6 THEN 'Junio'
+        WHEN 7 THEN 'Julio' WHEN 8 THEN 'Agosto' WHEN 9 THEN 'Septiembre'
+        WHEN 10 THEN 'Octubre' WHEN 11 THEN 'Noviembre' WHEN 12 THEN 'Diciembre'
+    END as mes_nombre,
+    COUNT(*) as cantidad_pagos,
+    SUM(sp.amount) as monto_total
 FROM service_payments sp
 WHERE sp.hotel_name ILIKE '%argentina%'
-  AND sp.notes LIKE '%Restauración Argentina%'
-GROUP BY sp.service_name
-ORDER BY sp.service_name;
+AND sp.year = 2025
+GROUP BY sp.month
+ORDER BY sp.month;
+
+SELECT 'REGENERACIÓN DE PAGOS COMPLETADA' as resultado;

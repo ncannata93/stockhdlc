@@ -1,82 +1,86 @@
 -- Verificar que la restauración de Argentina fue exitosa
--- Este script confirma que todo está funcionando correctamente
+SELECT 'VERIFICANDO RESTAURACIÓN DE ARGENTINA' as titulo;
 
--- 1. Verificar hotel Argentina
+-- 1. Verificar hotel
 SELECT 
-    'HOTEL ARGENTINA' as seccion,
-    id,
-    name,
-    created_at::date as fecha_creacion
-FROM hotels 
-WHERE name ILIKE '%argentina%';
+    'HOTEL ARGENTINA:' as seccion,
+    h.id,
+    h.name,
+    h.address,
+    h.phone
+FROM hotels h
+WHERE h.name ILIKE '%argentina%';
 
--- 2. Verificar servicios restaurados
+-- 2. Verificar servicios
 SELECT 
-    'SERVICIOS ACTIVOS' as seccion,
-    s.name as servicio,
-    s.average_amount as promedio_mensual,
-    s.active as activo,
-    s.created_at::date as fecha_creacion
+    'SERVICIOS DE ARGENTINA:' as seccion,
+    COUNT(*) as total_servicios,
+    COUNT(CASE WHEN active = true THEN 1 END) as activos,
+    SUM(average_amount) as monto_mensual_total
 FROM services s
 JOIN hotels h ON s.hotel_id = h.id
-WHERE h.name ILIKE '%argentina%' AND s.active = true
+WHERE h.name ILIKE '%argentina%';
+
+-- 3. Listar todos los servicios
+SELECT 
+    'Lista de servicios:' as detalle,
+    s.name,
+    s.category,
+    s.provider,
+    s.average_amount,
+    s.active
+FROM services s
+JOIN hotels h ON s.hotel_id = h.id
+WHERE h.name ILIKE '%argentina%'
 ORDER BY s.name;
 
--- 3. Verificar pagos por mes/año
+-- 4. Verificar pagos por mes en 2025
 SELECT 
-    'PAGOS POR MES' as seccion,
-    year as año,
-    month as mes,
+    'PAGOS 2025 POR MES:' as distribucion,
+    sp.month,
+    CASE sp.month 
+        WHEN 1 THEN 'Enero' WHEN 2 THEN 'Febrero' WHEN 3 THEN 'Marzo'
+        WHEN 4 THEN 'Abril' WHEN 5 THEN 'Mayo' WHEN 6 THEN 'Junio'
+        WHEN 7 THEN 'Julio' WHEN 8 THEN 'Agosto' WHEN 9 THEN 'Septiembre'
+        WHEN 10 THEN 'Octubre' WHEN 11 THEN 'Noviembre' WHEN 12 THEN 'Diciembre'
+    END as mes_nombre,
     COUNT(*) as cantidad_pagos,
-    SUM(amount) as total_mes,
-    COUNT(CASE WHEN status = 'pendiente' THEN 1 END) as pendientes,
-    COUNT(CASE WHEN status = 'abonado' THEN 1 END) as abonados
+    SUM(sp.amount) as monto_total
 FROM service_payments sp
 WHERE sp.hotel_name ILIKE '%argentina%'
-GROUP BY year, month
-ORDER BY year, month;
+AND sp.year = 2025
+GROUP BY sp.month
+ORDER BY sp.month;
 
--- 4. Verificar pagos por servicio
+-- 5. Verificar estado de pagos
 SELECT 
-    'PAGOS POR SERVICIO' as seccion,
-    service_name as servicio,
-    COUNT(*) as total_pagos,
-    COUNT(CASE WHEN status = 'pendiente' THEN 1 END) as pendientes,
-    COUNT(CASE WHEN status = 'abonado' THEN 1 END) as abonados,
-    AVG(amount) as promedio_monto,
-    MIN(year || '-' || LPAD(month::text, 2, '0')) as primer_pago,
-    MAX(year || '-' || LPAD(month::text, 2, '0')) as ultimo_pago
+    'ESTADO DE PAGOS:' as estados,
+    sp.status,
+    COUNT(*) as cantidad,
+    SUM(sp.amount) as monto_total
 FROM service_payments sp
 WHERE sp.hotel_name ILIKE '%argentina%'
-GROUP BY service_name
-ORDER BY service_name;
+AND sp.year = 2025
+GROUP BY sp.status;
 
--- 5. Verificar próximos vencimientos
+-- 6. Verificar CESOP 6036 específicamente
 SELECT 
-    'PRÓXIMOS VENCIMIENTOS' as seccion,
-    service_name as servicio,
-    month as mes,
-    year as año,
-    amount as monto,
-    due_date as fecha_vencimiento,
-    status
+    'CESOP 6036 - VERIFICACIÓN:' as cesop_check,
+    sp.month,
+    sp.year,
+    sp.amount,
+    sp.status,
+    sp.due_date
 FROM service_payments sp
-WHERE sp.hotel_name ILIKE '%argentina%'
-  AND sp.status = 'pendiente'
-  AND sp.due_date >= CURRENT_DATE
-ORDER BY sp.due_date
-LIMIT 10;
+JOIN services s ON sp.service_id = s.id
+WHERE s.name = 'CESOP 6036'
+AND sp.hotel_name ILIKE '%argentina%'
+AND sp.year = 2025
+ORDER BY sp.month;
 
--- 6. Resumen final
 SELECT 
-    'RESUMEN FINAL' as seccion,
-    COUNT(DISTINCT s.id) as servicios_activos,
-    COUNT(sp.id) as total_pagos,
-    COUNT(CASE WHEN sp.status = 'pendiente' THEN 1 END) as pagos_pendientes,
-    COUNT(CASE WHEN sp.status = 'abonado' THEN 1 END) as pagos_abonados,
-    SUM(CASE WHEN sp.status = 'pendiente' THEN sp.amount ELSE 0 END) as monto_pendiente,
-    SUM(CASE WHEN sp.status = 'abonado' THEN sp.amount ELSE 0 END) as monto_abonado
-FROM services s
-JOIN hotels h ON s.hotel_id = h.id
-LEFT JOIN service_payments sp ON s.id = sp.service_id
-WHERE h.name ILIKE '%argentina%' AND s.active = true;
+    CASE 
+        WHEN (SELECT COUNT(*) FROM service_payments sp WHERE sp.hotel_name ILIKE '%argentina%' AND sp.year = 2025) >= 120
+        THEN '✅ RESTAURACIÓN EXITOSA - Argentina tiene todos sus servicios y pagos'
+        ELSE '⚠️ RESTAURACIÓN INCOMPLETA - Faltan algunos pagos'
+    END as resultado_final;
