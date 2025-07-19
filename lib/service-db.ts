@@ -1,177 +1,49 @@
-// lib/service-db.ts
+import { supabase } from "./supabase"
+import type { Service, Hotel, ServicePayment } from "./service-types"
 
-import { createClient } from "@supabase/supabase-js"
-import type { ServicePayment, Hotel, Service } from "./service-types"
-
-// Crear cliente de Supabase con verificación de variables de entorno
-let supabase: any = null
-
-try {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (supabaseUrl && supabaseKey) {
-    supabase = createClient(supabaseUrl, supabaseKey)
-    console.log("Cliente de Supabase creado exitosamente")
-  } else {
-    console.warn("Variables de entorno de Supabase no encontradas, usando localStorage como fallback")
-  }
-} catch (error) {
-  console.error("Error creando cliente de Supabase:", error)
+// Función para generar IDs únicos
+function generateUniqueId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 }
 
-// Funciones de localStorage como fallback
-const getFromLocalStorage = (key: string) => {
-  if (typeof window === "undefined") return []
+// Función para obtener servicios
+export async function getServices(): Promise<Service[]> {
   try {
-    const data = localStorage.getItem(key)
-    return data ? JSON.parse(data) : []
-  } catch (error) {
-    console.error(`Error leyendo ${key} de localStorage:`, error)
-    return []
-  }
-}
+    console.log("🔄 Obteniendo servicios...")
 
-const saveToLocalStorage = (key: string, data: any) => {
-  if (typeof window === "undefined") return
-  try {
-    localStorage.setItem(key, JSON.stringify(data))
-  } catch (error) {
-    console.error(`Error guardando ${key} en localStorage:`, error)
-  }
-}
+    const { data, error } = await supabase.from("services").select("*").order("created_at", { ascending: false })
 
-// Función para generar fecha de vencimiento basada en el mes (día 10)
-function generateDueDate(month: number, year: number): string {
-  return `${year}-${month.toString().padStart(2, "0")}-10`
-}
-
-// Función para auto-generar pagos mensuales
-async function generateMonthlyPayments(service: Service, monthsAhead = 12): Promise<void> {
-  try {
-    const currentDate = new Date()
-    const currentMonth = currentDate.getMonth() + 1
-    const currentYear = currentDate.getFullYear()
-
-    const payments: Omit<ServicePayment, "id" | "created_at" | "updated_at">[] = []
-
-    for (let i = 0; i < monthsAhead; i++) {
-      const month = ((currentMonth - 1 + i) % 12) + 1
-      const year = currentYear + Math.floor((currentMonth - 1 + i) / 12)
-
-      // Verificar si ya existe un pago para este mes/año
-      const existingPayments = await getServicePayments(service.hotel_id, { month, year })
-      const exists = existingPayments.some((p) => p.service_id === service.id)
-
-      if (!exists) {
-        payments.push({
-          service_id: service.id,
-          service_name: service.name,
-          hotel_id: service.hotel_id,
-          hotel_name: service.hotel_name || "Hotel no encontrado",
-          month,
-          year,
-          amount: service.average_amount || 0,
-          due_date: generateDueDate(month, year),
-          status: "pendiente",
-          notes: "Generado automáticamente",
-        })
-      }
+    if (error) {
+      console.error("❌ Error de Supabase al obtener servicios:", error)
+      return getServicesFromLocalStorage()
     }
 
-    // Insertar todos los pagos
-    for (const payment of payments) {
-      await addServicePayment(payment)
-    }
-
-    console.log(`Generados ${payments.length} pagos para el servicio: ${service.name}`)
+    console.log("✅ Servicios obtenidos de Supabase:", data?.length || 0)
+    return data || []
   } catch (error) {
-    console.error("Error generating monthly payments:", error)
+    console.error("❌ Error al obtener servicios:", error)
+    return getServicesFromLocalStorage()
   }
 }
 
-// Función para actualizar el promedio mensual basándose en pagos reales
-export async function updateServiceAverage(serviceId: string): Promise<void> {
-  try {
-    console.log(`Actualizando promedio para servicio: ${serviceId}`)
-
-    // Obtener todos los pagos abonados de este servicio
-    const allPayments = await getServicePaymentsRaw()
-    const paidPayments = allPayments.filter((p) => p.service_id === serviceId && p.status === "abonado")
-
-    console.log(
-      `Pagos abonados encontrados:`,
-      paidPayments.map((p) => ({ month: p.month, year: p.year, amount: p.amount })),
-    )
-
-    if (paidPayments.length >= 1) {
-      // Actualizar si hay al menos 1 pago
-      const totalAmount = paidPayments.reduce((sum, payment) => sum + payment.amount, 0)
-      const newAverage = totalAmount / paidPayments.length
-
-      console.log(`Montos: [${paidPayments.map((p) => p.amount).join(", ")}]`)
-      console.log(`Total: ${totalAmount}, Cantidad: ${paidPayments.length}, Promedio: ${newAverage}`)
-
-      console.log(`Nuevo promedio calculado: ${newAverage} (basado en ${paidPayments.length} pagos)`)
-
-      // Actualizar el servicio con el nuevo promedio
-      await updateService(serviceId, {
-        average_amount: Math.round(newAverage * 100) / 100, // Redondear a 2 decimales
-      })
-
-      // Actualizar pagos futuros pendientes con el nuevo promedio
-      const futurePayments = allPayments.filter((p) => p.service_id === serviceId && p.status === "pendiente")
-
-      for (const payment of futurePayments) {
-        await updateServicePayment(payment.id, {
-          amount: Math.round(newAverage * 100) / 100,
-        })
-      }
-
-      console.log(`Actualizados ${futurePayments.length} pagos futuros con el nuevo promedio`)
-    }
-  } catch (error) {
-    console.error("Error updating service average:", error)
-  }
-}
-
-// Obtener hoteles
+// Función para obtener hoteles
 export async function getHotels(): Promise<Hotel[]> {
-  console.log("Obteniendo hoteles...")
+  try {
+    console.log("🔄 Obteniendo hoteles...")
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from("hotels").select("*").order("name")
+    const { data, error } = await supabase.from("hotels").select("*").order("name", { ascending: true })
 
-      if (error) {
-        console.error("Error de Supabase al obtener hoteles:", error)
-        return getFromLocalStorage("hotels")
-      }
-
-      console.log("Hoteles obtenidos de Supabase:", data?.length || 0)
-      return data || []
-    } catch (error) {
-      console.error("Error al obtener hoteles de Supabase:", error)
-      return getFromLocalStorage("hotels")
+    if (error) {
+      console.error("❌ Error de Supabase al obtener hoteles:", error)
+      return getHotelsFromLocalStorage()
     }
+
+    console.log("✅ Hoteles obtenidos de Supabase:", data?.length || 0)
+    return data || []
+  } catch (error) {
+    console.error("❌ Error al obtener hoteles:", error)
+    return getHotelsFromLocalStorage()
   }
-
-  // Fallback a localStorage
-  const hotels = getFromLocalStorage("hotels")
-  console.log("Hoteles obtenidos de localStorage:", hotels.length)
-
-  // Si no hay hoteles en localStorage, crear algunos de ejemplo
-  if (hotels.length === 0) {
-    const defaultHotels = [
-      { id: "1", name: "Hotel Costa del Sol", address: "Av. Principal 123", phone: "123-456-7890" },
-      { id: "2", name: "Hotel Mar Azul", address: "Calle Marina 456", phone: "098-765-4321" },
-      { id: "3", name: "Hotel Vista Hermosa", address: "Boulevard Norte 789", phone: "555-123-4567" },
-    ]
-    saveToLocalStorage("hotels", defaultHotels)
-    return defaultHotels
-  }
-
-  return hotels
 }
 
 // Función para obtener el nombre del hotel por ID
@@ -186,440 +58,341 @@ export async function getHotelNameById(hotelId: string): Promise<string> {
   }
 }
 
-// Obtener servicios
-export async function getServices(): Promise<Service[]> {
-  console.log("Obteniendo servicios...")
-
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from("services").select("*").order("name")
-
-      if (error) {
-        console.error("Error de Supabase al obtener servicios:", error)
-        return getFromLocalStorage("services")
-      }
-
-      console.log("Servicios obtenidos de Supabase:", data?.length || 0)
-      return data || []
-    } catch (error) {
-      console.error("Error al obtener servicios de Supabase:", error)
-      return getFromLocalStorage("services")
-    }
-  }
-
-  // Fallback a localStorage
-  const services = getFromLocalStorage("services")
-  console.log("Servicios obtenidos de localStorage:", services.length)
-
-  return services
-}
-
-// Funciones para servicios
-export async function addService(service: Omit<Service, "id" | "created_at" | "updated_at">): Promise<Service> {
+// Función para agregar servicio
+export async function addService(service: Omit<Service, "id" | "created_at">): Promise<Service> {
   try {
-    console.log("Intentando guardar servicio:", service)
-
-    if (!supabase) {
-      console.warn("Supabase client not available, using localStorage")
-      const newService = addServiceToLocalStorage(service)
-      await generateMonthlyPayments(newService, 12)
-      return newService
-    }
-
-    const { data, error } = await supabase
-      .from("services")
-      .insert([
-        {
-          name: service.name,
-          description: service.description,
-          category: service.category,
-          provider: service.provider,
-          account_number: service.account_number,
-          hotel_id: service.hotel_id,
-          notes: service.notes,
-          active: service.active,
-          average_amount: service.average_amount || 0,
-        },
-      ])
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error de Supabase al guardar servicio:", error)
-      const newService = addServiceToLocalStorage(service)
-      await generateMonthlyPayments(newService, 12)
-      return newService
-    }
-
-    console.log("Servicio guardado exitosamente en Supabase:", data)
-    await generateMonthlyPayments(data, 12)
-    return data
-  } catch (error) {
-    console.error("Error general al guardar servicio:", error)
-    const newService = addServiceToLocalStorage(service)
-    await generateMonthlyPayments(newService, 12)
-    return newService
-  }
-}
-
-function addServiceToLocalStorage(service: Omit<Service, "id" | "created_at" | "updated_at">): Service {
-  try {
-    const services = getFromLocalStorage("services")
+    console.log("🔄 Agregando servicio:", service.name)
 
     const newService: Service = {
       ...service,
-      id: Date.now().toString(),
+      id: generateUniqueId(),
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    services.push(newService)
-    saveToLocalStorage("services", services)
-    return newService
-  } catch (error) {
-    console.error("Error adding service to localStorage:", error)
-    throw error
-  }
-}
-
-export async function updateService(id: string, updates: Partial<Service>): Promise<void> {
-  try {
-    if (updates.hotel_id) {
-      const hotelName = await getHotelNameById(updates.hotel_id)
-      updates.hotel_name = hotelName
+      active: service.active !== false,
     }
 
-    if (!supabase) {
-      console.warn("Supabase client not available, using localStorage")
-      updateServiceInLocalStorage(id, updates)
-      return
-    }
-
-    const { error } = await supabase
-      .from("services")
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
+    const { data, error } = await supabase.from("services").insert([newService]).select().single()
 
     if (error) {
-      console.error("Error de Supabase al actualizar servicio:", error)
-      updateServiceInLocalStorage(id, updates)
+      console.error("❌ Error de Supabase al agregar servicio:", error)
+      return addServiceToLocalStorage(newService)
     }
+
+    console.log("✅ Servicio agregado a Supabase:", data)
+    return data
   } catch (error) {
-    console.warn("Using localStorage for updating service:", error)
-    updateServiceInLocalStorage(id, updates)
+    console.error("❌ Error al agregar servicio:", error)
+    const newService: Service = {
+      ...service,
+      id: generateUniqueId(),
+      created_at: new Date().toISOString(),
+      active: service.active !== false,
+    }
+    return addServiceToLocalStorage(newService)
   }
 }
 
-function updateServiceInLocalStorage(id: string, updates: Partial<Service>): void {
+// Función para actualizar servicio
+export async function updateService(id: string, updates: Partial<Service>): Promise<Service> {
   try {
-    const services = getFromLocalStorage("services")
-    const index = services.findIndex((service) => service.id === id)
+    console.log("🔄 Actualizando servicio:", id)
 
-    if (index !== -1) {
-      services[index] = { ...services[index], ...updates, updated_at: new Date().toISOString() }
-      saveToLocalStorage("services", services)
+    const { data, error } = await supabase.from("services").update(updates).eq("id", id).select().single()
+
+    if (error) {
+      console.error("❌ Error de Supabase al actualizar servicio:", error)
+      return updateServiceInLocalStorage(id, updates)
     }
+
+    console.log("✅ Servicio actualizado en Supabase:", data)
+    return data
   } catch (error) {
-    console.error("Error updating service in localStorage:", error)
-    throw error
+    console.error("❌ Error al actualizar servicio:", error)
+    return updateServiceInLocalStorage(id, updates)
   }
 }
 
+// Función para eliminar servicio
 export async function deleteService(id: string): Promise<void> {
   try {
-    console.log("Eliminando servicio:", id)
+    console.log("🔄 Eliminando servicio:", id)
 
-    if (!supabase) {
-      console.warn("Supabase client not available, using localStorage")
-      deleteServiceFromLocalStorage(id)
-      return
-    }
-
-    // Primero eliminar todos los pagos relacionados con este servicio
+    // Primero eliminar todos los pagos asociados
     const { error: paymentsError } = await supabase.from("service_payments").delete().eq("service_id", id)
 
     if (paymentsError) {
-      console.error("Error eliminando pagos del servicio:", paymentsError)
-    } else {
-      console.log("Pagos del servicio eliminados exitosamente")
+      console.error("❌ Error al eliminar pagos del servicio:", paymentsError)
     }
 
     // Luego eliminar el servicio
-    const { error: serviceError } = await supabase.from("services").delete().eq("id", id)
-
-    if (serviceError) {
-      console.error("Error de Supabase al eliminar servicio:", serviceError)
-      deleteServiceFromLocalStorage(id)
-      throw serviceError
-    }
-
-    console.log("Servicio eliminado exitosamente de Supabase")
-  } catch (error) {
-    console.error("Error al eliminar servicio:", error)
-    deleteServiceFromLocalStorage(id)
-    throw error
-  }
-}
-
-function deleteServiceFromLocalStorage(id: string): void {
-  try {
-    // Eliminar el servicio
-    const services = getFromLocalStorage("services")
-    const filtered = services.filter((service) => service.id !== id)
-    saveToLocalStorage("services", filtered)
-
-    // Eliminar pagos relacionados
-    const payments = getFromLocalStorage("service_payments")
-    const filteredPayments = payments.filter((payment: any) => payment.service_id !== id)
-    saveToLocalStorage("service_payments", filteredPayments)
-
-    console.log("Servicio y pagos relacionados eliminados de localStorage")
-  } catch (error) {
-    console.error("Error deleting service from localStorage:", error)
-    throw error
-  }
-}
-
-// Nueva función para obtener pagos sin verificaciones automáticas
-async function getServicePaymentsRaw(): Promise<ServicePayment[]> {
-  try {
-    if (!supabase) {
-      console.warn("Supabase client not available, using localStorage")
-      return getFromLocalStorage("service_payments")
-    }
-    const { data: payments, error } = await supabase.from("service_payments").select("*")
+    const { error } = await supabase.from("services").delete().eq("id", id)
 
     if (error) {
-      return getFromLocalStorage("service_payments")
-    }
-
-    return payments || []
-  } catch (error) {
-    return getFromLocalStorage("service_payments")
-  }
-}
-
-// Obtener pagos de servicios
-export async function getServicePayments(
-  hotelId?: string,
-  filters?: {
-    month?: number
-    year?: number
-    status?: string
-  },
-): Promise<ServicePayment[]> {
-  console.log("Obteniendo pagos de servicios...")
-
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("service_payments")
-        .select(`
-          *,
-          hotels!service_payments_hotel_id_fkey(name)
-        `)
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        console.error("Error de Supabase al obtener pagos:", error)
-        return getFromLocalStorage("service_payments")
-      }
-
-      // Transformar los datos para incluir hotel_name
-      const transformedData =
-        data?.map((payment) => ({
-          ...payment,
-          hotel_name: payment.hotels?.name || "Hotel no encontrado",
-        })) || []
-
-      console.log("Pagos obtenidos de Supabase:", transformedData.length)
-      return transformedData
-    } catch (error) {
-      console.error("Error al obtener pagos de Supabase:", error)
-      return getFromLocalStorage("service_payments")
-    }
-  }
-
-  // Fallback a localStorage
-  const payments = getFromLocalStorage("service_payments")
-  const hotels = await getHotels()
-
-  // Agregar nombres de hoteles a los pagos
-  const paymentsWithHotelNames = payments.map((payment: any) => {
-    const hotel = hotels.find((h) => h.id === payment.hotel_id)
-    return {
-      ...payment,
-      hotel_name: hotel?.name || "Hotel no encontrado",
-    }
-  })
-
-  console.log("Pagos obtenidos de localStorage:", paymentsWithHotelNames.length)
-  return paymentsWithHotelNames
-}
-
-// Agregar pago de servicio
-export async function addServicePayment(payment: Omit<ServicePayment, "id" | "created_at">): Promise<void> {
-  console.log("Agregando pago de servicio:", payment)
-
-  if (supabase) {
-    try {
-      const { error } = await supabase.from("service_payments").insert([
-        {
-          ...payment,
-          created_at: new Date().toISOString(),
-        },
-      ])
-
-      if (error) {
-        console.error("Error de Supabase al agregar pago:", error)
-        throw error
-      }
-
-      console.log("Pago agregado exitosamente a Supabase")
+      console.error("❌ Error de Supabase al eliminar servicio:", error)
+      deleteServiceFromLocalStorage(id)
       return
-    } catch (error) {
-      console.error("Error al agregar pago a Supabase:", error)
-      // Continuar con localStorage como fallback
     }
-  }
 
-  // Fallback a localStorage
-  const payments = getFromLocalStorage("service_payments")
-  const newPayment = {
-    ...payment,
-    id: Date.now().toString(),
-    created_at: new Date().toISOString(),
+    console.log("✅ Servicio eliminado de Supabase")
+  } catch (error) {
+    console.error("❌ Error al eliminar servicio:", error)
+    deleteServiceFromLocalStorage(id)
   }
-
-  payments.push(newPayment)
-  saveToLocalStorage("service_payments", payments)
-  console.log("Pago agregado a localStorage")
 }
 
-// Actualizar pago de servicio
-export async function updateServicePayment(id: string, updates: Partial<ServicePayment>): Promise<void> {
-  console.log("🔄 Actualizando pago:", id, updates)
+// Función para obtener TODOS los pagos de servicios sin límite
+export async function getServicePayments(hotelId?: string, filters?: any): Promise<ServicePayment[]> {
+  try {
+    console.log("🔄 OBTENIENDO TODOS LOS PAGOS DE SERVICIOS SIN LÍMITE...")
+    console.log("- Parámetros:", { hotelId, filters })
 
-  if (supabase) {
-    try {
-      const { error } = await supabase.from("service_payments").update(updates).eq("id", id)
+    // MÉTODO CORREGIDO: Obtener TODOS los pagos usando paginación si es necesario
+    let allPayments: any[] = []
+    let from = 0
+    const pageSize = 1000 // Tamaño de página
+    let hasMore = true
 
-      if (error) {
-        console.error("Error de Supabase al actualizar pago:", error)
-        throw error
+    console.log("📡 Iniciando carga paginada de pagos...")
+
+    while (hasMore) {
+      console.log(`📄 Cargando página desde ${from} hasta ${from + pageSize - 1}`)
+
+      const { data: pageData, error: pageError } = await supabase
+        .from("service_payments")
+        .select("*")
+        .range(from, from + pageSize - 1)
+        .order("due_date", { ascending: false })
+
+      if (pageError) {
+        console.error(`❌ Error al obtener página ${from}-${from + pageSize - 1}:`, pageError)
+        break
       }
 
-      console.log("✅ Pago actualizado exitosamente en Supabase")
+      if (!pageData || pageData.length === 0) {
+        console.log("📄 No hay más datos, finalizando paginación")
+        hasMore = false
+        break
+      }
 
-      // Si el pago se marca como abonado, generar el siguiente mes
-      if (updates.status === "abonado") {
-        console.log("🎯 Pago marcado como abonado - Generando siguiente mes...")
+      console.log(`📄 Página cargada: ${pageData.length} registros`)
+      allPayments = [...allPayments, ...pageData]
 
-        // Obtener el pago actualizado para generar el siguiente
-        const { data: updatedPayment } = await supabase.from("service_payments").select("*").eq("id", id).single()
+      // Si obtuvimos menos registros que el tamaño de página, no hay más datos
+      if (pageData.length < pageSize) {
+        console.log("📄 Última página alcanzada")
+        hasMore = false
+      } else {
+        from += pageSize
+      }
+    }
 
-        if (updatedPayment) {
-          await generateNextMonthPayment(updatedPayment)
+    console.log("📊 TOTAL DE PAGOS CARGADOS:", allPayments.length)
+
+    // Obtener hoteles
+    console.log("📡 Obteniendo hoteles...")
+    const { data: hotelsData, error: hotelsError } = await supabase.from("hotels").select("*")
+
+    if (hotelsError) {
+      console.error("❌ Error al obtener hoteles:", hotelsError)
+      return getServicePaymentsFromLocalStorage()
+    }
+
+    console.log("📊 HOTELES OBTENIDOS:", hotelsData?.length || 0)
+
+    // Crear un mapa de hoteles para búsqueda rápida
+    const hotelsMap = new Map()
+    hotelsData?.forEach((hotel) => {
+      hotelsMap.set(hotel.id, hotel.name)
+    })
+
+    // Combinar datos manualmente
+    const transformedData = allPayments.map((payment) => ({
+      ...payment,
+      hotel_name: hotelsMap.get(payment.hotel_id) || "Hotel no encontrado",
+    }))
+
+    console.log("✅ DATOS TRANSFORMADOS:", transformedData.length)
+
+    // Aplicar filtros si se proporcionan
+    let filteredData = transformedData
+
+    if (hotelId) {
+      console.log("🏨 Aplicando filtro por hotel:", hotelId)
+      const beforeFilter = filteredData.length
+      filteredData = filteredData.filter((p) => p.hotel_id === hotelId)
+      console.log(`🏨 Filtro hotel aplicado: ${beforeFilter} -> ${filteredData.length}`)
+    }
+
+    if (filters) {
+      console.log("🔍 Aplicando filtros adicionales:", filters)
+      if (filters.month) {
+        const beforeFilter = filteredData.length
+        filteredData = filteredData.filter((p) => p.month === filters.month)
+        console.log(`📅 Filtro mes aplicado: ${beforeFilter} -> ${filteredData.length}`)
+      }
+      if (filters.year) {
+        const beforeFilter = filteredData.length
+        filteredData = filteredData.filter((p) => p.year === filters.year)
+        console.log(`📅 Filtro año aplicado: ${beforeFilter} -> ${filteredData.length}`)
+      }
+      if (filters.status) {
+        const beforeFilter = filteredData.length
+        filteredData = filteredData.filter((p) => p.status === filters.status)
+        console.log(`📊 Filtro estado aplicado: ${beforeFilter} -> ${filteredData.length}`)
+      }
+    }
+
+    // Debug específico para Argentina
+    const argentinaPayments = filteredData.filter(
+      (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
+    )
+    console.log("🇦🇷 Pagos de Argentina encontrados:", argentinaPayments.length)
+
+    if (argentinaPayments.length > 0) {
+      const enero2025 = argentinaPayments.filter((p) => p.month === 1 && p.year === 2025)
+      console.log("🗓️ Argentina Enero 2025:", enero2025.length)
+
+      if (enero2025.length > 0) {
+        console.log("📋 Detalles Argentina Enero 2025:")
+        enero2025.forEach((p, index) => {
+          if (index < 5) {
+            // Solo mostrar los primeros 5 para no saturar el log
+            console.log(`- ${p.service_name}: $${p.amount} (${p.status}) - ID: ${p.id}`)
+          }
+        })
+        if (enero2025.length > 5) {
+          console.log(`... y ${enero2025.length - 5} más`)
         }
       }
-
-      return
-    } catch (error) {
-      console.error("Error al actualizar pago en Supabase:", error)
-      // Continuar con localStorage como fallback
-    }
-  }
-
-  // Fallback a localStorage
-  const payments = getFromLocalStorage("service_payments")
-  const index = payments.findIndex((p: any) => p.id === id)
-
-  if (index !== -1) {
-    const oldPayment = payments[index]
-    payments[index] = { ...payments[index], ...updates }
-    saveToLocalStorage("service_payments", payments)
-    console.log("Pago actualizado en localStorage")
-
-    // Para localStorage, simular la generación automática
-    if (updates.status === "abonado" && oldPayment.status !== "abonado") {
-      console.log("🔄 Simulando generación automática en localStorage...")
-      await generateNextMonthPayment(payments[index])
-    }
-  }
-}
-
-// Función para generar el pago del siguiente mes
-async function generateNextMonthPayment(payment: any): Promise<void> {
-  try {
-    console.log("🔄 Generando siguiente mes para:", payment.service_name)
-
-    // Calcular próximo mes
-    const nextMonth = payment.month === 12 ? 1 : payment.month + 1
-    const nextYear = payment.month === 12 ? payment.year + 1 : payment.year
-
-    // Verificar si ya existe
-    const existingPayments = await getServicePaymentsRaw()
-    const exists = existingPayments.some(
-      (p: any) => p.service_id === payment.service_id && p.month === nextMonth && p.year === nextYear,
-    )
-
-    if (exists) {
-      console.log("⚠️ El pago del próximo mes ya existe")
-      return
     }
 
-    // Crear el nuevo pago
-    const newPayment = {
-      service_id: payment.service_id,
-      service_name: payment.service_name,
-      hotel_id: payment.hotel_id,
-      hotel_name: payment.hotel_name,
-      month: nextMonth,
-      year: nextYear,
-      amount: payment.amount,
-      due_date: generateDueDate(nextMonth, nextYear),
-      status: "pendiente",
-      notes: `Generado automáticamente después de pago de ${payment.month}/${payment.year}`,
+    // Estadísticas finales
+    const stats = {
+      total: filteredData.length,
+      porHotel: filteredData.reduce(
+        (acc, p) => {
+          const hotel = p.hotel_name || "Sin hotel"
+          acc[hotel] = (acc[hotel] || 0) + 1
+          return acc
+        },
+        {} as Record<string, number>,
+      ),
+      porEstado: filteredData.reduce(
+        (acc, p) => {
+          acc[p.status] = (acc[p.status] || 0) + 1
+          return acc
+        },
+        {} as Record<string, number>,
+      ),
     }
 
-    await addServicePayment(newPayment)
-    console.log("🎉 Pago automático generado:", newPayment.service_name, `${nextMonth}/${nextYear}`)
+    console.log("📊 ESTADÍSTICAS FINALES:")
+    console.log("- Total filtrado:", stats.total)
+    console.log("- Por hotel:", stats.porHotel)
+    console.log("- Por estado:", stats.porEstado)
+
+    console.log("✅ DATOS FINALES LISTOS PARA RETORNAR:", filteredData.length)
+    return filteredData
   } catch (error) {
-    console.error("Error generando pago automático:", error)
+    console.error("❌ Error crítico al obtener pagos:", error)
+    return getServicePaymentsFromLocalStorage()
   }
 }
 
-// Eliminar pago de servicio
-export async function deleteServicePayment(id: string): Promise<void> {
-  console.log("Eliminando pago:", id)
+// Función para agregar pago de servicio
+export async function addServicePayment(payment: Omit<ServicePayment, "id" | "created_at">): Promise<ServicePayment> {
+  try {
+    console.log("🔄 Agregando pago de servicio:", payment)
 
-  if (supabase) {
-    try {
-      const { error } = await supabase.from("service_payments").delete().eq("id", id)
-
-      if (error) {
-        console.error("Error de Supabase al eliminar pago:", error)
-        throw error
-      }
-
-      console.log("Pago eliminado exitosamente de Supabase")
-      return
-    } catch (error) {
-      console.error("Error al eliminar pago de Supabase:", error)
-      // Continuar con localStorage como fallback
+    // Verificar si ya existe un pago para este servicio/mes/año
+    const existingPayment = await checkExistingPayment(payment.service_id, payment.month, payment.year)
+    if (existingPayment) {
+      console.warn("⚠️ Ya existe un pago para este servicio/mes/año")
+      throw new Error("Ya existe un pago para este servicio en este mes/año")
     }
-  }
 
-  // Fallback a localStorage
-  const payments = getFromLocalStorage("service_payments")
-  const filteredPayments = payments.filter((p: any) => p.id !== id)
-  saveToLocalStorage("service_payments", filteredPayments)
-  console.log("Pago eliminado de localStorage")
+    const newPayment: ServicePayment = {
+      ...payment,
+      id: generateUniqueId(),
+      created_at: new Date().toISOString(),
+    }
+
+    console.log("💾 Insertando pago en Supabase:", newPayment)
+
+    const { data, error } = await supabase.from("service_payments").insert([newPayment]).select().single()
+
+    if (error) {
+      console.error("❌ Error de Supabase al agregar pago:", error)
+      return addServicePaymentToLocalStorage(newPayment)
+    }
+
+    console.log("✅ Pago agregado a Supabase:", data)
+
+    // Verificar el conteo total después de agregar
+    const { count } = await supabase.from("service_payments").select("*", { count: "exact", head: true })
+    console.log("📊 Total de pagos después de agregar:", count)
+
+    return data
+  } catch (error) {
+    console.error("❌ Error al agregar pago:", error)
+    const newPayment: ServicePayment = {
+      ...payment,
+      id: generateUniqueId(),
+      created_at: new Date().toISOString(),
+    }
+    return addServicePaymentToLocalStorage(newPayment)
+  }
 }
 
-// Marcar pago como pagado
+// Función para verificar si existe un pago
+async function checkExistingPayment(serviceId: string, month: number, year: number): Promise<ServicePayment | null> {
+  try {
+    const { data, error } = await supabase
+      .from("service_payments")
+      .select("*")
+      .eq("service_id", serviceId)
+      .eq("month", month)
+      .eq("year", year)
+      .single()
+
+    if (error && error.code !== "PGRST116") {
+      // PGRST116 = no rows returned
+      console.error("Error checking existing payment:", error)
+    }
+
+    return data || null
+  } catch (error) {
+    console.error("Error checking existing payment:", error)
+    return null
+  }
+}
+
+// Función para actualizar pago de servicio
+export async function updateServicePayment(id: string, updates: Partial<ServicePayment>): Promise<ServicePayment> {
+  try {
+    console.log("🔄 Actualizando pago de servicio:", id, updates)
+
+    const { data, error } = await supabase.from("service_payments").update(updates).eq("id", id).select().single()
+
+    if (error) {
+      console.error("❌ Error de Supabase al actualizar pago:", error)
+      return updateServicePaymentInLocalStorage(id, updates)
+    }
+
+    console.log("✅ Pago actualizado en Supabase:", data)
+
+    // Si el pago se marca como "abonado", generar el pago del siguiente mes
+    if (updates.status === "abonado") {
+      await generateNextMonthPayment(data)
+    }
+
+    return data
+  } catch (error) {
+    console.error("❌ Error al actualizar pago:", error)
+    return updateServicePaymentInLocalStorage(id, updates)
+  }
+}
+
+// Función para marcar pago como pagado
 export async function markPaymentAsPaid(id: string, paymentDate: string, invoiceNumber?: string): Promise<void> {
   const updates = {
     status: "abonado" as const,
@@ -628,6 +401,308 @@ export async function markPaymentAsPaid(id: string, paymentDate: string, invoice
   }
 
   await updateServicePayment(id, updates)
+}
+
+// Función para generar pago del siguiente mes
+async function generateNextMonthPayment(currentPayment: ServicePayment): Promise<void> {
+  try {
+    console.log("🔄 Generando pago del siguiente mes para:", currentPayment.service_id)
+
+    // Calcular el siguiente mes
+    let nextMonth = currentPayment.month + 1
+    let nextYear = currentPayment.year
+
+    if (nextMonth > 12) {
+      nextMonth = 1
+      nextYear += 1
+    }
+
+    // Verificar si ya existe un pago para el siguiente mes
+    const existingNextPayment = await checkExistingPayment(currentPayment.service_id, nextMonth, nextYear)
+    if (existingNextPayment) {
+      console.log("✅ Ya existe pago para el siguiente mes")
+      return
+    }
+
+    // Crear el pago del siguiente mes
+    const nextPayment: Omit<ServicePayment, "id" | "created_at"> = {
+      service_id: currentPayment.service_id,
+      service_name: currentPayment.service_name,
+      hotel_id: currentPayment.hotel_id,
+      hotel_name: currentPayment.hotel_name,
+      amount: currentPayment.amount,
+      month: nextMonth,
+      year: nextYear,
+      due_date: new Date(nextYear, nextMonth - 1, 15).toISOString().split("T")[0], // Día 15 del mes
+      status: "pendiente",
+      payment_method: currentPayment.payment_method || "efectivo",
+      notes: `Generado automáticamente desde ${currentPayment.month}/${currentPayment.year}`,
+    }
+
+    await addServicePayment(nextPayment)
+    console.log("✅ Pago del siguiente mes generado exitosamente")
+  } catch (error) {
+    console.error("❌ Error al generar pago del siguiente mes:", error)
+  }
+}
+
+// Función para eliminar pago de servicio
+export async function deleteServicePayment(id: string): Promise<void> {
+  try {
+    console.log("🔄 Eliminando pago de servicio:", id)
+
+    const { error } = await supabase.from("service_payments").delete().eq("id", id)
+
+    if (error) {
+      console.error("❌ Error de Supabase al eliminar pago:", error)
+      deleteServicePaymentFromLocalStorage(id)
+      return
+    }
+
+    console.log("✅ Pago eliminado de Supabase")
+
+    // Verificar el conteo total después de eliminar
+    const { count } = await supabase.from("service_payments").select("*", { count: "exact", head: true })
+    console.log("📊 Total de pagos después de eliminar:", count)
+  } catch (error) {
+    console.error("❌ Error al eliminar pago:", error)
+    deleteServicePaymentFromLocalStorage(id)
+  }
+}
+
+// Función para actualizar promedio de servicio
+export async function updateServiceAverage(serviceId: string): Promise<void> {
+  try {
+    console.log("🔄 Actualizando promedio del servicio:", serviceId)
+
+    // Obtener todos los pagos del servicio
+    const { data: payments, error } = await supabase
+      .from("service_payments")
+      .select("amount")
+      .eq("service_id", serviceId)
+      .eq("status", "abonado")
+
+    if (error) {
+      console.error("❌ Error al obtener pagos para promedio:", error)
+      return
+    }
+
+    if (!payments || payments.length === 0) {
+      console.log("No hay pagos abonados para calcular promedio")
+      return
+    }
+
+    // Calcular promedio
+    const total = payments.reduce((sum, payment) => sum + payment.amount, 0)
+    const average = total / payments.length
+
+    // Actualizar el servicio
+    const { error: updateError } = await supabase
+      .from("services")
+      .update({ average_amount: average })
+      .eq("id", serviceId)
+
+    if (updateError) {
+      console.error("❌ Error al actualizar promedio:", updateError)
+      return
+    }
+
+    console.log("✅ Promedio actualizado:", average)
+  } catch (error) {
+    console.error("❌ Error al actualizar promedio:", error)
+  }
+}
+
+// Funciones de localStorage como fallback
+function getServicesFromLocalStorage(): Service[] {
+  try {
+    const stored = localStorage.getItem("services")
+    return stored ? JSON.parse(stored) : []
+  } catch (error) {
+    console.error("Error al obtener servicios de localStorage:", error)
+    return []
+  }
+}
+
+function getHotelsFromLocalStorage(): Hotel[] {
+  try {
+    const stored = localStorage.getItem("hotels")
+    return stored
+      ? JSON.parse(stored)
+      : [
+          { id: "1", name: "Hotel Costa Rica", address: "Dirección 1", created_at: new Date().toISOString() },
+          { id: "2", name: "Hotel Argentina", address: "Dirección 2", created_at: new Date().toISOString() },
+          { id: "3", name: "Hotel Cesop", address: "Dirección 3", created_at: new Date().toISOString() },
+        ]
+  } catch (error) {
+    console.error("Error al obtener hoteles de localStorage:", error)
+    return []
+  }
+}
+
+function addServiceToLocalStorage(service: Service): Service {
+  try {
+    const services = getServicesFromLocalStorage()
+    services.push(service)
+    localStorage.setItem("services", JSON.stringify(services))
+    return service
+  } catch (error) {
+    console.error("Error al agregar servicio a localStorage:", error)
+    return service
+  }
+}
+
+function updateServiceInLocalStorage(id: string, updates: Partial<Service>): Service {
+  try {
+    const services = getServicesFromLocalStorage()
+    const index = services.findIndex((s) => s.id === id)
+    if (index !== -1) {
+      services[index] = { ...services[index], ...updates }
+      localStorage.setItem("services", JSON.stringify(services))
+      return services[index]
+    }
+    throw new Error("Servicio no encontrado")
+  } catch (error) {
+    console.error("Error al actualizar servicio en localStorage:", error)
+    throw error
+  }
+}
+
+function deleteServiceFromLocalStorage(id: string): void {
+  try {
+    const services = getServicesFromLocalStorage()
+    const filtered = services.filter((s) => s.id !== id)
+    localStorage.setItem("services", JSON.stringify(filtered))
+
+    // También eliminar pagos asociados
+    const payments = getServicePaymentsFromLocalStorage()
+    const filteredPayments = payments.filter((p) => p.service_id !== id)
+    localStorage.setItem("service_payments", JSON.stringify(filteredPayments))
+  } catch (error) {
+    console.error("Error al eliminar servicio de localStorage:", error)
+  }
+}
+
+function getServicePaymentsFromLocalStorage(): ServicePayment[] {
+  try {
+    const stored = localStorage.getItem("service_payments")
+    const payments = stored ? JSON.parse(stored) : []
+
+    console.log("📱 Pagos obtenidos de localStorage:", payments.length)
+
+    // Agregar hotel_name a los pagos de localStorage
+    const hotels = getHotelsFromLocalStorage()
+    return payments.map((payment: any) => {
+      const hotel = hotels.find((h) => h.id === payment.hotel_id)
+      return {
+        ...payment,
+        hotel_name: hotel?.name || "Hotel no encontrado",
+      }
+    })
+  } catch (error) {
+    console.error("Error al obtener pagos de localStorage:", error)
+    return []
+  }
+}
+
+function addServicePaymentToLocalStorage(payment: ServicePayment): ServicePayment {
+  try {
+    const payments = getServicePaymentsFromLocalStorage()
+
+    // Verificar duplicados
+    const exists = payments.some(
+      (p) => p.service_id === payment.service_id && p.month === payment.month && p.year === payment.year,
+    )
+
+    if (exists) {
+      throw new Error("Ya existe un pago para este servicio en este mes/año")
+    }
+
+    payments.push(payment)
+    localStorage.setItem("service_payments", JSON.stringify(payments))
+
+    console.log("📱 Pago agregado a localStorage. Total:", payments.length)
+
+    return payment
+  } catch (error) {
+    console.error("Error al agregar pago a localStorage:", error)
+    throw error
+  }
+}
+
+function updateServicePaymentInLocalStorage(id: string, updates: Partial<ServicePayment>): ServicePayment {
+  try {
+    const payments = getServicePaymentsFromLocalStorage()
+    const index = payments.findIndex((p) => p.id === id)
+    if (index !== -1) {
+      payments[index] = { ...payments[index], ...updates }
+      localStorage.setItem("service_payments", JSON.stringify(payments))
+
+      // Si se marca como abonado, generar siguiente mes
+      if (updates.status === "abonado") {
+        generateNextMonthPaymentLocalStorage(payments[index])
+      }
+
+      return payments[index]
+    }
+    throw new Error("Pago no encontrado")
+  } catch (error) {
+    console.error("Error al actualizar pago en localStorage:", error)
+    throw error
+  }
+}
+
+function generateNextMonthPaymentLocalStorage(currentPayment: ServicePayment): void {
+  try {
+    let nextMonth = currentPayment.month + 1
+    let nextYear = currentPayment.year
+
+    if (nextMonth > 12) {
+      nextMonth = 1
+      nextYear += 1
+    }
+
+    const payments = getServicePaymentsFromLocalStorage()
+    const exists = payments.some(
+      (p) => p.service_id === currentPayment.service_id && p.month === nextMonth && p.year === nextYear,
+    )
+
+    if (!exists) {
+      const nextPayment: ServicePayment = {
+        id: generateUniqueId(),
+        service_id: currentPayment.service_id,
+        service_name: currentPayment.service_name,
+        hotel_id: currentPayment.hotel_id,
+        hotel_name: currentPayment.hotel_name,
+        amount: currentPayment.amount,
+        month: nextMonth,
+        year: nextYear,
+        due_date: new Date(nextYear, nextMonth - 1, 15).toISOString().split("T")[0],
+        status: "pendiente",
+        payment_method: currentPayment.payment_method || "efectivo",
+        notes: `Generado automáticamente desde ${currentPayment.month}/${currentPayment.year}`,
+        created_at: new Date().toISOString(),
+      }
+
+      payments.push(nextPayment)
+      localStorage.setItem("service_payments", JSON.stringify(payments))
+      console.log("✅ Pago del siguiente mes generado en localStorage")
+    }
+  } catch (error) {
+    console.error("Error al generar siguiente mes en localStorage:", error)
+  }
+}
+
+function deleteServicePaymentFromLocalStorage(id: string): void {
+  try {
+    const payments = getServicePaymentsFromLocalStorage()
+    const filtered = payments.filter((p) => p.id !== id)
+    localStorage.setItem("service_payments", JSON.stringify(filtered))
+
+    console.log("📱 Pago eliminado de localStorage. Total:", filtered.length)
+  } catch (error) {
+    console.error("Error al eliminar pago de localStorage:", error)
+  }
 }
 
 // FUNCIONES DE RESERVACIONES (REQUERIDAS PARA COMPATIBILIDAD)

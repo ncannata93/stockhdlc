@@ -25,6 +25,7 @@ import {
   CreditCard,
   Receipt,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react"
 
 const MONTHS = {
@@ -145,111 +146,115 @@ export function PagosList() {
     setLoading(true)
     setError("")
     try {
-      console.log("🔄 Iniciando carga de datos...")
+      console.log("🔄 INICIANDO CARGA COMPLETA DE DATOS...")
 
       const [paymentsData, hotelsData] = await Promise.all([getServicePayments(), getHotels()])
 
-      console.log("📊 Datos cargados:")
-      console.log("- Pagos obtenidos:", paymentsData?.length || 0)
-      console.log("- Hoteles obtenidos:", hotelsData?.length || 0)
+      console.log("📊 DATOS CARGADOS:")
+      console.log("- Total pagos obtenidos:", paymentsData?.length || 0)
+      console.log("- Total hoteles obtenidos:", hotelsData?.length || 0)
 
       if (paymentsData && paymentsData.length > 0) {
-        console.log("📋 Primeros 3 pagos:", paymentsData.slice(0, 3))
-        console.log("📋 Últimos 3 pagos:", paymentsData.slice(-3))
+        console.log("🔍 ANÁLISIS DETALLADO DE PAGOS:")
 
-        // Mostrar distribución por estado
-        const statusCount = paymentsData.reduce(
+        // Análisis por hotel
+        const paymentsByHotel = paymentsData.reduce(
           (acc, payment) => {
-            acc[payment.status] = (acc[payment.status] || 0) + 1
+            const hotelName = payment.hotel_name || "Sin hotel"
+            if (!acc[hotelName]) acc[hotelName] = []
+            acc[hotelName].push(payment)
             return acc
           },
-          {} as Record<string, number>,
+          {} as Record<string, ServicePayment[]>,
         )
-        console.log("📊 Distribución por estado:", statusCount)
 
-        // Mostrar distribución por año
-        const yearCount = paymentsData.reduce(
+        console.log("🏨 PAGOS POR HOTEL:")
+        Object.entries(paymentsByHotel).forEach(([hotel, payments]) => {
+          console.log(`- ${hotel}: ${payments.length} pagos`)
+        })
+
+        // Análisis específico de Argentina
+        const argentinaPayments = paymentsData.filter(
+          (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
+        )
+        console.log("🇦🇷 PAGOS DE ARGENTINA:", argentinaPayments.length)
+
+        if (argentinaPayments.length > 0) {
+          // Agrupar por mes/año
+          const argentinaByPeriod = argentinaPayments.reduce(
+            (acc, payment) => {
+              const key = `${payment.month}/${payment.year}`
+              if (!acc[key]) acc[key] = []
+              acc[key].push(payment)
+              return acc
+            },
+            {} as Record<string, ServicePayment[]>,
+          )
+
+          console.log("🇦🇷 ARGENTINA POR PERÍODO:")
+          Object.entries(argentinaByPeriod)
+            .sort(([a], [b]) => {
+              const [monthA, yearA] = a.split("/").map(Number)
+              const [monthB, yearB] = b.split("/").map(Number)
+              return yearA !== yearB ? yearA - yearB : monthA - monthB
+            })
+            .forEach(([period, payments]) => {
+              console.log(`- ${period}: ${payments.length} pagos`)
+              payments.forEach((p) => {
+                console.log(`  * ${p.service_name}: $${p.amount} (${p.status})`)
+              })
+            })
+
+          // Verificar específicamente enero 2025
+          const enero2025 = argentinaPayments.filter((p) => p.month === 1 && p.year === 2025)
+          console.log("🗓️ ARGENTINA ENERO 2025:", enero2025.length, "pagos")
+          enero2025.forEach((p) => {
+            console.log(`- ${p.service_name}: $${p.amount} (${p.status}) - ID: ${p.id}`)
+          })
+        }
+
+        // Análisis por año
+        const paymentsByYear = paymentsData.reduce(
           (acc, payment) => {
             acc[payment.year] = (acc[payment.year] || 0) + 1
             return acc
           },
           {} as Record<number, number>,
         )
-        console.log("📊 Distribución por año:", yearCount)
 
-        // Debug específico para Argentina en Julio 2025
-        const argentinaPayments = paymentsData.filter(
-          (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina") && p.month === 7 && p.year === 2025,
-        )
-        console.log("🇦🇷 Pagos de Argentina en Julio 2025:", argentinaPayments.length)
-        console.log(
-          "🇦🇷 Detalles de Argentina:",
-          argentinaPayments.map((p) => ({
-            id: p.id,
-            service: p.service_name,
-            hotel: p.hotel_name,
-            month: p.month,
-            year: p.year,
-            amount: p.amount,
-            status: p.status,
-          })),
-        )
+        console.log("📅 PAGOS POR AÑO:")
+        Object.entries(paymentsByYear)
+          .sort(([a], [b]) => Number(b) - Number(a))
+          .forEach(([year, count]) => {
+            console.log(`- ${year}: ${count} pagos`)
+          })
 
-        // Debug de todos los pagos de Argentina (todos los meses/años)
-        const allArgentinaPayments = paymentsData.filter(
-          (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
-        )
-        console.log("🇦🇷 TODOS los pagos de Argentina:", allArgentinaPayments.length)
-
-        // Agrupar por mes/año
-        const argentinaByPeriod = allArgentinaPayments.reduce(
+        // Análisis por estado
+        const paymentsByStatus = paymentsData.reduce(
           (acc, payment) => {
-            const key = `${payment.month}/${payment.year}`
-            if (!acc[key]) acc[key] = []
-            acc[key].push({
-              service: payment.service_name,
-              amount: payment.amount,
-              status: payment.status,
-            })
-            return acc
-          },
-          {} as Record<string, any[]>,
-        )
-        console.log("🇦🇷 Argentina por período:", argentinaByPeriod)
-
-        // Debug de todos los pagos de Julio 2025
-        const july2025Payments = paymentsData.filter((p) => p.month === 7 && p.year === 2025)
-        console.log("📅 Total pagos Julio 2025:", july2025Payments.length)
-
-        // Debug por hotel en Julio 2025
-        const hotelCounts = july2025Payments.reduce(
-          (acc, payment) => {
-            const hotelName = payment.hotel_name || "Sin hotel"
-            acc[hotelName] = (acc[hotelName] || 0) + 1
+            acc[payment.status] = (acc[payment.status] || 0) + 1
             return acc
           },
           {} as Record<string, number>,
         )
-        console.log("🏨 Pagos por hotel en Julio 2025:", hotelCounts)
 
-        // Debug de servicios de Argentina
-        const argentinaServices = allArgentinaPayments.reduce(
-          (acc, payment) => {
-            if (!acc[payment.service_name]) {
-              acc[payment.service_name] = {
-                count: 0,
-                periods: [],
-              }
-            }
-            acc[payment.service_name].count++
-            acc[payment.service_name].periods.push(`${payment.month}/${payment.year}`)
-            return acc
-          },
-          {} as Record<string, any>,
-        )
-        console.log("🇦🇷 Servicios de Argentina:", argentinaServices)
+        console.log("📊 PAGOS POR ESTADO:")
+        Object.entries(paymentsByStatus).forEach(([status, count]) => {
+          console.log(`- ${status}: ${count} pagos`)
+        })
+
+        // Verificar estructura de datos
+        console.log("🔍 ESTRUCTURA DEL PRIMER PAGO:")
+        console.log(paymentsData[0])
+
+        // Verificar si hay pagos sin hotel_name
+        const paymentsWithoutHotel = paymentsData.filter((p) => !p.hotel_name)
+        if (paymentsWithoutHotel.length > 0) {
+          console.warn("⚠️ PAGOS SIN HOTEL_NAME:", paymentsWithoutHotel.length)
+          console.log("Primeros 3:", paymentsWithoutHotel.slice(0, 3))
+        }
       } else {
-        console.warn("⚠️ No se encontraron pagos")
+        console.warn("⚠️ NO SE ENCONTRARON PAGOS")
       }
 
       // Actualizar pagos vencidos automáticamente
@@ -262,9 +267,11 @@ export function PagosList() {
         console.log("✅ Se actualizaron pagos vencidos automáticamente")
       }
 
-      console.log("✅ Datos cargados y estado actualizado")
+      console.log("✅ CARGA COMPLETA FINALIZADA")
+      console.log("- Pagos en estado:", updatedPayments.length)
+      console.log("- Hoteles en estado:", hotelsData?.length || 0)
     } catch (error) {
-      console.error("❌ Error al cargar datos:", error)
+      console.error("❌ ERROR AL CARGAR DATOS:", error)
       setError("Error al cargar los datos. Por favor, intenta nuevamente.")
     } finally {
       setLoading(false)
@@ -435,7 +442,7 @@ export function PagosList() {
     return PAYMENT_METHODS[method as keyof typeof PAYMENT_METHODS] || method
   }
 
-  // Calcular pagos filtrados - MOVIDO FUERA DE loadData
+  // Calcular pagos filtrados
   const filteredPayments = payments.filter((payment) => {
     const matchesSearch =
       payment.service_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -447,32 +454,18 @@ export function PagosList() {
     const matchesMonth = filterMonth === "" || payment.month === Number(filterMonth)
     const matchesYear = filterYear === "" || payment.year === Number(filterYear)
 
-    // Debug específico para el primer pago de Argentina si existe
-    if (
-      payment.hotel_name &&
-      payment.hotel_name.toLowerCase().includes("argentina") &&
-      payment.month === 7 &&
-      payment.year === 2025
-    ) {
-      console.log("🔍 Debug Argentina payment:", {
-        id: payment.id,
-        service: payment.service_name,
-        hotel: payment.hotel_name,
-        searchTerm,
-        matchesSearch,
-        filterHotel,
-        matchesHotel,
-        filterStatus,
-        matchesStatus,
-        filterMonth,
-        matchesMonth,
-        filterYear,
-        matchesYear,
-        finalResult: matchesSearch && matchesHotel && matchesStatus && matchesMonth && matchesYear,
-      })
-    }
-
     return matchesSearch && matchesHotel && matchesStatus && matchesMonth && matchesYear
+  })
+
+  // Debug de filtros
+  console.log("🔍 FILTROS APLICADOS:", {
+    searchTerm,
+    filterHotel,
+    filterStatus,
+    filterMonth,
+    filterYear,
+    totalPayments: payments.length,
+    filteredPayments: filteredPayments.length,
   })
 
   // Ordenar los pagos según el campo y dirección seleccionados
@@ -543,21 +536,11 @@ export function PagosList() {
     console.log("🧹 Filtros limpiados")
   }
 
-  // Debug final
-  console.log("🎯 Estado final antes de render:", {
-    loading,
-    error,
-    paymentsLength: payments.length,
-    filteredLength: filteredPayments.length,
-    sortedLength: sortedPayments.length,
-    filters: {
-      searchTerm,
-      filterHotel,
-      filterStatus,
-      filterMonth,
-      filterYear,
-    },
-  })
+  // Función para recargar datos
+  const handleRefresh = () => {
+    console.log("🔄 Recargando datos manualmente...")
+    loadData()
+  }
 
   if (loading) {
     return (
@@ -597,6 +580,14 @@ export function PagosList() {
 
           <div className="flex gap-2">
             <button
+              onClick={handleRefresh}
+              className="flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-md hover:bg-green-200 transition-colors"
+              title="Recargar datos"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Recargar
+            </button>
+            <button
               onClick={clearAllFilters}
               className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
             >
@@ -625,6 +616,19 @@ export function PagosList() {
               </div>
               <div>Mostrando: {filteredPayments.length}</div>
             </div>
+            {/* Debug específico para Argentina */}
+            {(() => {
+              const argentinaPayments = payments.filter(
+                (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
+              )
+              const enero2025 = argentinaPayments.filter((p) => p.month === 1 && p.year === 2025)
+              return (
+                <div className="mt-2 pt-2 border-t border-blue-300">
+                  <div>Argentina total: {argentinaPayments.length} pagos</div>
+                  <div>Argentina Enero 2025: {enero2025.length} pagos</div>
+                </div>
+              )
+            })()}
           </div>
         </div>
 
