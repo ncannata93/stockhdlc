@@ -30,12 +30,20 @@ export function ServicesList() {
   }
 
   const handleDeleteService = async (id: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar este servicio?")) {
+    if (
+      window.confirm(
+        "¿Estás seguro de que deseas eliminar este servicio? Esta acción también eliminará todos los pagos relacionados y no se puede deshacer.",
+      )
+    ) {
       try {
+        console.log("Eliminando servicio:", id)
         await deleteService(id)
+        console.log("Servicio eliminado, recargando datos...")
         await loadData()
+        console.log("Datos recargados exitosamente")
       } catch (error) {
         console.error("Error al eliminar servicio:", error)
+        alert("Error al eliminar el servicio. Por favor, inténtalo de nuevo.")
       }
     }
   }

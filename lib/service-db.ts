@@ -499,28 +499,53 @@ function updateServiceInLocalStorage(id: string, updates: Partial<Service>): voi
 
 export async function deleteService(id: string): Promise<void> {
   try {
+    console.log("Eliminando servicio:", id)
+
     if (!supabase) {
       console.warn("Supabase client not available, using localStorage")
       deleteServiceFromLocalStorage(id)
       return
     }
-    const { error } = await supabase.from("services").update({ active: false }).eq("id", id)
 
-    if (error) {
-      console.error("Error de Supabase al eliminar servicio:", error)
-      deleteServiceFromLocalStorage(id)
+    // Primero eliminar todos los pagos relacionados con este servicio
+    const { error: paymentsError } = await supabase.from("service_payments").delete().eq("service_id", id)
+
+    if (paymentsError) {
+      console.error("Error eliminando pagos del servicio:", paymentsError)
+    } else {
+      console.log("Pagos del servicio eliminados exitosamente")
     }
+
+    // Luego eliminar el servicio
+    const { error: serviceError } = await supabase.from("services").delete().eq("id", id)
+
+    if (serviceError) {
+      console.error("Error de Supabase al eliminar servicio:", serviceError)
+      deleteServiceFromLocalStorage(id)
+      throw serviceError
+    }
+
+    console.log("Servicio eliminado exitosamente de Supabase")
   } catch (error) {
-    console.warn("Using localStorage for deleting service:", error)
+    console.error("Error al eliminar servicio:", error)
     deleteServiceFromLocalStorage(id)
+    throw error
   }
 }
 
 function deleteServiceFromLocalStorage(id: string): void {
   try {
+    // Eliminar el servicio
     const services = getFromLocalStorage("services")
     const filtered = services.filter((service) => service.id !== id)
     saveToLocalStorage("services", filtered)
+
+    // Eliminar pagos relacionados
+    const payments = getFromLocalStorage("service_payments")
+    const filteredPayments = payments.filter((payment: any) => payment.service_id !== id)
+    saveToLocalStorage("service_payments", filteredPayments)
+
+    console.log("Servicio y pagos relacionados eliminados de localStorage")
   } catch (error) {
     console.error("Error deleting service from localStorage:", error)
     throw error

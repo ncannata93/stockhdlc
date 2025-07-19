@@ -24,6 +24,7 @@ import {
   ChevronDown,
   CreditCard,
   Receipt,
+  AlertCircle,
 } from "lucide-react"
 
 const MONTHS = {
@@ -57,11 +58,12 @@ export function PagosList() {
   const [payments, setPayments] = useState<ServicePayment[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string>("")
   const [searchTerm, setSearchTerm] = useState("")
   const [filterHotel, setFilterHotel] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
   const [filterMonth, setFilterMonth] = useState("")
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString())
+  const [filterYear, setFilterYear] = useState("")
 
   // Estado para ordenamiento
   const [sortField, setSortField] = useState<string>("")
@@ -141,24 +143,129 @@ export function PagosList() {
 
   const loadData = async () => {
     setLoading(true)
+    setError("")
     try {
-      console.log("Cargando datos de pagos...")
+      console.log("🔄 Iniciando carga de datos...")
+
       const [paymentsData, hotelsData] = await Promise.all([getServicePayments(), getHotels()])
 
-      console.log("Pagos obtenidos:", paymentsData.length)
-      console.log("Primeros 3 pagos:", paymentsData.slice(0, 3))
+      console.log("📊 Datos cargados:")
+      console.log("- Pagos obtenidos:", paymentsData?.length || 0)
+      console.log("- Hoteles obtenidos:", hotelsData?.length || 0)
+
+      if (paymentsData && paymentsData.length > 0) {
+        console.log("📋 Primeros 3 pagos:", paymentsData.slice(0, 3))
+        console.log("📋 Últimos 3 pagos:", paymentsData.slice(-3))
+
+        // Mostrar distribución por estado
+        const statusCount = paymentsData.reduce(
+          (acc, payment) => {
+            acc[payment.status] = (acc[payment.status] || 0) + 1
+            return acc
+          },
+          {} as Record<string, number>,
+        )
+        console.log("📊 Distribución por estado:", statusCount)
+
+        // Mostrar distribución por año
+        const yearCount = paymentsData.reduce(
+          (acc, payment) => {
+            acc[payment.year] = (acc[payment.year] || 0) + 1
+            return acc
+          },
+          {} as Record<number, number>,
+        )
+        console.log("📊 Distribución por año:", yearCount)
+
+        // Debug específico para Argentina en Julio 2025
+        const argentinaPayments = paymentsData.filter(
+          (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina") && p.month === 7 && p.year === 2025,
+        )
+        console.log("🇦🇷 Pagos de Argentina en Julio 2025:", argentinaPayments.length)
+        console.log(
+          "🇦🇷 Detalles de Argentina:",
+          argentinaPayments.map((p) => ({
+            id: p.id,
+            service: p.service_name,
+            hotel: p.hotel_name,
+            month: p.month,
+            year: p.year,
+            amount: p.amount,
+            status: p.status,
+          })),
+        )
+
+        // Debug de todos los pagos de Argentina (todos los meses/años)
+        const allArgentinaPayments = paymentsData.filter(
+          (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
+        )
+        console.log("🇦🇷 TODOS los pagos de Argentina:", allArgentinaPayments.length)
+
+        // Agrupar por mes/año
+        const argentinaByPeriod = allArgentinaPayments.reduce(
+          (acc, payment) => {
+            const key = `${payment.month}/${payment.year}`
+            if (!acc[key]) acc[key] = []
+            acc[key].push({
+              service: payment.service_name,
+              amount: payment.amount,
+              status: payment.status,
+            })
+            return acc
+          },
+          {} as Record<string, any[]>,
+        )
+        console.log("🇦🇷 Argentina por período:", argentinaByPeriod)
+
+        // Debug de todos los pagos de Julio 2025
+        const july2025Payments = paymentsData.filter((p) => p.month === 7 && p.year === 2025)
+        console.log("📅 Total pagos Julio 2025:", july2025Payments.length)
+
+        // Debug por hotel en Julio 2025
+        const hotelCounts = july2025Payments.reduce(
+          (acc, payment) => {
+            const hotelName = payment.hotel_name || "Sin hotel"
+            acc[hotelName] = (acc[hotelName] || 0) + 1
+            return acc
+          },
+          {} as Record<string, number>,
+        )
+        console.log("🏨 Pagos por hotel en Julio 2025:", hotelCounts)
+
+        // Debug de servicios de Argentina
+        const argentinaServices = allArgentinaPayments.reduce(
+          (acc, payment) => {
+            if (!acc[payment.service_name]) {
+              acc[payment.service_name] = {
+                count: 0,
+                periods: [],
+              }
+            }
+            acc[payment.service_name].count++
+            acc[payment.service_name].periods.push(`${payment.month}/${payment.year}`)
+            return acc
+          },
+          {} as Record<string, any>,
+        )
+        console.log("🇦🇷 Servicios de Argentina:", argentinaServices)
+      } else {
+        console.warn("⚠️ No se encontraron pagos")
+      }
 
       // Actualizar pagos vencidos automáticamente
-      const { updatedPayments, hasUpdates } = await updateOverduePayments(paymentsData)
+      const { updatedPayments, hasUpdates } = await updateOverduePayments(paymentsData || [])
 
       setPayments(updatedPayments)
-      setHotels(hotelsData)
+      setHotels(hotelsData || [])
 
       if (hasUpdates) {
-        console.log("Se actualizaron pagos vencidos automáticamente")
+        console.log("✅ Se actualizaron pagos vencidos automáticamente")
       }
+
+      console.log("✅ Datos cargados y estado actualizado")
     } catch (error) {
-      console.error("Error al cargar datos:", error)
+      console.error("❌ Error al cargar datos:", error)
+      setError("Error al cargar los datos. Por favor, intenta nuevamente.")
     } finally {
       setLoading(false)
     }
@@ -328,6 +435,7 @@ export function PagosList() {
     return PAYMENT_METHODS[method as keyof typeof PAYMENT_METHODS] || method
   }
 
+  // Calcular pagos filtrados - MOVIDO FUERA DE loadData
   const filteredPayments = payments.filter((payment) => {
     const matchesSearch =
       payment.service_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -336,10 +444,33 @@ export function PagosList() {
 
     const matchesHotel = filterHotel === "" || payment.hotel_id === filterHotel
     const matchesStatus = filterStatus === "" || payment.status === filterStatus
-
-    // Corregir la lógica de filtrado por mes - convertir ambos a números para comparación
     const matchesMonth = filterMonth === "" || payment.month === Number(filterMonth)
     const matchesYear = filterYear === "" || payment.year === Number(filterYear)
+
+    // Debug específico para el primer pago de Argentina si existe
+    if (
+      payment.hotel_name &&
+      payment.hotel_name.toLowerCase().includes("argentina") &&
+      payment.month === 7 &&
+      payment.year === 2025
+    ) {
+      console.log("🔍 Debug Argentina payment:", {
+        id: payment.id,
+        service: payment.service_name,
+        hotel: payment.hotel_name,
+        searchTerm,
+        matchesSearch,
+        filterHotel,
+        matchesHotel,
+        filterStatus,
+        matchesStatus,
+        filterMonth,
+        matchesMonth,
+        filterYear,
+        matchesYear,
+        finalResult: matchesSearch && matchesHotel && matchesStatus && matchesMonth && matchesYear,
+      })
+    }
 
     return matchesSearch && matchesHotel && matchesStatus && matchesMonth && matchesYear
   })
@@ -402,10 +533,52 @@ export function PagosList() {
     )
   }
 
+  // Función para limpiar todos los filtros
+  const clearAllFilters = () => {
+    setSearchTerm("")
+    setFilterHotel("")
+    setFilterStatus("")
+    setFilterMonth("")
+    setFilterYear("")
+    console.log("🧹 Filtros limpiados")
+  }
+
+  // Debug final
+  console.log("🎯 Estado final antes de render:", {
+    loading,
+    error,
+    paymentsLength: payments.length,
+    filteredLength: filteredPayments.length,
+    sortedLength: sortedPayments.length,
+    filters: {
+      searchTerm,
+      filterHotel,
+      filterStatus,
+      filterMonth,
+      filterYear,
+    },
+  })
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <span className="ml-3 text-gray-600">Cargando pagos...</span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <div className="flex items-center">
+          <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+          <span className="text-red-800 font-medium">Error al cargar datos</span>
+        </div>
+        <p className="text-red-700 mt-2">{error}</p>
+        <button onClick={loadData} className="mt-3 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
+          Reintentar
+        </button>
       </div>
     )
   }
@@ -415,15 +588,44 @@ export function PagosList() {
       {/* Header con filtros */}
       <div className="p-4 sm:p-6 border-b border-gray-200">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Pagos de Servicios</h2>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800">Pagos de Servicios</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Total: {payments.length} pagos | Mostrando: {filteredPayments.length} pagos
+            </p>
+          </div>
 
-          <button
-            onClick={() => (window.location.href = "/servicios?tab=agregar-pago")}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Agregar Pago
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={clearAllFilters}
+              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
+            >
+              Limpiar Filtros
+            </button>
+            <button
+              onClick={() => (window.location.href = "/servicios?tab=agregar-pago")}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Agregar Pago
+            </button>
+          </div>
+        </div>
+
+        {/* Información de debug */}
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="text-sm text-blue-800">
+            <strong>Debug Info:</strong>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+              <div>Pagos cargados: {payments.length}</div>
+              <div>Hoteles: {hotels.length}</div>
+              <div>
+                Filtros activos:{" "}
+                {[searchTerm, filterHotel, filterStatus, filterMonth, filterYear].filter((f) => f !== "").length}
+              </div>
+              <div>Mostrando: {filteredPayments.length}</div>
+            </div>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -509,10 +711,28 @@ export function PagosList() {
       </div>
 
       {/* Lista de pagos */}
-      {filteredPayments.length === 0 ? (
+      {payments.length === 0 ? (
+        <div className="p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500 text-lg">No hay pagos registrados</p>
+          <p className="text-sm text-gray-400 mt-2">Agrega tu primer pago para comenzar</p>
+          <button
+            onClick={() => (window.location.href = "/servicios?tab=agregar-pago")}
+            className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700"
+          >
+            Agregar Primer Pago
+          </button>
+        </div>
+      ) : filteredPayments.length === 0 ? (
         <div className="p-6 text-center">
           <p className="text-gray-500">No hay pagos que coincidan con los filtros seleccionados</p>
           <p className="text-sm text-gray-400 mt-2">Total de pagos cargados: {payments.length}</p>
+          <button
+            onClick={clearAllFilters}
+            className="mt-3 bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700"
+          >
+            Limpiar Filtros
+          </button>
         </div>
       ) : (
         <>
