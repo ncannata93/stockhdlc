@@ -63,8 +63,11 @@ export function PagosList() {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterHotel, setFilterHotel] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
-  const [filterMonth, setFilterMonth] = useState("")
-  const [filterYear, setFilterYear] = useState("")
+
+  // Inicializar filtros con mes y año actual
+  const currentDate = new Date()
+  const [filterMonth, setFilterMonth] = useState((currentDate.getMonth() + 1).toString())
+  const [filterYear, setFilterYear] = useState(currentDate.getFullYear().toString())
 
   // Estado para ordenamiento
   const [sortField, setSortField] = useState<string>("")
@@ -205,10 +208,16 @@ export function PagosList() {
               })
             })
 
-          // Verificar específicamente enero 2025
-          const enero2025 = argentinaPayments.filter((p) => p.month === 1 && p.year === 2025)
-          console.log("🗓️ ARGENTINA ENERO 2025:", enero2025.length, "pagos")
-          enero2025.forEach((p) => {
+          // Verificar específicamente el mes/año actual
+          const currentMonth = currentDate.getMonth() + 1
+          const currentYear = currentDate.getFullYear()
+          const currentPeriod = argentinaPayments.filter((p) => p.month === currentMonth && p.year === currentYear)
+          console.log(
+            `🗓️ ARGENTINA ${MONTHS[currentMonth as keyof typeof MONTHS]} ${currentYear}:`,
+            currentPeriod.length,
+            "pagos",
+          )
+          currentPeriod.forEach((p) => {
             console.log(`- ${p.service_name}: $${p.amount} (${p.status}) - ID: ${p.id}`)
           })
         }
@@ -270,6 +279,13 @@ export function PagosList() {
       console.log("✅ CARGA COMPLETA FINALIZADA")
       console.log("- Pagos en estado:", updatedPayments.length)
       console.log("- Hoteles en estado:", hotelsData?.length || 0)
+
+      // Log de filtros por defecto aplicados
+      const currentMonth = currentDate.getMonth() + 1
+      const currentYear = currentDate.getFullYear()
+      const currentMonthPayments = updatedPayments.filter((p) => p.month === currentMonth && p.year === currentYear)
+      console.log(`🎯 FILTROS POR DEFECTO APLICADOS: ${MONTHS[currentMonth as keyof typeof MONTHS]} ${currentYear}`)
+      console.log(`📊 Pagos del mes actual: ${currentMonthPayments.length}`)
     } catch (error) {
       console.error("❌ ERROR AL CARGAR DATOS:", error)
       setError("Error al cargar los datos. Por favor, intenta nuevamente.")
@@ -462,8 +478,8 @@ export function PagosList() {
     searchTerm,
     filterHotel,
     filterStatus,
-    filterMonth,
-    filterYear,
+    filterMonth: filterMonth ? `${MONTHS[Number(filterMonth) as keyof typeof MONTHS]} (${filterMonth})` : "Todos",
+    filterYear: filterYear || "Todos",
     totalPayments: payments.length,
     filteredPayments: filteredPayments.length,
   })
@@ -533,7 +549,22 @@ export function PagosList() {
     setFilterStatus("")
     setFilterMonth("")
     setFilterYear("")
-    console.log("🧹 Filtros limpiados")
+    console.log("🧹 Filtros limpiados - mostrando todos los pagos")
+  }
+
+  // Función para restablecer filtros por defecto (mes y año actual)
+  const resetToCurrentMonth = () => {
+    const currentMonth = (currentDate.getMonth() + 1).toString()
+    const currentYear = currentDate.getFullYear().toString()
+
+    setSearchTerm("")
+    setFilterHotel("")
+    setFilterStatus("")
+    setFilterMonth(currentMonth)
+    setFilterYear(currentYear)
+    console.log(
+      `🎯 Filtros restablecidos al mes actual: ${MONTHS[Number(currentMonth) as keyof typeof MONTHS]} ${currentYear}`,
+    )
   }
 
   // Función para recargar datos
@@ -576,9 +607,14 @@ export function PagosList() {
             <p className="text-sm text-gray-600 mt-1">
               Total: {payments.length} pagos | Mostrando: {filteredPayments.length} pagos
             </p>
+            {filterMonth && filterYear && (
+              <p className="text-sm text-blue-600 mt-1">
+                📅 Filtrado por: {MONTHS[Number(filterMonth) as keyof typeof MONTHS]} {filterYear}
+              </p>
+            )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={handleRefresh}
               className="flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-md hover:bg-green-200 transition-colors"
@@ -588,10 +624,18 @@ export function PagosList() {
               Recargar
             </button>
             <button
+              onClick={resetToCurrentMonth}
+              className="flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-md hover:bg-blue-200 transition-colors"
+              title="Volver al mes actual"
+            >
+              <Calendar className="h-4 w-4" />
+              Mes Actual
+            </button>
+            <button
               onClick={clearAllFilters}
               className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
             >
-              Limpiar Filtros
+              Ver Todos
             </button>
             <button
               onClick={() => (window.location.href = "/servicios?tab=agregar-pago")}
@@ -621,11 +665,18 @@ export function PagosList() {
               const argentinaPayments = payments.filter(
                 (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
               )
-              const enero2025 = argentinaPayments.filter((p) => p.month === 1 && p.year === 2025)
+              const currentMonth = currentDate.getMonth() + 1
+              const currentYear = currentDate.getFullYear()
+              const argentinaCurrentMonth = argentinaPayments.filter(
+                (p) => p.month === currentMonth && p.year === currentYear,
+              )
               return (
                 <div className="mt-2 pt-2 border-t border-blue-300">
                   <div>Argentina total: {argentinaPayments.length} pagos</div>
-                  <div>Argentina Enero 2025: {enero2025.length} pagos</div>
+                  <div>
+                    Argentina {MONTHS[currentMonth as keyof typeof MONTHS]} {currentYear}:{" "}
+                    {argentinaCurrentMonth.length} pagos
+                  </div>
                 </div>
               )
             })()}
@@ -680,12 +731,12 @@ export function PagosList() {
             </select>
           </div>
 
-          {/* Filtro por Mes */}
+          {/* Filtro por Mes - CON VALOR POR DEFECTO */}
           <div>
             <select
               value={filterMonth}
               onChange={(e) => setFilterMonth(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
             >
               <option value="">Todos los meses</option>
               {Object.entries(MONTHS).map(([num, name]) => (
@@ -696,12 +747,12 @@ export function PagosList() {
             </select>
           </div>
 
-          {/* Filtro por Año */}
+          {/* Filtro por Año - CON VALOR POR DEFECTO */}
           <div>
             <select
               value={filterYear}
               onChange={(e) => setFilterYear(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
             >
               <option value="">Todos los años</option>
               {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
@@ -730,13 +781,23 @@ export function PagosList() {
       ) : filteredPayments.length === 0 ? (
         <div className="p-6 text-center">
           <p className="text-gray-500">No hay pagos que coincidan con los filtros seleccionados</p>
-          <p className="text-sm text-gray-400 mt-2">Total de pagos cargados: {payments.length}</p>
-          <button
-            onClick={clearAllFilters}
-            className="mt-3 bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700"
-          >
-            Limpiar Filtros
-          </button>
+          <p className="text-sm text-gray-400 mt-2">
+            Total de pagos cargados: {payments.length} | Filtros:{" "}
+            {filterMonth && filterYear
+              ? `${MONTHS[Number(filterMonth) as keyof typeof MONTHS]} ${filterYear}`
+              : "Varios"}
+          </p>
+          <div className="flex gap-2 justify-center mt-3">
+            <button
+              onClick={resetToCurrentMonth}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Volver al Mes Actual
+            </button>
+            <button onClick={clearAllFilters} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700">
+              Ver Todos los Pagos
+            </button>
+          </div>
         </div>
       ) : (
         <>
