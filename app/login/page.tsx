@@ -136,18 +136,6 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
-
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Credenciales de acceso:</h3>
-            <div className="space-y-1 text-xs text-gray-600">
-              <div>
-                <strong>Usuario:</strong> ncannata
-              </div>
-              <div>
-                <strong>Contraseña:</strong> nacho1234N
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
