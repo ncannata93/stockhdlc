@@ -50,8 +50,9 @@ export function IngresoRapido({ onPrestamosCreados }: IngresoRapidoProps) {
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false)
 
   // Ejemplo de formato con espacios - actualizado según solicitud
-  const ejemploTexto = `Juan Manuel Argentina Falkner Toallas 20 15000
-Nacho Stromboli San Miguel Sábanas 10 25000`
+  const ejemploTexto = `Claudia Juan Manuel Argentina Falkner Toallas 20 15000
+María José Monaco Jaguel Sábanas Blancas 10 25000
+Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
 
   // Verificar conexión al cargar
   useEffect(() => {
@@ -92,17 +93,85 @@ Nacho Stromboli San Miguel Sábanas 10 25000`
         errores.push(`Faltan datos. Formato: Responsable HotelOrigen HotelDestino Producto Cantidad Valor`)
       }
 
-      // Tomar las últimas 2 partes como cantidad y valor
+      // NUEVO ALGORITMO: Detectar valor y cantidad desde el final
       const valor = partes[partes.length - 1]
       const cantidad = partes[partes.length - 2]
 
-      // El producto puede ser múltiples palabras, tomar desde índice 3 hasta cantidad
-      const producto = partes.slice(3, partes.length - 2).join(" ")
+      // Validar que valor sea numérico
+      const valorNumerico = Number.parseFloat(valor?.replace(/[^0-9.-]/g, "") || "0")
+      const esValorValido = !isNaN(valorNumerico) && valorNumerico > 0
 
-      // Los primeros 3 elementos
-      const responsable = partes[0] || ""
-      const hotelOrigen = partes[1] || ""
-      const hotelDestino = partes[2] || ""
+      // Validar que cantidad sea alfanumérica (puede ser "20" o "20kg" etc)
+      const esCantidadValida = cantidad && cantidad.length > 0
+
+      if (!esValorValido || !esCantidadValida) {
+        errores.push("Los últimos 2 campos deben ser Cantidad y Valor numérico")
+      }
+
+      // Ahora detectar hoteles: buscar palabras que parezcan nombres de hoteles
+      // Los hoteles suelen ser palabras capitalizadas como "Argentina", "Falkner", "Monaco", etc.
+      const palabrasRestantes = partes.slice(0, partes.length - 2) // Quitar cantidad y valor
+
+      // Detectar hoteles: buscar las últimas 2 palabras capitalizadas antes de producto
+      let hotelOrigen = ""
+      let hotelDestino = ""
+      let responsableParts: string[] = []
+      let productoParts: string[] = []
+
+      // Buscar desde el final hacia atrás para encontrar los hoteles
+      let hotelDestinoIndex = -1
+      let hotelOrigenIndex = -1
+
+      // Buscar hotel destino (última palabra capitalizada antes de cantidad/valor)
+      for (let i = palabrasRestantes.length - 1; i >= 0; i--) {
+        const palabra = palabrasRestantes[i]
+        if (palabra && palabra[0] === palabra[0].toUpperCase() && palabra.length > 2) {
+          hotelDestino = palabra
+          hotelDestinoIndex = i
+          break
+        }
+      }
+
+      // Buscar hotel origen (penúltima palabra capitalizada)
+      for (let i = hotelDestinoIndex - 1; i >= 0; i--) {
+        const palabra = palabrasRestantes[i]
+        if (palabra && palabra[0] === palabra[0].toUpperCase() && palabra.length > 2) {
+          hotelOrigen = palabra
+          hotelOrigenIndex = i
+          break
+        }
+      }
+
+      // Si no encontramos 2 hoteles, usar método de fallback
+      if (!hotelOrigen || !hotelDestino || hotelOrigenIndex === -1) {
+        // Fallback: asumir que los hoteles están en posiciones fijas después del responsable
+        // Buscar el primer conjunto de palabras capitalizadas
+        const palabrasCapitalizadas = palabrasRestantes.filter((p) => p && p[0] === p[0].toUpperCase() && p.length > 2)
+
+        if (palabrasCapitalizadas.length >= 2) {
+          hotelOrigen = palabrasCapitalizadas[palabrasCapitalizadas.length - 2]
+          hotelDestino = palabrasCapitalizadas[palabrasCapitalizadas.length - 1]
+
+          // Encontrar índices reales
+          hotelOrigenIndex = palabrasRestantes.findIndex((p) => p === hotelOrigen)
+          hotelDestinoIndex = palabrasRestantes.findIndex((p) => p === hotelDestino)
+        }
+      }
+
+      // Responsable: todo lo que está antes del primer hotel
+      if (hotelOrigenIndex > 0) {
+        responsableParts = palabrasRestantes.slice(0, hotelOrigenIndex)
+      } else {
+        responsableParts = [palabrasRestantes[0] || ""]
+      }
+
+      // Producto: todo lo que está entre hotel destino y cantidad
+      if (hotelDestinoIndex >= 0 && hotelDestinoIndex < palabrasRestantes.length - 1) {
+        productoParts = palabrasRestantes.slice(hotelDestinoIndex + 1)
+      }
+
+      const responsable = responsableParts.join(" ")
+      const producto = productoParts.join(" ")
 
       // Validaciones
       if (!responsable) errores.push("Responsable requerido")
@@ -114,12 +183,6 @@ Nacho Stromboli San Miguel Sábanas 10 25000`
 
       if (hotelOrigen === hotelDestino) {
         errores.push("Hotel origen y destino no pueden ser iguales")
-      }
-
-      // Validar valor numérico
-      const valorNumerico = Number.parseFloat(valor?.replace(/[^0-9.-]/g, "") || "0")
-      if (isNaN(valorNumerico) || valorNumerico <= 0) {
-        errores.push("Valor debe ser un número mayor a 0")
       }
 
       const prestamo: PrestamoParseado = {
@@ -269,7 +332,7 @@ Nacho Stromboli San Miguel Sábanas 10 25000`
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
             <h4 className="font-medium text-blue-800 flex items-center gap-2 text-sm sm:text-base">
               <FileText className="h-3 w-3 sm:h-4 sm:w-4" />
-              Formato requerido (separado por espacios)
+              Formato inteligente (detecta nombres compuestos)
             </h4>
             <Button
               variant="outline"
@@ -282,10 +345,12 @@ Nacho Stromboli San Miguel Sábanas 10 25000`
             </Button>
           </div>
           <p className="text-xs sm:text-sm text-blue-700 mb-2">
-            <strong>Formato:</strong> Responsable HotelOrigen HotelDestino Producto Cantidad Valor
+            <strong>Formato:</strong> [Responsable Compuesto] [Hotel Origen] [Hotel Destino] [Producto Compuesto]
+            [Cantidad] [Valor]
           </p>
           <p className="text-xs text-blue-600 mb-2">
-            <strong>Nota:</strong> Si el producto tiene múltiples palabras, se detectará automáticamente
+            <strong>✨ Inteligente:</strong> Detecta automáticamente nombres compuestos y productos con múltiples
+            palabras
           </p>
           <div className="bg-white p-2 sm:p-3 rounded border font-mono text-xs overflow-x-auto">
             <div className="whitespace-nowrap sm:whitespace-normal">
@@ -297,10 +362,24 @@ Nacho Stromboli San Miguel Sábanas 10 25000`
             </div>
           </div>
           <div className="mt-2 text-xs text-blue-600">
-            <strong>Ejemplos con productos de múltiples palabras:</strong>
-            <div className="font-mono text-gray-600 mt-1">
-              <div>Nacho Monaco Jaguel Repuestos Lavarropas 2 85000</div>
-              <div>Juan Argentina Falkner Toallas de Baño 15 12000</div>
+            <strong>🎯 Ejemplos de detección inteligente:</strong>
+            <div className="font-mono text-gray-600 mt-1 space-y-1">
+              <div>
+                <span className="text-green-600">Claudia Juan Manuel</span>{" "}
+                <span className="text-blue-600">Argentina</span> <span className="text-purple-600">Falkner</span>{" "}
+                <span className="text-orange-600">Toallas</span> 20 15000
+              </div>
+              <div>
+                <span className="text-green-600">María José</span> <span className="text-blue-600">Monaco</span>{" "}
+                <span className="text-purple-600">Jaguel</span> <span className="text-orange-600">Sábanas Blancas</span>{" "}
+                10 25000
+              </div>
+            </div>
+            <div className="mt-1 text-xs">
+              <span className="text-green-600">■ Responsable</span> |
+              <span className="text-blue-600">■ Hotel Origen</span> |
+              <span className="text-purple-600">■ Hotel Destino</span> |
+              <span className="text-orange-600">■ Producto</span>
             </div>
           </div>
         </div>

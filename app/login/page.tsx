@@ -4,15 +4,13 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Eye, EyeOff } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
-import { useToast } from "@/components/ui/use-toast"
+import Image from "next/image"
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
@@ -21,9 +19,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
-  const { signIn } = useAuth()
+  const { login } = useAuth()
   const router = useRouter()
-  const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,50 +28,30 @@ export default function LoginPage() {
     setError("")
 
     try {
-      console.log("Attempting login with:", username)
-      const result = await signIn({ username, password })
-
-      if (result.success) {
-        toast({
-          title: "Login exitoso",
-          description: `Bienvenido, ${result.user?.displayName || username}`,
-        })
-
-        // Usar router.push en lugar de window.location.href
+      const success = await login(username, password)
+      if (success) {
         router.push("/")
       } else {
-        setError(result.error || "Error de autenticación")
-        toast({
-          title: "Error de login",
-          description: result.error || "Credenciales incorrectas",
-          variant: "destructive",
-        })
+        setError("Credenciales incorrectas")
       }
     } catch (error) {
-      console.error("Login error:", error)
-      setError("Error interno del servidor")
-      toast({
-        title: "Error",
-        description: "Error interno del servidor",
-        variant: "destructive",
-      })
+      setError("Error al iniciar sesión")
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <Image
               src="/images/logo-hoteles-costa.png"
-              alt="Hoteles de la Costa"
-              width={200}
+              alt="Hoteles Costa"
+              width={120}
               height={60}
               className="h-12 w-auto"
-              priority
             />
           </div>
           <CardTitle className="text-2xl font-bold">Iniciar Sesión</CardTitle>
@@ -91,7 +68,6 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
@@ -104,7 +80,6 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  disabled={isLoading}
                 />
                 <Button
                   type="button"
@@ -112,28 +87,14 @@ export default function LoginPage() {
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
-                  disabled={isLoading}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
+            {error && <div className="text-red-600 text-sm text-center">{error}</div>}
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Iniciando sesión...
-                </>
-              ) : (
-                "Iniciar Sesión"
-              )}
+              {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
             </Button>
           </form>
         </CardContent>

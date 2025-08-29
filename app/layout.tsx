@@ -10,7 +10,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Stock Hotel - Hoteles de la Costa",
   description: "Sistema de gestión de stock para Hoteles de la Costa",
-    generator: 'v0.dev'
+    generator: 'v0.app'
 }
 
 export const viewport: Viewport = {

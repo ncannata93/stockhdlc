@@ -66,6 +66,44 @@ export const formatearMonto = (valor: number | string): string => {
   }).format(numero)
 }
 
+// Función para convertir fecha a formato ISO
+const convertirFechaAISO = (fecha: string): string => {
+  // Si ya está en formato ISO (YYYY-MM-DD), devolverla tal como está
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    return fecha
+  }
+
+  // Si está en formato DD/MM/YYYY o DD/M/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(fecha)) {
+    const [dia, mes, año] = fecha.split("/")
+    const diaFormatted = dia.padStart(2, "0")
+    const mesFormatted = mes.padStart(2, "0")
+    return `${año}-${mesFormatted}-${diaFormatted}`
+  }
+
+  // Si está en formato DD-MM-YYYY
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(fecha)) {
+    const [dia, mes, año] = fecha.split("-")
+    const diaFormatted = dia.padStart(2, "0")
+    const mesFormatted = mes.padStart(2, "0")
+    return `${año}-${mesFormatted}-${diaFormatted}`
+  }
+
+  // Si no coincide con ningún formato, intentar crear una fecha válida
+  try {
+    const fechaObj = new Date(fecha)
+    if (!isNaN(fechaObj.getTime())) {
+      return fechaObj.toISOString().split("T")[0]
+    }
+  } catch (error) {
+    console.error("Error al convertir fecha:", fecha, error)
+  }
+
+  // Como último recurso, usar la fecha actual
+  console.warn("Fecha inválida, usando fecha actual:", fecha)
+  return new Date().toISOString().split("T")[0]
+}
+
 // Verificar conexión a Supabase
 export const verificarConexion = async (): Promise<{ conectado: boolean; error?: string }> => {
   try {
@@ -101,35 +139,38 @@ export const crearPrestamo = async (prestamo: PrestamoInput): Promise<Prestamo |
     const valor =
       typeof prestamo.valor === "string" ? Number.parseFloat(prestamo.valor.replace(/[^0-9.-]/g, "")) : prestamo.valor
 
-    // Usar formato ISO para la fecha
-    const fechaISO = prestamo.fecha || new Date().toISOString().split("T")[0]
+    // Convertir fecha a formato ISO
+    const fechaISO = prestamo.fecha ? convertirFechaAISO(prestamo.fecha) : new Date().toISOString().split("T")[0]
 
-    const { data, error } = await supabase
-      .from("prestamos")
-      .insert([
-        {
-          fecha: fechaISO,
-          responsable: prestamo.responsable,
-          hotel_origen: prestamo.hotel_origen,
-          hotel_destino: prestamo.hotel_destino,
-          producto: prestamo.producto,
-          cantidad: prestamo.cantidad,
-          valor: valor,
-          notas: prestamo.notas || "",
-          estado: prestamo.estado || "pendiente",
-        },
-      ])
-      .select()
-      .single()
+    console.log("📅 Fecha original:", prestamo.fecha)
+    console.log("📅 Fecha convertida a ISO:", fechaISO)
+    console.log("💰 Valor convertido:", valor)
 
-    if (error) {
-      console.error("Error al crear préstamo:", error)
-      throw error
+    const datosParaInsertar = {
+      fecha: fechaISO,
+      responsable: prestamo.responsable,
+      hotel_origen: prestamo.hotel_origen,
+      hotel_destino: prestamo.hotel_destino,
+      producto: prestamo.producto,
+      cantidad: prestamo.cantidad,
+      valor: valor,
+      notas: prestamo.notas || "",
+      estado: prestamo.estado || "pendiente",
     }
 
+    console.log("📝 Datos a insertar:", datosParaInsertar)
+
+    const { data, error } = await supabase.from("prestamos").insert([datosParaInsertar]).select().single()
+
+    if (error) {
+      console.error("❌ Error al crear préstamo:", error)
+      throw new Error(`Error de base de datos: ${error.message}`)
+    }
+
+    console.log("✅ Préstamo creado exitosamente:", data)
     return data
   } catch (error) {
-    console.error("Error al crear préstamo:", error)
+    console.error("❌ Error al crear préstamo:", error)
     throw error
   }
 }
@@ -207,6 +248,11 @@ export const obtenerPrestamosFiltrados = async (filtros: FiltrosPrestamos): Prom
 // Actualizar préstamo
 export const actualizarPrestamo = async (id: string, cambios: Partial<PrestamoInput>): Promise<Prestamo | null> => {
   try {
+    // Si hay cambios en la fecha, convertirla a ISO
+    if (cambios.fecha) {
+      cambios.fecha = convertirFechaAISO(cambios.fecha)
+    }
+
     const { data, error } = await supabase.from("prestamos").update(cambios).eq("id", id).select().single()
 
     if (error) {

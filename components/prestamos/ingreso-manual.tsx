@@ -38,8 +38,14 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
   const [mostrarOrigenCustom, setMostrarOrigenCustom] = useState(false)
   const [mostrarDestinoCustom, setMostrarDestinoCustom] = useState(false)
 
+  // Función para obtener fecha actual en formato YYYY-MM-DD
+  const getCurrentDateISO = () => {
+    const now = new Date()
+    return now.toISOString().split("T")[0]
+  }
+
   const [formData, setFormData] = useState<PrestamoInput>({
-    fecha: new Date().toLocaleDateString("es-AR"),
+    fecha: getCurrentDateISO(), // Usar formato ISO desde el inicio
     responsable: "",
     hotel_origen: "",
     hotel_destino: "",
@@ -136,6 +142,16 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
       return
     }
 
+    // Validar fecha
+    if (!formData.fecha || !/^\d{4}-\d{2}-\d{2}$/.test(formData.fecha)) {
+      toast({
+        title: "Error en fecha",
+        description: "La fecha debe estar en formato válido",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!tablaExiste) {
       toast({
         title: "Error de base de datos",
@@ -154,6 +170,8 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
         valor: valorNumerico,
       }
 
+      console.log("📅 Datos del préstamo a crear:", prestamoData)
+
       const prestamo = await crearPrestamo(prestamoData)
 
       if (prestamo) {
@@ -162,9 +180,9 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
           description: `Préstamo de ${hotelOrigen} a ${hotelDestino} por $${valorNumerico.toLocaleString()}`,
         })
 
-        // Limpiar formulario manteniendo responsable y fecha
+        // Limpiar formulario manteniendo responsable y fecha actual
         setFormData({
-          fecha: formData.fecha,
+          fecha: getCurrentDateISO(),
           responsable: formData.responsable,
           hotel_origen: "",
           hotel_destino: "",
@@ -188,7 +206,7 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
       setConectado(false)
       toast({
         title: "Error al crear préstamo",
-        description: "No se pudo guardar en Supabase. Verifica tu conexión.",
+        description: error instanceof Error ? error.message : "No se pudo guardar en Supabase. Verifica tu conexión.",
         variant: "destructive",
       })
     } finally {
@@ -259,8 +277,7 @@ export function IngresoManual({ onPrestamoCreado }: IngresoManualProps) {
             <div className="space-y-2">
               <Label htmlFor="fecha">Fecha *</Label>
               <Input
-                type="text"
-                placeholder="ej: 12/7/2025"
+                type="date"
                 value={formData.fecha}
                 onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
                 required
