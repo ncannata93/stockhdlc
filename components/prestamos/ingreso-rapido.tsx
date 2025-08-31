@@ -49,10 +49,11 @@ export function IngresoRapido({ onPrestamosCreados }: IngresoRapidoProps) {
   const [prestamosParseados, setPrestamosParseados] = useState<PrestamoParseado[]>([])
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false)
 
-  // Ejemplo de formato con espacios - actualizado según solicitud
-  const ejemploTexto = `Claudia Juan Manuel Argentina Falkner Toallas 20 15000
-María José Monaco Jaguel Sábanas Blancas 10 25000
-Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
+  // Ejemplo de formato con comas - mucho más claro
+  const ejemploTexto = `Claudia Juan Manuel, Argentina, Falkner, Toallas, 20, 15000
+María José, Monaco, Jaguel, Sábanas Blancas, 10, 25000
+Juan Carlos, Stromboli, San Miguel, Repuestos Lavarropas, 2, 85000
+Claudia, Claudia, Argentina, Brenda, 1, 200000`
 
   // Verificar conexión al cargar
   useEffect(() => {
@@ -84,120 +85,79 @@ Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
     const prestamosParseados: PrestamoParseado[] = []
 
     lineas.forEach((linea, index) => {
-      // Dividir por espacios múltiples o espacios simples
-      const partes = linea.trim().split(/\s+/)
+      console.log(`\n🔍 Parseando línea ${index + 1}: "${linea}"`)
+
+      // Dividir por comas y limpiar espacios
+      const partes = linea.split(",").map((parte) => parte.trim())
       const errores: string[] = []
 
-      // Validar que tenga al menos 6 partes
-      if (partes.length < 6) {
-        errores.push(`Faltan datos. Formato: Responsable HotelOrigen HotelDestino Producto Cantidad Valor`)
+      console.log(`📝 Partes detectadas:`, partes)
+
+      // Validar que tenga exactamente 6 partes
+      if (partes.length !== 6) {
+        errores.push(
+          `Formato incorrecto. Debe tener exactamente 6 campos separados por comas: Responsable, Origen, Destino, Producto, Cantidad, Valor`,
+        )
+        console.log(`❌ ${partes.length} partes detectadas, se requieren exactamente 6`)
       }
 
-      // NUEVO ALGORITMO: Detectar valor y cantidad desde el final
-      const valor = partes[partes.length - 1]
-      const cantidad = partes[partes.length - 2]
+      // Extraer campos directamente por posición
+      const responsable = partes[0] || ""
+      const hotelOrigen = partes[1] || ""
+      const hotelDestino = partes[2] || ""
+      const producto = partes[3] || ""
+      const cantidad = partes[4] || ""
+      const valor = partes[5] || ""
 
-      // Validar que valor sea numérico
-      const valorNumerico = Number.parseFloat(valor?.replace(/[^0-9.-]/g, "") || "0")
-      const esValorValido = !isNaN(valorNumerico) && valorNumerico > 0
-
-      // Validar que cantidad sea alfanumérica (puede ser "20" o "20kg" etc)
-      const esCantidadValida = cantidad && cantidad.length > 0
-
-      if (!esValorValido || !esCantidadValida) {
-        errores.push("Los últimos 2 campos deben ser Cantidad y Valor numérico")
-      }
-
-      // Ahora detectar hoteles: buscar palabras que parezcan nombres de hoteles
-      // Los hoteles suelen ser palabras capitalizadas como "Argentina", "Falkner", "Monaco", etc.
-      const palabrasRestantes = partes.slice(0, partes.length - 2) // Quitar cantidad y valor
-
-      // Detectar hoteles: buscar las últimas 2 palabras capitalizadas antes de producto
-      let hotelOrigen = ""
-      let hotelDestino = ""
-      let responsableParts: string[] = []
-      let productoParts: string[] = []
-
-      // Buscar desde el final hacia atrás para encontrar los hoteles
-      let hotelDestinoIndex = -1
-      let hotelOrigenIndex = -1
-
-      // Buscar hotel destino (última palabra capitalizada antes de cantidad/valor)
-      for (let i = palabrasRestantes.length - 1; i >= 0; i--) {
-        const palabra = palabrasRestantes[i]
-        if (palabra && palabra[0] === palabra[0].toUpperCase() && palabra.length > 2) {
-          hotelDestino = palabra
-          hotelDestinoIndex = i
-          break
-        }
-      }
-
-      // Buscar hotel origen (penúltima palabra capitalizada)
-      for (let i = hotelDestinoIndex - 1; i >= 0; i--) {
-        const palabra = palabrasRestantes[i]
-        if (palabra && palabra[0] === palabra[0].toUpperCase() && palabra.length > 2) {
-          hotelOrigen = palabra
-          hotelOrigenIndex = i
-          break
-        }
-      }
-
-      // Si no encontramos 2 hoteles, usar método de fallback
-      if (!hotelOrigen || !hotelDestino || hotelOrigenIndex === -1) {
-        // Fallback: asumir que los hoteles están en posiciones fijas después del responsable
-        // Buscar el primer conjunto de palabras capitalizadas
-        const palabrasCapitalizadas = palabrasRestantes.filter((p) => p && p[0] === p[0].toUpperCase() && p.length > 2)
-
-        if (palabrasCapitalizadas.length >= 2) {
-          hotelOrigen = palabrasCapitalizadas[palabrasCapitalizadas.length - 2]
-          hotelDestino = palabrasCapitalizadas[palabrasCapitalizadas.length - 1]
-
-          // Encontrar índices reales
-          hotelOrigenIndex = palabrasRestantes.findIndex((p) => p === hotelOrigen)
-          hotelDestinoIndex = palabrasRestantes.findIndex((p) => p === hotelDestino)
-        }
-      }
-
-      // Responsable: todo lo que está antes del primer hotel
-      if (hotelOrigenIndex > 0) {
-        responsableParts = palabrasRestantes.slice(0, hotelOrigenIndex)
-      } else {
-        responsableParts = [palabrasRestantes[0] || ""]
-      }
-
-      // Producto: todo lo que está entre hotel destino y cantidad
-      if (hotelDestinoIndex >= 0 && hotelDestinoIndex < palabrasRestantes.length - 1) {
-        productoParts = palabrasRestantes.slice(hotelDestinoIndex + 1)
-      }
-
-      const responsable = responsableParts.join(" ")
-      const producto = productoParts.join(" ")
+      console.log(`👤 Responsable: "${responsable}"`)
+      console.log(`🏨 Origen: "${hotelOrigen}"`)
+      console.log(`🏨 Destino: "${hotelDestino}"`)
+      console.log(`📦 Producto: "${producto}"`)
+      console.log(`📊 Cantidad: "${cantidad}"`)
+      console.log(`💰 Valor: "${valor}"`)
 
       // Validaciones
-      if (!responsable) errores.push("Responsable requerido")
-      if (!hotelOrigen) errores.push("Hotel origen requerido")
-      if (!hotelDestino) errores.push("Hotel destino requerido")
-      if (!producto) errores.push("Producto requerido")
-      if (!cantidad) errores.push("Cantidad requerida")
-      if (!valor) errores.push("Valor requerido")
+      if (!responsable.trim()) errores.push("Responsable requerido")
+      if (!hotelOrigen.trim()) errores.push("Origen requerido")
+      if (!hotelDestino.trim()) errores.push("Destino requerido")
+      if (!producto.trim()) errores.push("Producto requerido")
+      if (!cantidad.trim()) errores.push("Cantidad requerida")
+      if (!valor.trim()) errores.push("Valor requerido")
 
       if (hotelOrigen === hotelDestino) {
-        errores.push("Hotel origen y destino no pueden ser iguales")
+        errores.push("Origen y destino no pueden ser iguales")
+      }
+
+      // Validar que valor sea numérico
+      const valorNumerico = Number.parseFloat(valor.replace(/[^0-9.-]/g, "") || "0")
+      if (isNaN(valorNumerico) || valorNumerico <= 0) {
+        errores.push("Valor debe ser un número mayor a 0")
+        console.log(`❌ Valor inválido: "${valor}" → ${valorNumerico}`)
       }
 
       const prestamo: PrestamoParseado = {
         linea: index + 1,
         fecha: new Date().toISOString().split("T")[0], // Formato ISO yyyy-MM-dd
-        responsable: responsable,
-        hotel_origen: hotelOrigen,
-        hotel_destino: hotelDestino,
-        producto: producto,
-        cantidad: cantidad,
+        responsable: responsable.trim(),
+        hotel_origen: hotelOrigen.trim(),
+        hotel_destino: hotelDestino.trim(),
+        producto: producto.trim(),
+        cantidad: cantidad.trim(),
         valor: valorNumerico,
         estado: "pendiente",
         valido: errores.length === 0,
         errores,
       }
+
+      console.log(`${prestamo.valido ? "✅" : "❌"} Resultado:`, {
+        responsable: prestamo.responsable,
+        origen: prestamo.hotel_origen,
+        destino: prestamo.hotel_destino,
+        producto: prestamo.producto,
+        cantidad: prestamo.cantidad,
+        valor: prestamo.valor,
+        errores: prestamo.errores,
+      })
 
       prestamosParseados.push(prestamo)
     })
@@ -304,7 +264,7 @@ Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
           <div className="sm:ml-auto">{estadoConexion()}</div>
         </CardTitle>
         <CardDescription className="text-sm">
-          Ingresa múltiples préstamos de una vez separados por espacios
+          Ingresa múltiples préstamos separados por comas (más preciso)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -327,12 +287,12 @@ Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
           </Alert>
         )}
 
-        {/* Formato de ejemplo - más compacto en móvil */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+        {/* Formato de ejemplo - con comas */}
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-            <h4 className="font-medium text-blue-800 flex items-center gap-2 text-sm sm:text-base">
+            <h4 className="font-medium text-green-800 flex items-center gap-2 text-sm sm:text-base">
               <FileText className="h-3 w-3 sm:h-4 sm:w-4" />
-              Formato inteligente (detecta nombres compuestos)
+              Formato con comas (sin errores)
             </h4>
             <Button
               variant="outline"
@@ -344,13 +304,11 @@ Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
               Usar ejemplo
             </Button>
           </div>
-          <p className="text-xs sm:text-sm text-blue-700 mb-2">
-            <strong>Formato:</strong> [Responsable Compuesto] [Hotel Origen] [Hotel Destino] [Producto Compuesto]
-            [Cantidad] [Valor]
+          <p className="text-xs sm:text-sm text-green-700 mb-2">
+            <strong>Formato:</strong> Responsable, Origen, Destino, Producto, Cantidad, Valor
           </p>
-          <p className="text-xs text-blue-600 mb-2">
-            <strong>✨ Inteligente:</strong> Detecta automáticamente nombres compuestos y productos con múltiples
-            palabras
+          <p className="text-xs text-green-600 mb-2">
+            <strong>✅ Ventajas:</strong> Sin problemas con nombres compuestos, parsing exacto
           </p>
           <div className="bg-white p-2 sm:p-3 rounded border font-mono text-xs overflow-x-auto">
             <div className="whitespace-nowrap sm:whitespace-normal">
@@ -361,25 +319,23 @@ Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
               ))}
             </div>
           </div>
-          <div className="mt-2 text-xs text-blue-600">
-            <strong>🎯 Ejemplos de detección inteligente:</strong>
+          <div className="mt-2 text-xs text-green-600">
+            <strong>🎯 Ejemplos perfectos:</strong>
             <div className="font-mono text-gray-600 mt-1 space-y-1">
               <div>
-                <span className="text-green-600">Claudia Juan Manuel</span>{" "}
-                <span className="text-blue-600">Argentina</span> <span className="text-purple-600">Falkner</span>{" "}
-                <span className="text-orange-600">Toallas</span> 20 15000
+                <span className="text-green-600">Claudia Juan Manuel</span>,{" "}
+                <span className="text-blue-600">Argentina</span>, <span className="text-purple-600">Falkner</span>,{" "}
+                <span className="text-orange-600">Toallas</span>, 20, 15000
               </div>
               <div>
-                <span className="text-green-600">María José</span> <span className="text-blue-600">Monaco</span>{" "}
-                <span className="text-purple-600">Jaguel</span> <span className="text-orange-600">Sábanas Blancas</span>{" "}
-                10 25000
+                <span className="text-green-600">Claudia</span>, <span className="text-blue-600">Claudia</span>,{" "}
+                <span className="text-purple-600">Argentina</span>, <span className="text-orange-600">Brenda</span>, 1,
+                200000
               </div>
             </div>
             <div className="mt-1 text-xs">
-              <span className="text-green-600">■ Responsable</span> |
-              <span className="text-blue-600">■ Hotel Origen</span> |
-              <span className="text-purple-600">■ Hotel Destino</span> |
-              <span className="text-orange-600">■ Producto</span>
+              <span className="text-green-600">■ Responsable</span> |<span className="text-blue-600">■ Origen</span> |
+              <span className="text-purple-600">■ Destino</span> |<span className="text-orange-600">■ Producto</span>
             </div>
           </div>
         </div>
@@ -387,11 +343,11 @@ Juan Carlos Stromboli San Miguel Repuestos Lavarropas 2 85000`
         {/* Área de texto */}
         <div className="space-y-2">
           <Label htmlFor="texto-entrada" className="text-sm font-medium">
-            Datos de préstamos (una línea por préstamo, separado por espacios)
+            Datos de préstamos (una línea por préstamo, separado por comas)
           </Label>
           <Textarea
             id="texto-entrada"
-            placeholder="Ejemplo: Juan Manuel Argentina Falkner Toallas 20 15000"
+            placeholder="Ejemplo: Claudia, Claudia, Argentina, Brenda, 1, 200000"
             value={textoEntrada}
             onChange={(e) => setTextoEntrada(e.target.value)}
             rows={6}
