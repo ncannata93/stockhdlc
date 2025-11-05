@@ -7,6 +7,12 @@ export interface Employee {
   created_at?: string
 }
 
+export interface Hotel {
+  id: number | string
+  name: string
+  code?: string
+}
+
 export interface EmployeeAssignment {
   id: number
   employee_id: number

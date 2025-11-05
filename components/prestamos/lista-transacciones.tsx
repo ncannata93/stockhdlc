@@ -84,6 +84,27 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
         obtenerResponsables(),
       ])
 
+      console.log("[v0] 📋 Total transacciones cargadas:", prestamosData.length)
+
+      const juanManuelTransaction = prestamosData.find(
+        (p) => p.responsable === "Juan Manuel" && p.hotel_origen === "Mallak" && p.hotel_destino === "Argentina",
+      )
+
+      if (juanManuelTransaction) {
+        console.log("[v0] ✅ Transacción de Juan Manuel encontrada en lista:", {
+          id: juanManuelTransaction.id,
+          fecha: juanManuelTransaction.fecha,
+          responsable: juanManuelTransaction.responsable,
+          origen: juanManuelTransaction.hotel_origen,
+          destino: juanManuelTransaction.hotel_destino,
+          producto: juanManuelTransaction.producto,
+          valor: juanManuelTransaction.valor,
+          estado: juanManuelTransaction.estado,
+        })
+      } else {
+        console.log("[v0] ❌ Transacción de Juan Manuel NO encontrada en lista inicial")
+      }
+
       setPrestamos(prestamosData)
       setHoteles(hotelesData)
       setResponsables(responsablesData)
@@ -109,7 +130,23 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
       if (filtros.estado && filtros.estado !== "all") filtrosLimpios.estado = filtros.estado
       if (filtros.responsable && filtros.responsable !== "all") filtrosLimpios.responsable = filtros.responsable
 
+      console.log("[v0] 🔍 Filtros activos:", filtrosLimpios)
+
       const prestamosData = await obtenerPrestamosFiltrados(filtrosLimpios)
+
+      console.log("[v0] 📊 Transacciones después de filtrar:", prestamosData.length)
+
+      const juanManuelTransaction = prestamosData.find(
+        (p) => p.responsable === "Juan Manuel" && p.hotel_origen === "Mallak" && p.hotel_destino === "Argentina",
+      )
+
+      if (juanManuelTransaction) {
+        console.log("[v0] ✅ Transacción de Juan Manuel VISIBLE después de filtros")
+      } else {
+        console.log("[v0] ⚠️ Transacción de Juan Manuel OCULTA por filtros activos")
+        console.log("[v0] 💡 Revisa los filtros: Hotel, Estado, Responsable, o Búsqueda")
+      }
+
       setPrestamos(prestamosData)
     } catch (error) {
       console.error("Error al filtrar:", error)

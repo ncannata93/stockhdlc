@@ -257,13 +257,7 @@ export const getPaidWeeks = async (filters?: {
   try {
     console.log("🔄 Cargando semanas pagadas con filtros:", filters)
 
-    let query = supabase
-      .from("paid_weeks")
-      .select(`
-        *,
-        employees!inner(name)
-      `)
-      .order("week_start", { ascending: false })
+    let query = supabase.from("paid_weeks").select("*").order("week_start", { ascending: false })
 
     if (filters?.employee_id) {
       query = query.eq("employee_id", filters.employee_id)
@@ -280,9 +274,12 @@ export const getPaidWeeks = async (filters?: {
       return []
     }
 
+    const employees = await getEmployees()
+    const employeeMap = new Map(employees.map((e) => [e.id, e.name]))
+
     const result = (data || []).map((item: any) => ({
       ...item,
-      employee_name: item.employees?.name,
+      employee_name: employeeMap.get(item.employee_id) || `ID-${item.employee_id}`,
     }))
 
     console.log("✅ Semanas pagadas cargadas:", result.length)
@@ -456,10 +453,91 @@ export const updatePaymentStatus = async (
 }
 
 export const getHotels = async (): Promise<Hotel[]> => {
-  return HOTELS.map((name, index) => ({
-    id: index + 1,
-    name: name,
-  }))
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    console.log("No Supabase client, using static hotels")
+    return HOTELS.map((name, index) => ({
+      id: index + 1,
+      name: name,
+    }))
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("hotels")
+      .select("id, name, code, active")
+      .eq("active", true)
+      .order("name")
+
+    if (error) {
+      console.error("Error loading hotels:", error)
+      return HOTELS.map((name, index) => ({
+        id: index + 1,
+        name: name,
+      }))
+    }
+
+    return (data || []).map((hotel: any) => ({
+      id: hotel.id,
+      name: hotel.name,
+      code: hotel.code,
+    }))
+  } catch (err) {
+    console.error("Error fetching hotels:", err)
+    return HOTELS.map((name, index) => ({
+      id: index + 1,
+      name: name,
+    }))
+  }
+}
+
+export const createHotel = async (hotelData: {
+  name: string
+  code?: string
+}): Promise<{ id: string; name: string; code: string } | null> => {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    console.error("No Supabase client available")
+    return null
+  }
+
+  try {
+    const generateId = (name: string): string => {
+      return name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // Remove accents
+        .replace(/[^a-z0-9]+/g, "-") // Replace non-alphanumeric with hyphens
+        .replace(/^-+|-+$/g, "") // Remove leading/trailing hyphens
+    }
+
+    const id = generateId(hotelData.name)
+    const code = hotelData.code || hotelData.name.substring(0, 3).toUpperCase()
+
+    console.log("[v0] Creating hotel with ID:", id)
+
+    const { data, error } = await supabase
+      .from("hotels")
+      .insert({
+        id: id, // Explicitly provide the ID
+        name: hotelData.name,
+        code: code,
+        active: true,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error creating hotel:", error)
+      return null
+    }
+
+    console.log("Hotel created successfully:", data)
+    return data
+  } catch (err) {
+    console.error("Error creating hotel:", err)
+    return null
+  }
 }
 
 // 🔒 FUNCIÓN SEGURA: Crear asignación SIN modificar tarifas existentes
@@ -539,7 +617,7 @@ export const useEmployeeDB = () => {
     getAssignments,
     saveAssignment: (assignment: Partial<EmployeeAssignment>) => saveAssignment(assignment, username),
     addEmployeeAssignment,
-    updateEmployeeAssignment, // 🔒 Nueva función segura para editar
+    updateEmployeeAssignment,
     deleteAssignment,
     getPaidWeeks,
     markWeekAsPaid,
@@ -547,5 +625,6 @@ export const useEmployeeDB = () => {
     unmarkWeekCompletely,
     updatePaymentStatus,
     getHotels,
+    createHotel, // Add createHotel to hook
   }
 }

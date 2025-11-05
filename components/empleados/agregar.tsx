@@ -11,38 +11,54 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useEmployeeDB } from "@/lib/employee-db"
-import { HOTELS } from "@/lib/employee-types"
-import { Loader2, Plus, Check } from "lucide-react"
+import { Loader2, Plus, Check, Building2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 export default function EmpleadosAgregar() {
-  const { getEmployees, saveAssignment } = useEmployeeDB()
+  const { getEmployees, saveAssignment, getHotels, createHotel } = useEmployeeDB()
   const { toast } = useToast()
   const [employees, setEmployees] = useState<{ id: number; name: string; daily_rate: number }[]>([])
+  const [hotels, setHotels] = useState<{ id: string | number; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
 
+  const [showHotelDialog, setShowHotelDialog] = useState(false)
+  const [creatingHotel, setCreatingHotel] = useState(false)
+  const [newHotelName, setNewHotelName] = useState("")
+  const [newHotelCode, setNewHotelCode] = useState("")
+
   // Estado del formulario
   const [formData, setFormData] = useState({
     employee_id: "",
-    hotel_names: [] as string[], // Array de hoteles seleccionados
+    hotel_names: [] as string[],
     assignment_date: format(new Date(), "yyyy-MM-dd"),
     notes: "",
   })
 
   useEffect(() => {
-    const loadEmployees = async () => {
+    const loadData = async () => {
       setLoading(true)
       try {
-        const data = await getEmployees()
-        setEmployees(data.map((emp) => ({ id: emp.id, name: emp.name, daily_rate: emp.daily_rate })))
+        const [employeesData, hotelsData] = await Promise.all([getEmployees(), getHotels()])
+
+        setEmployees(employeesData.map((emp) => ({ id: emp.id, name: emp.name, daily_rate: emp.daily_rate })))
+        setHotels(hotelsData)
       } catch (error) {
-        console.error("Error al cargar empleados:", error)
+        console.error("Error al cargar datos:", error)
         toast({
           title: "Error",
-          description: "No se pudieron cargar los empleados",
+          description: "No se pudieron cargar los datos",
           variant: "destructive",
         })
       } finally {
@@ -50,8 +66,58 @@ export default function EmpleadosAgregar() {
       }
     }
 
-    loadEmployees()
-  }, [getEmployees, toast])
+    loadData()
+  }, [getEmployees, getHotels, toast])
+
+  const handleCreateHotel = async () => {
+    if (!newHotelName.trim()) {
+      toast({
+        title: "Error",
+        description: "El nombre del hotel es requerido",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setCreatingHotel(true)
+    try {
+      const result = await createHotel({
+        name: newHotelName.trim(),
+        code: newHotelCode.trim() || undefined,
+      })
+
+      if (result) {
+        toast({
+          title: "Éxito",
+          description: `Hotel "${result.name}" creado correctamente`,
+        })
+
+        // Reload hotels list
+        const hotelsData = await getHotels()
+        setHotels(hotelsData)
+
+        // Close dialog and reset form
+        setShowHotelDialog(false)
+        setNewHotelName("")
+        setNewHotelCode("")
+      } else {
+        toast({
+          title: "Error",
+          description: "No se pudo crear el hotel",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error creating hotel:", error)
+      toast({
+        title: "Error",
+        description: "Error al crear el hotel",
+        variant: "destructive",
+      })
+    } finally {
+      setCreatingHotel(false)
+    }
+  }
 
   const handleEmployeeChange = (value: string) => {
     setFormData((prev) => ({ ...prev, employee_id: value }))
@@ -91,7 +157,6 @@ export default function EmpleadosAgregar() {
     setSubmitting(true)
 
     try {
-      // Validar datos
       if (!formData.employee_id || formData.hotel_names.length === 0 || !formData.assignment_date) {
         toast({
           title: "Error",
@@ -111,7 +176,6 @@ export default function EmpleadosAgregar() {
         return
       }
 
-      // Calcular la tarifa dividida ANTES de crear las asignaciones
       const dividedRate = Math.round(employee.daily_rate / formData.hotel_names.length)
       const assignmentDate = formData.assignment_date
 
@@ -121,7 +185,6 @@ export default function EmpleadosAgregar() {
       console.log(`🔒 Tarifa dividida FIJA: $${dividedRate}`)
       console.log(`📅 Fecha: ${assignmentDate}`)
 
-      // Crear una asignación por cada hotel seleccionado con la tarifa ya dividida
       const promises = formData.hotel_names.map((hotelName, index) => {
         console.log(`🆕 Creando asignación ${index + 1}/${formData.hotel_names.length}:`)
         console.log(`   🏨 Hotel: ${hotelName}`)
@@ -131,7 +194,7 @@ export default function EmpleadosAgregar() {
           employee_id: Number.parseInt(formData.employee_id),
           hotel_name: hotelName,
           assignment_date: assignmentDate,
-          daily_rate_used: dividedRate, // 🔒 CRÍTICO: Tarifa histórica fija
+          daily_rate_used: dividedRate,
           notes: formData.notes
             ? `${formData.notes} | Tarifa histórica: $${dividedRate} (dividida entre ${formData.hotel_names.length} hoteles)`
             : `Tarifa histórica: $${dividedRate} (dividida entre ${formData.hotel_names.length} hoteles el ${new Date().toLocaleDateString()})`,
@@ -146,7 +209,6 @@ export default function EmpleadosAgregar() {
           description: `${formData.hotel_names.length} asignación(es) guardada(s) correctamente`,
         })
 
-        // Resetear formulario pero mantener la fecha
         setFormData({
           employee_id: "",
           hotel_names: [],
@@ -204,17 +266,85 @@ export default function EmpleadosAgregar() {
               </div>
 
               <div className="space-y-2">
-                <Label>Hoteles (selecciona uno o más)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Hoteles (selecciona uno o más)</Label>
+                  <Dialog open={showHotelDialog} onOpenChange={setShowHotelDialog}>
+                    <DialogTrigger asChild>
+                      <Button type="button" variant="outline" size="sm">
+                        <Building2 className="h-4 w-4 mr-2" />
+                        Nuevo Hotel
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Crear Nuevo Hotel</DialogTitle>
+                        <DialogDescription>
+                          Agrega un nuevo hotel al listado para poder asignar empleados.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="hotel-name">Nombre del Hotel *</Label>
+                          <Input
+                            id="hotel-name"
+                            placeholder="Ej: Hotel Paraíso"
+                            value={newHotelName}
+                            onChange={(e) => setNewHotelName(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="hotel-code">Código (opcional)</Label>
+                          <Input
+                            id="hotel-code"
+                            placeholder="Ej: PAR"
+                            maxLength={3}
+                            value={newHotelCode}
+                            onChange={(e) => setNewHotelCode(e.target.value.toUpperCase())}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Si no se especifica, se generará automáticamente
+                          </p>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setShowHotelDialog(false)
+                            setNewHotelName("")
+                            setNewHotelCode("")
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button type="button" onClick={handleCreateHotel} disabled={creatingHotel}>
+                          {creatingHotel ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Creando...
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="mr-2 h-4 w-4" />
+                              Crear Hotel
+                            </>
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
                 <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                  {HOTELS.map((hotel) => (
-                    <div key={hotel} className="flex items-center space-x-2">
+                  {hotels.map((hotel) => (
+                    <div key={hotel.id} className="flex items-center space-x-2">
                       <Checkbox
-                        id={`hotel-${hotel}`}
-                        checked={formData.hotel_names.includes(hotel)}
-                        onCheckedChange={(checked) => handleHotelChange(hotel, checked as boolean)}
+                        id={`hotel-${hotel.id}`}
+                        checked={formData.hotel_names.includes(hotel.name)}
+                        onCheckedChange={(checked) => handleHotelChange(hotel.name, checked as boolean)}
                       />
-                      <Label htmlFor={`hotel-${hotel}`} className="text-sm font-normal cursor-pointer">
-                        {hotel}
+                      <Label htmlFor={`hotel-${hotel.id}`} className="text-sm font-normal cursor-pointer">
+                        {hotel.name}
                       </Label>
                     </div>
                   ))}
@@ -309,6 +439,13 @@ export default function EmpleadosAgregar() {
               <p className="text-sm text-green-700 mt-1">
                 Si Juan trabaja en "Monaco" y "Mallak" el mismo día, y su tarifa es $60,000, recibirá $30,000 por cada
                 hotel.
+              </p>
+            </div>
+            <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-md">
+              <p className="text-sm text-purple-800 font-medium">🏨 Nuevo Hotel:</p>
+              <p className="text-sm text-purple-700 mt-1">
+                Si necesitas agregar un hotel que no está en la lista, haz clic en el botón "Nuevo Hotel" junto a la
+                sección de hoteles.
               </p>
             </div>
           </div>

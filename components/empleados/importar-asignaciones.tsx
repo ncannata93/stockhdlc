@@ -22,6 +22,8 @@ interface ParsedRow {
   hoteles: string[]
   valid: boolean
   errors: string[]
+  originalLine: string
+  lineNumber: number
 }
 
 interface GroupedAssignment {
@@ -40,11 +42,10 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
   const { getEmployees, saveEmployee, saveAssignment, getPaidWeeks, markWeekAsPaid } = useEmployeeDB()
   const { toast } = useToast()
 
-  // Ejemplo de formato actualizado con espacios simples
-  const exampleData = `01/04/2025 Tucu San Miguel, Colores
-01/04/2025 Diego San Miguel, Colores
-02/04/2025 Tucu Monaco
-02/04/2025 Diego Jaguel, Argentina`
+  const exampleData = `01/04/2025  Tucu  San Miguel, Colores
+01/04/2025  Diego  San Miguel, Colores
+02/04/2025  Tucu  Monaco
+02/04/2025  Diego  Jaguel, Argentina`
 
   const parseData = () => {
     if (!textData.trim()) {
@@ -63,8 +64,15 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
       const trimmedLine = line.trim()
       if (!trimmedLine) return
 
-      // Separar por un solo espacio - parsing inteligente
-      const parts = trimmedLine.split(" ").filter((part) => part.trim())
+      const hasDoubleSpace = trimmedLine.includes("  ")
+      let parts: string[]
+
+      if (hasDoubleSpace) {
+        const sections = trimmedLine.split("  ").filter((part) => part.trim())
+        parts = sections
+      } else {
+        parts = trimmedLine.split(" ").filter((part) => part.trim())
+      }
 
       const row: ParsedRow = {
         fecha: "",
@@ -72,47 +80,46 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         hoteles: [],
         valid: true,
         errors: [],
+        originalLine: line,
+        lineNumber: index + 1,
       }
 
-      // Validar que tenga al menos 3 partes (fecha, empleado, al menos un hotel)
       if (parts.length < 3) {
         row.valid = false
-        row.errors.push(`Línea ${index + 1}: Formato incorrecto. Debe tener: Fecha Empleado Hoteles`)
+        row.errors.push(`Formato incorrecto. Debe tener: Fecha Empleado Hoteles`)
       } else {
-        // Primera parte: Fecha
         const fechaPart = parts[0]
         if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fechaPart)) {
           row.valid = false
-          row.errors.push(`Línea ${index + 1}: Fecha debe estar en formato DD/MM/YYYY`)
+          row.errors.push(`Fecha debe estar en formato DD/MM/YYYY`)
         } else {
-          // Convertir a formato ISO (YYYY-MM-DD)
           const [dia, mes, año] = fechaPart.split("/")
           row.fecha = `${año}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`
         }
 
-        // Segunda parte: Empleado
         row.empleado = parts[1]
         if (!row.empleado) {
           row.valid = false
-          row.errors.push(`Línea ${index + 1}: Nombre del empleado es requerido`)
+          row.errors.push(`Nombre del empleado es requerido`)
         }
 
-        // Resto: Hoteles (pueden estar separados por comas o ser múltiples palabras)
-        const hotelesStr = parts.slice(2).join(" ")
+        let hotelesStr: string
 
-        // Si contiene comas, separar por comas
+        if (hasDoubleSpace) {
+          hotelesStr = parts.slice(2).join("  ")
+        } else {
+          hotelesStr = parts.slice(2).join(" ")
+        }
+
         if (hotelesStr.includes(",")) {
           row.hoteles = hotelesStr
             .split(",")
             .map((h) => h.trim())
             .filter((h) => h)
         } else {
-          // Si no hay comas, considerar cada palabra restante como un hotel separado
-          // Pero primero verificar si coincide con hoteles conocidos
-          const remainingParts = parts.slice(2)
+          const remainingParts = hotelesStr.split(/\s+/).filter((p) => p.trim())
           const possibleHotels: string[] = []
 
-          // Intentar agrupar palabras para formar nombres de hoteles válidos
           let currentHotel = ""
           for (const part of remainingParts) {
             if (currentHotel) {
@@ -121,14 +128,12 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               currentHotel = part
             }
 
-            // Verificar si el hotel actual es válido
             if (HOTELS.includes(currentHotel)) {
               possibleHotels.push(currentHotel)
               currentHotel = ""
             }
           }
 
-          // Si quedó algo sin procesar, agregarlo como hotel
           if (currentHotel) {
             possibleHotels.push(currentHotel)
           }
@@ -138,14 +143,13 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
 
         if (row.hoteles.length === 0) {
           row.valid = false
-          row.errors.push(`Línea ${index + 1}: Al menos un hotel es requerido`)
+          row.errors.push(`Al menos un hotel es requerido`)
         }
 
-        // Validar que los hoteles existan
         row.hoteles.forEach((hotel) => {
           if (!HOTELS.includes(hotel)) {
             row.valid = false
-            row.errors.push(`Línea ${index + 1}: Hotel "${hotel}" no es válido`)
+            row.errors.push(`Hotel "${hotel}" no es válido`)
           }
         })
       }
@@ -161,7 +165,6 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
     setIsProcessing(true)
 
     try {
-      // Obtener empleados existentes
       const existingEmployees = await getEmployees()
       const employeeMap = new Map(existingEmployees.map((emp) => [emp.name.toLowerCase(), emp]))
 
@@ -170,22 +173,18 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
       let createdPayments = 0
       let errors = 0
 
-      // PASO 1: Agrupar asignaciones por empleado y fecha
       const groupedAssignments = new Map<string, GroupedAssignment>()
 
-      // Procesar solo filas válidas
       const validRows = parsedData.filter((row) => row.valid)
 
       for (const row of validRows) {
         const key = `${row.empleado.toLowerCase()}-${row.fecha}`
 
         if (groupedAssignments.has(key)) {
-          // Agregar hoteles a la asignación existente (sin duplicados)
           const existing = groupedAssignments.get(key)!
           const allHotels = [...existing.hoteles, ...row.hoteles]
-          existing.hoteles = [...new Set(allHotels)] // Eliminar duplicados
+          existing.hoteles = [...new Set(allHotels)]
         } else {
-          // Crear nueva asignación agrupada
           groupedAssignments.set(key, {
             empleado: row.empleado,
             fecha: row.fecha,
@@ -194,18 +193,15 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         }
       }
 
-      // PASO 2: Procesar cada asignación agrupada
       for (const assignment of groupedAssignments.values()) {
         try {
-          // Buscar o crear empleado
           let employee = employeeMap.get(assignment.empleado.toLowerCase())
 
           if (!employee) {
-            // Crear nuevo empleado
             const newEmployee = await saveEmployee({
               name: assignment.empleado,
               role: "Mantenimiento",
-              daily_rate: 15000, // Tarifa por defecto
+              daily_rate: 15000,
             })
 
             if (newEmployee) {
@@ -218,12 +214,9 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             }
           }
 
-          // Guardar el ID del empleado para crear pagos después
           assignment.employeeId = employee.id
           assignment.dailyRate = employee.daily_rate
 
-          // PASO 3: Crear asignaciones individuales con tarifa dividida
-          // Calcular tarifa dividida por la cantidad de hoteles ese día
           const dividedRate = assignment.dailyRate! / assignment.hoteles.length
 
           for (const hotel of assignment.hoteles) {
@@ -231,7 +224,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
               employee_id: employee.id,
               hotel_name: hotel,
               assignment_date: assignment.fecha,
-              daily_rate_used: dividedRate, // Usar tarifa dividida
+              daily_rate_used: dividedRate,
               notes: `Importado masivamente el ${new Date().toISOString().split("T")[0]} - Tarifa dividida entre ${assignment.hoteles.length} hotel(es): $${dividedRate.toLocaleString()}`,
             })
 
@@ -246,7 +239,6 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         }
       }
 
-      // PASO 4: Marcar semanas como pagadas usando el sistema simplificado
       const paymentGroups = new Map<
         string,
         {
@@ -264,7 +256,6 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
         const employee = employeeMap.get(assignment.empleado.toLowerCase())
         if (!employee) continue
 
-        // Calcular inicio y fin de semana (lunes a domingo)
         const assignmentDate = new Date(assignment.fecha)
         const dayOfWeek = assignmentDate.getDay()
         const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
@@ -292,15 +283,12 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
 
         const group = paymentGroups.get(key)!
 
-        // Calcular el total para este día (tarifa completa del empleado)
         group.totalAmount += employee.daily_rate
         group.assignmentDates.push(assignment.fecha)
       }
 
-      // Marcar semanas como pagadas usando el sistema simplificado
       for (const group of paymentGroups.values()) {
         try {
-          // Verificar si ya existe una semana pagada
           const existingPaidWeeks = await getPaidWeeks({
             employee_id: group.employee.id,
             start_date: group.weekStart,
@@ -353,7 +341,6 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
   const invalidRows = parsedData.filter((row) => !row.valid)
   const totalAssignments = validRows.reduce((sum, row) => sum + row.hoteles.length, 0)
 
-  // Calcular vista previa con agrupación
   const groupedPreview = new Map<string, GroupedAssignment>()
   for (const row of validRows) {
     const key = `${row.empleado.toLowerCase()}-${row.fecha}`
@@ -396,21 +383,30 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             <AlertDescription>
               <div className="space-y-3">
                 <div>
-                  <strong>Formato esperado:</strong> Fecha (DD/MM/YYYY) + ESPACIO + Nombre + ESPACIO + Hoteles
-                  (separados por comas o espacios)
+                  <strong>Formatos aceptados:</strong>
+                  <div className="mt-2 space-y-2">
+                    <div className="text-sm">
+                      <strong className="text-blue-600">Opción 1 (Recomendado):</strong> Fecha + DOBLE ESPACIO + Nombre
+                      + DOBLE ESPACIO + Hoteles
+                    </div>
+                    <div className="text-sm">
+                      <strong>Opción 2:</strong> Fecha + ESPACIO + Nombre + ESPACIO + Hoteles
+                    </div>
+                  </div>
                 </div>
                 <div>
-                  <strong>Ejemplo:</strong>
+                  <strong>Ejemplo con doble espacio:</strong>
                   <div className="mt-2 text-xs bg-gray-100 p-3 rounded-lg space-y-1 font-mono">
-                    <div className="break-all">01/04/2025 Tucu San Miguel, Colores</div>
-                    <div className="break-all">01/04/2025 Diego San Miguel, Colores</div>
-                    <div className="break-all">02/04/2025 Tucu Monaco</div>
-                    <div className="break-all">02/04/2025 Diego Jaguel, Argentina</div>
+                    <div className="break-all">01/04/2025··Tucu··San Miguel, Colores</div>
+                    <div className="break-all">01/04/2025··Diego··San Miguel, Colores</div>
+                    <div className="break-all">02/04/2025··Tucu··Monaco</div>
+                    <div className="break-all">02/04/2025··Diego··Jaguel, Argentina</div>
+                    <div className="text-xs text-gray-500 mt-2">(·· representa doble espacio)</div>
                   </div>
                 </div>
                 <div className="text-sm text-blue-600">
-                  <strong>💡 Nuevo:</strong> Ahora puedes separar con un solo espacio. Los hoteles pueden estar
-                  separados por comas o espacios.
+                  <strong>💡 Tip:</strong> El doble espacio es más confiable para nombres con espacios. Los hoteles
+                  pueden estar separados por comas o espacios.
                 </div>
               </div>
             </AlertDescription>
@@ -421,7 +417,7 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
             <Textarea
               value={textData}
               onChange={(e) => setTextData(e.target.value)}
-              placeholder="Pega aquí los datos en el formato especificado...&#10;Ejemplo:&#10;01/04/2025 Tucu San Miguel, Colores&#10;01/04/2025 Diego Monaco&#10;02/04/2025 Nacho Jaguel, Argentina"
+              placeholder="Pega aquí los datos en el formato especificado...&#10;Ejemplo con doble espacio:&#10;01/04/2025  Tucu  San Miguel, Colores&#10;01/04/2025  Diego  Monaco&#10;02/04/2025  Nacho  Jaguel, Argentina"
               rows={8}
               className="font-mono text-sm resize-none"
             />
@@ -449,103 +445,136 @@ export default function ImportarAsignaciones({ onSuccess }: ImportarAsignaciones
       </Card>
 
       {showPreview && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5" />
-              Vista Previa - Importación Completa
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-green-50 p-3 rounded-lg">
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle className="h-4 w-4" />
-                  <span className="font-medium text-sm">Días de trabajo</span>
-                </div>
-                <div className="text-xl font-bold text-green-800">{groupedPreview.size}</div>
-                <div className="text-xs text-green-600">{totalAssignments} asignaciones totales</div>
-              </div>
-
-              <div className="bg-red-50 p-3 rounded-lg">
-                <div className="flex items-center gap-2 text-red-700">
+        <>
+          {invalidRows.length > 0 && (
+            <Card className="border-red-200">
+              <CardHeader className="bg-red-50">
+                <CardTitle className="flex items-center gap-2 text-red-700">
+                  <AlertCircle className="h-5 w-5" />
+                  Líneas con Errores ({invalidRows.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-6">
+                <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
-                  <span className="font-medium text-sm">Con errores</span>
-                </div>
-                <div className="text-xl font-bold text-red-800">{invalidRows.length}</div>
-              </div>
+                  <AlertDescription>
+                    Las siguientes líneas contienen errores. Por favor corrígelas antes de importar.
+                  </AlertDescription>
+                </Alert>
 
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <div className="flex items-center gap-2 text-blue-700">
-                  <Users className="h-4 w-4" />
-                  <span className="font-medium text-sm">Empleados únicos</span>
-                </div>
-                <div className="text-xl font-bold text-blue-800">
-                  {new Set(validRows.map((row) => row.empleado.toLowerCase())).size}
-                </div>
-              </div>
-            </div>
-
-            {invalidRows.length > 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Errores encontrados:</strong>
-                  <ul className="mt-2 space-y-1">
-                    {invalidRows.slice(0, 5).map((row, index) => (
-                      <li key={index} className="text-sm">
-                        {row.errors.join(", ")}
-                      </li>
-                    ))}
-                    {invalidRows.length > 5 && <li className="text-sm">... y {invalidRows.length - 5} errores más</li>}
-                  </ul>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {groupedPreview.size > 0 && (
-              <div>
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <Calculator className="h-4 w-4 text-green-600" />✅ Resumen - Se crearán asignaciones Y se marcarán
-                  semanas como pagadas:
-                </h4>
-                <div className="max-h-60 overflow-y-auto space-y-2">
-                  {Array.from(groupedPreview.values())
-                    .slice(0, 10)
-                    .map((assignment, index) => (
-                      <div key={index} className="bg-green-50 p-3 rounded border border-green-200 space-y-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Calendar className="h-4 w-4 text-green-600" />
-                          <span className="font-medium">{assignment.fecha}</span>
-                          <Badge variant="outline" className="border-green-300 text-xs">
-                            {assignment.empleado}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {assignment.hoteles.map((hotel, hotelIndex) => (
-                            <Badge key={hotelIndex} variant="secondary" className="text-xs">
-                              {hotel}
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="text-xs text-green-600 font-medium">
-                          ✅ Asignaciones + Semana pagada
-                          {assignment.hoteles.length > 1 && (
-                            <div className="text-xs text-blue-600">
-                              Tarifa dividida: ${(15000 / assignment.hoteles.length).toLocaleString()} c/u
-                            </div>
-                          )}
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {invalidRows.map((row, index) => (
+                    <div key={index} className="border-2 border-red-300 bg-red-50 rounded-lg p-4 space-y-2">
+                      <div className="flex items-start gap-3">
+                        <Badge variant="destructive" className="shrink-0">
+                          Línea {row.lineNumber}
+                        </Badge>
+                        <div className="flex-1 space-y-2">
+                          <div className="font-mono text-sm bg-white p-2 rounded border border-red-200 break-all">
+                            {row.originalLine}
+                          </div>
+                          <div className="space-y-1">
+                            {row.errors.map((error, errorIndex) => (
+                              <div key={errorIndex} className="flex items-start gap-2 text-sm text-red-700">
+                                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                                <span>{error}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  {groupedPreview.size > 10 && (
-                    <div className="text-sm text-gray-500 text-center">... y {groupedPreview.size - 10} días más</div>
-                  )}
+                    </div>
+                  ))}
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          )}
+
+          {groupedPreview.size > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5" />
+                  Vista Previa - Importación Completa
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-green-700">
+                      <CheckCircle className="h-4 w-4" />
+                      <span className="font-medium text-sm">Días de trabajo</span>
+                    </div>
+                    <div className="text-xl font-bold text-green-800">{groupedPreview.size}</div>
+                    <div className="text-xs text-green-600">{totalAssignments} asignaciones totales</div>
+                  </div>
+
+                  <div className="bg-red-50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-red-700">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="font-medium text-sm">Con errores</span>
+                    </div>
+                    <div className="text-xl font-bold text-red-800">{invalidRows.length}</div>
+                  </div>
+
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-blue-700">
+                      <Users className="h-4 w-4" />
+                      <span className="font-medium text-sm">Empleados únicos</span>
+                    </div>
+                    <div className="text-xl font-bold text-blue-800">
+                      {new Set(validRows.map((row) => row.empleado.toLowerCase())).size}
+                    </div>
+                  </div>
+                </div>
+
+                {groupedPreview.size > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Calculator className="h-4 w-4 text-green-600" />✅ Resumen - Se crearán asignaciones Y se
+                      marcarán semanas como pagadas:
+                    </h4>
+                    <div className="max-h-60 overflow-y-auto space-y-2">
+                      {Array.from(groupedPreview.values())
+                        .slice(0, 10)
+                        .map((assignment, index) => (
+                          <div key={index} className="bg-green-50 p-3 rounded border border-green-200 space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 text-green-600" />
+                              <span className="font-medium">{assignment.fecha}</span>
+                              <Badge variant="outline" className="border-green-300 text-xs">
+                                {assignment.empleado}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {assignment.hoteles.map((hotel, hotelIndex) => (
+                                <Badge key={hotelIndex} variant="secondary" className="text-xs">
+                                  {hotel}
+                                </Badge>
+                              ))}
+                            </div>
+                            <div className="text-xs text-green-600 font-medium">
+                              ✅ Asignaciones + Semana pagada
+                              {assignment.hoteles.length > 1 && (
+                                <div className="text-xs text-blue-600">
+                                  Tarifa dividida: ${(15000 / assignment.hoteles.length).toLocaleString()} c/u
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      {groupedPreview.size > 10 && (
+                        <div className="text-sm text-gray-500 text-center">
+                          ... y {groupedPreview.size - 10} días más
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
     </div>
   )
