@@ -2,10 +2,11 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Printer, Calendar } from "lucide-react"
+import { Printer, Calendar, Settings } from "lucide-react"
 import type { CleaningSchedule } from "./actions"
 import { useState, useMemo, useTransition } from "react"
 import { getApartmentType } from "./apartment-types"
+import Link from "next/link"
 
 type Props = {
   report: (CleaningSchedule & { booking_notes?: string | null; _mergedIds?: string[] })[]
@@ -225,10 +226,18 @@ export function DailyReport({ report }: Props) {
             <p className="text-sm text-muted-foreground capitalize">{formattedDate}</p>
           </div>
         </div>
-        <Button onClick={handlePrint} size="lg" className="gap-2">
-          <Printer className="h-4 w-4" />
-          Imprimir
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" size="lg" className="gap-2 bg-transparent">
+            <Link href="/limpieza/admin">
+              <Settings className="h-4 w-4" />
+              Administrar Estadías
+            </Link>
+          </Button>
+          <Button onClick={handlePrint} size="lg" className="gap-2">
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </Button>
+        </div>
       </div>
 
       <style jsx global>{`
