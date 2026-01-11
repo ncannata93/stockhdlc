@@ -4,8 +4,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Printer, Calendar } from "lucide-react"
 import type { CleaningSchedule } from "./actions"
-import { toggleCleaningComplete } from "./actions"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useTransition } from "react"
 import { getApartmentType } from "./apartment-types"
 
 type Props = {
@@ -25,6 +24,8 @@ const ALL_APARTMENTS = [
 
 export function DailyReport({ report }: Props) {
   const [localReport, setLocalReport] = useState(report)
+  const [isPending, startTransition] = useTransition()
+
   const today = new Date(Date.now() - 3 * 60 * 60 * 1000)
   const formattedDate = today.toLocaleDateString("es-AR", {
     weekday: "long",
@@ -39,12 +40,27 @@ export function DailyReport({ report }: Props) {
   }
 
   const handleToggleComplete = async (id: string, currentStatus: boolean, mergedIds?: string[]) => {
-    try {
-      await toggleCleaningComplete(id, !currentStatus, mergedIds)
-      setLocalReport((prev) => prev.map((item) => (item.id === id ? { ...item, is_completed: !currentStatus } : item)))
-    } catch (error) {
-      console.error("Error updating status:", error)
-    }
+    // Actualizar UI optimísticamente
+    setLocalReport((prev) => prev.map((item) => (item.id === id ? { ...item, is_completed: !currentStatus } : item)))
+
+    startTransition(async () => {
+      try {
+        // Llamar a la API route que manejará el Server Action
+        const response = await fetch("/api/toggle-cleaning", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, isCompleted: !currentStatus, mergedIds }),
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to update")
+        }
+      } catch (error) {
+        console.error("Error updating status:", error)
+        // Revertir cambio optimista en caso de error
+        setLocalReport((prev) => prev.map((item) => (item.id === id ? { ...item, is_completed: currentStatus } : item)))
+      }
+    })
   }
 
   const apartmentMap = useMemo(() => {
