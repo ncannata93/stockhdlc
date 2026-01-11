@@ -1,4 +1,4 @@
-import { getBookings, getCleaningSchedule } from "../actions"
+import { getBookings, getCleaningSchedule } from "../queries"
 import { Sparkles } from "lucide-react"
 import { ClientWrapper } from "../client-wrapper"
 import { Button } from "@/components/ui/button"

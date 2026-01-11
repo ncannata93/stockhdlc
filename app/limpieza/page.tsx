@@ -1,10 +1,12 @@
 "use client"
 
-import { getTodayReport } from "./actions"
+import { getTodayReport } from "./queries"
 import { Calendar } from "lucide-react"
 import { DailyReport } from "./daily-report"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+
+export const dynamic = "force-dynamic"
 
 export default async function LimpiezaPage() {
   const report = await getTodayReport()
