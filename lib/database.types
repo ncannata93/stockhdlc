@@ -1,0 +1,205 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      products: {
+        Row: {
+          id: number
+          name: string
+          unit: string
+          price: number
+          min_stock: number
+          created_at: string
+        }
+        Insert: {
+          id: number
+          name: string
+          unit: string
+          price: number
+          min_stock?: number
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          unit?: string
+          price?: number
+          min_stock?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      inventory: {
+        Row: {
+          product_id: number
+          quantity: number
+          created_at: string
+        }
+        Insert: {
+          product_id: number
+          quantity: number
+          created_at?: string
+        }
+        Update: {
+          product_id?: number
+          quantity?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_product_id_fkey"
+            columns: ["product_id"]
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      records: {
+        Row: {
+          id: number
+          hotel_id: number | null
+          hotel_name: string | null
+          product_id: number
+          product_name: string
+          product_unit: string
+          quantity: number
+          price: number
+          date: string
+          type: "entrada" | "salida"
+          created_at: string
+          username: string | null
+        }
+        Insert: {
+          id: number
+          hotel_id?: number | null
+          hotel_name?: string | null
+          product_id: number
+          product_name: string
+          product_unit: string
+          quantity: number
+          price: number
+          date: string
+          type: "entrada" | "salida"
+          created_at?: string
+          username?: string | null
+        }
+        Update: {
+          id?: number
+          hotel_id?: number | null
+          hotel_name?: string | null
+          product_id?: number
+          product_name?: string
+          product_unit?: string
+          quantity?: number
+          price?: number
+          date?: string
+          type?: "entrada" | "salida"
+          created_at?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "records_product_id_fkey"
+            columns: ["product_id"]
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      health_check: {
+        Row: {
+          id: number
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          status: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          status?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      user_profiles: {
+        Row: {
+          id: number
+          user_id: string
+          username: string
+          email: string
+          created_at: string
+          updated_at: string
+          is_admin: boolean
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          username: string
+          email: string
+          created_at?: string
+          updated_at?: string
+          is_admin?: boolean
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          username?: string
+          email?: string
+          created_at?: string
+          updated_at?: string
+          is_admin?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+    }
+    Views: {}
+    Functions: {
+      admin_confirm_user: {
+        Args: {
+          user_email: string
+        }
+        Returns: boolean
+      }
+      check_user_exists: {
+        Args: {
+          user_email: string
+        }
+        Returns: boolean
+      }
+       admin_update_user_password: {
+        Args: {
+          user_email: string
+          new_password: string
+        }
+        Returns: {
+          success: boolean
+          message: string
+          user_id: string
+          email: string
+        }
+      }
+      check_user_status: {
+        Args: {
+          user_email: string
+        }
+        Returns: {
+          exists: boolean
+          confirmed: boolean
+        }
+      }
+    }
+    Enums: {}
+    CompositeTypes: {}
+  }
+}
