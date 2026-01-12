@@ -2,7 +2,7 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Printer, Calendar, Settings } from "lucide-react"
+import { Printer, Calendar, Settings, CalendarClock } from "lucide-react"
 import type { CleaningSchedule } from "./actions"
 import { useState, useMemo, useTransition } from "react"
 import { getApartmentType } from "./apartment-types"
@@ -64,6 +64,47 @@ export function DailyReport({ report }: Props) {
     })
   }
 
+  const handlePostponeSheets = async (id: string, apartment: string) => {
+    if (!confirm(`¿Postergar el cambio de sábanas del apartamento ${apartment} para mañana?`)) {
+      return
+    }
+
+    // Actualizar UI optimísticamente
+    setLocalReport((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              cleaning_type: "repaso" as const,
+              notes: "Cambio de sábanas postergado para mañana",
+            }
+          : item,
+      ),
+    )
+
+    startTransition(async () => {
+      try {
+        const response = await fetch("/api/postpone-sheets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to postpone")
+        }
+
+        // Recargar la página para ver los cambios
+        window.location.reload()
+      } catch (error) {
+        console.error("Error postponing sheets:", error)
+        alert("Error al postergar el cambio de sábanas")
+        // Revertir cambio optimista
+        window.location.reload()
+      }
+    })
+  }
+
   const apartmentMap = useMemo(() => {
     const map = new Map<string, (CleaningSchedule & { booking_notes?: string | null; _mergedIds?: string[] }) | null>()
 
@@ -102,8 +143,11 @@ export function DailyReport({ report }: Props) {
           <td className="py-2 px-3 text-center text-gray-400">-</td>
           <td className="py-2 px-3 text-center text-gray-400">-</td>
           <td className="py-2 px-3 text-center text-gray-400 text-xs">-</td>
-          <td className="py-2 px-3 text-center">
-            <div className="w-5 h-5 border-2 border-gray-300 mx-auto print:border-black" />
+          <td className="py-2 px-3">
+            <div className="flex items-center justify-center gap-2 min-w-[64px]">
+              <div className="w-5 h-5 border-2 border-gray-300 flex-shrink-0 print:border-black" />
+              <div className="w-6 h-6 print:hidden flex-shrink-0" />
+            </div>
           </td>
         </tr>
       )
@@ -162,12 +206,26 @@ export function DailyReport({ report }: Props) {
           {cleaning.notes || cleaning.booking_notes || "-"}
         </td>
         <td className="py-2 px-3 text-center">
-          <input
-            type="checkbox"
-            checked={cleaning.is_completed}
-            onChange={() => handleToggleComplete(cleaning.id, cleaning.is_completed, cleaning._mergedIds)}
-            className="w-5 h-5 cursor-pointer print:appearance-none print:border-2 print:border-black"
-          />
+          <div className="flex items-center justify-center gap-2 min-w-[64px]">
+            <input
+              type="checkbox"
+              checked={cleaning.is_completed}
+              onChange={() => handleToggleComplete(cleaning.id, cleaning.is_completed, cleaning._mergedIds)}
+              className="w-5 h-5 cursor-pointer print:appearance-none print:border-2 print:border-black flex-shrink-0"
+            />
+            {!cleaning.is_completed && cleaning.cleaning_type === "repaso-sabanas" ? (
+              <button
+                onClick={() => handlePostponeSheets(cleaning.id, cleaning.apartment)}
+                className="p-1 hover:bg-orange-100 rounded print:hidden flex-shrink-0"
+                title="Postergar cambio de sábanas para mañana"
+                disabled={isPending}
+              >
+                <CalendarClock className="h-4 w-4 text-orange-600" />
+              </button>
+            ) : (
+              <div className="w-6 h-6 print:hidden" />
+            )}
+          </div>
         </td>
       </tr>
     )

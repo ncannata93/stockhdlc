@@ -78,6 +78,39 @@ export async function deleteBooking(id: string) {
   revalidatePath("/limpieza")
 }
 
+export async function updateBooking(
+  id: string,
+  data: {
+    apartment: string
+    pax: number
+    checkIn: string
+    checkOut: string
+    notes?: string
+  },
+) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      apartment: data.apartment,
+      pax: data.pax,
+      check_in: data.checkIn,
+      check_out: data.checkOut,
+      notes: data.notes || null,
+      updated_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    })
+    .eq("id", id)
+
+  if (error) {
+    console.error("Error updating booking:", error)
+    throw new Error(error.message)
+  }
+
+  revalidatePath("/limpieza")
+  revalidatePath("/limpieza/admin")
+}
+
 export async function toggleCleaningComplete(id: string, isCompleted: boolean, mergedIds?: string[]) {
   const supabase = await createClient()
 
@@ -97,6 +130,107 @@ export async function toggleCleaningComplete(id: string, isCompleted: boolean, m
   if (error) {
     console.error("Error updating cleaning status:", error)
     throw new Error(error.message)
+  }
+
+  revalidatePath("/limpieza")
+}
+
+export async function postponeSheetChange(id: string) {
+  const supabase = await createClient()
+
+  // Obtener el registro actual
+  const { data: currentRecord, error: fetchError } = await supabase
+    .from("cleaning_schedule")
+    .select("*")
+    .eq("id", id)
+    .single()
+
+  if (fetchError || !currentRecord) {
+    console.error("Error fetching cleaning record:", fetchError)
+    throw new Error("No se pudo encontrar el registro de limpieza")
+  }
+
+  // Verificar que sea un repaso-sabanas
+  if (currentRecord.cleaning_type !== "repaso-sabanas") {
+    throw new Error("Solo se pueden postergar cambios de sábanas")
+  }
+
+  // Calcular fecha del día siguiente en GMT-3
+  const currentDate = new Date(currentRecord.date + "T00:00:00")
+  const nextDay = new Date(currentDate)
+  nextDay.setDate(nextDay.getDate() + 1)
+  const nextDayStr = nextDay.toISOString().split("T")[0]
+
+  // Verificar si ya existe una limpieza para ese apartamento el día siguiente
+  const { data: existingCleaning } = await supabase
+    .from("cleaning_schedule")
+    .select("*")
+    .eq("apartment", currentRecord.apartment)
+    .eq("date", nextDayStr)
+    .single()
+
+  if (existingCleaning) {
+    // Si existe y es repaso simple, actualizar a repaso-sabanas
+    if (existingCleaning.cleaning_type === "repaso") {
+      const { error: updateError } = await supabase
+        .from("cleaning_schedule")
+        .update({
+          cleaning_type: "repaso-sabanas",
+          notes: `Cambio de sábanas postergado del ${currentDate.toLocaleDateString("es-AR")}`,
+        })
+        .eq("id", existingCleaning.id)
+
+      if (updateError) {
+        console.error("Error updating next day cleaning:", updateError)
+        throw new Error("Error al actualizar la limpieza del día siguiente")
+      }
+    } else {
+      // Si ya es repaso-sabanas o completa, solo agregar nota
+      const currentNotes = existingCleaning.notes || ""
+      const newNotes = currentNotes
+        ? `${currentNotes} | Cambio de sábanas postergado del ${currentDate.toLocaleDateString("es-AR")}`
+        : `Cambio de sábanas postergado del ${currentDate.toLocaleDateString("es-AR")}`
+
+      const { error: updateError } = await supabase
+        .from("cleaning_schedule")
+        .update({ notes: newNotes })
+        .eq("id", existingCleaning.id)
+
+      if (updateError) {
+        console.error("Error updating notes:", updateError)
+        throw new Error("Error al actualizar las notas")
+      }
+    }
+  } else {
+    // Si no existe limpieza para el día siguiente, crear una nueva
+    const { error: insertError } = await supabase.from("cleaning_schedule").insert({
+      booking_id: currentRecord.booking_id,
+      apartment: currentRecord.apartment,
+      date: nextDayStr,
+      day_type: "daily",
+      cleaning_type: "repaso-sabanas",
+      notes: `Cambio de sábanas postergado del ${currentDate.toLocaleDateString("es-AR")}`,
+      is_completed: false,
+    })
+
+    if (insertError) {
+      console.error("Error creating next day cleaning:", insertError)
+      throw new Error("Error al crear la limpieza del día siguiente")
+    }
+  }
+
+  // Cambiar el registro actual a repaso simple
+  const { error: updateCurrentError } = await supabase
+    .from("cleaning_schedule")
+    .update({
+      cleaning_type: "repaso",
+      notes: `Cambio de sábanas postergado para el ${nextDay.toLocaleDateString("es-AR")}`,
+    })
+    .eq("id", id)
+
+  if (updateCurrentError) {
+    console.error("Error updating current cleaning:", updateCurrentError)
+    throw new Error("Error al actualizar la limpieza actual")
   }
 
   revalidatePath("/limpieza")

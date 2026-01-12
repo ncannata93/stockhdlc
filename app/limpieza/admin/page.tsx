@@ -1,11 +1,11 @@
-import { getBookings, getCleaningSchedule } from "../queries"
+import { getActiveAndPastBookings, getCleaningSchedule } from "../queries"
 import { Sparkles } from "lucide-react"
 import { ClientWrapper } from "../client-wrapper"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
 export default async function AdminPage() {
-  const bookings = await getBookings()
+  const bookings = await getActiveAndPastBookings()
   const schedule = await getCleaningSchedule()
 
   return (

@@ -171,3 +171,28 @@ export async function getTodayReport() {
 
   return merged as (CleaningSchedule & { booking_notes?: string | null; _mergedIds?: string[] })[]
 }
+
+export async function getActiveAndPastBookings() {
+  const supabase = await createClient()
+  const today = getTodayInGMT3()
+
+  const { data, error } = await supabase.from("bookings").select("*")
+
+  if (error) {
+    console.error("Error fetching bookings:", error)
+    return { active: [], past: [] }
+  }
+
+  const bookings = data as Booking[]
+
+  // Separar estadías activas (check_in <= today <= check_out) y pasadas (check_out < today)
+  const active = bookings
+    .filter((b) => b.check_in <= today && b.check_out >= today)
+    .sort((a, b) => a.apartment.localeCompare(b.apartment))
+
+  const past = bookings
+    .filter((b) => b.check_out < today)
+    .sort((a, b) => new Date(b.check_out).getTime() - new Date(a.check_out).getTime())
+
+  return { active, past }
+}

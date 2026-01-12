@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
 import { addBooking } from "./actions"
-import { Plus } from "lucide-react"
+import { Plus, Edit } from "lucide-react"
 
 // Generate apartment numbers
 const generateApartments = () => {
@@ -29,15 +28,42 @@ const generateApartments = () => {
 
 const APARTMENTS = generateApartments()
 
-export function BookingForm({ onSuccess }: { onSuccess: () => void }) {
+export function BookingForm({
+  onSuccess,
+  editingBooking,
+  onCancelEdit,
+}: {
+  onSuccess: () => void
+  editingBooking?: {
+    id: string
+    apartment: string
+    pax: number
+    check_in: string
+    check_out: string
+    notes?: string
+  }
+  onCancelEdit?: () => void
+}) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    apartment: "",
-    pax: "",
-    checkIn: "",
-    checkOut: "",
-    notes: "",
+    apartment: editingBooking?.apartment || "",
+    pax: editingBooking?.pax.toString() || "",
+    checkIn: editingBooking?.check_in || "",
+    checkOut: editingBooking?.check_out || "",
+    notes: editingBooking?.notes || "",
   })
+
+  useEffect(() => {
+    if (editingBooking) {
+      setFormData({
+        apartment: editingBooking.apartment,
+        pax: editingBooking.pax.toString(),
+        checkIn: editingBooking.check_in,
+        checkOut: editingBooking.check_out,
+        notes: editingBooking.notes || "",
+      })
+    }
+  }, [editingBooking])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -54,18 +80,32 @@ export function BookingForm({ onSuccess }: { onSuccess: () => void }) {
     setLoading(true)
 
     try {
-      await addBooking({
-        apartment: formData.apartment,
-        pax: Number.parseInt(formData.pax),
-        checkIn: formData.checkIn,
-        checkOut: formData.checkOut,
-        notes: formData.notes,
-      })
-
-      toast({
-        title: "Estadía agregada",
-        description: "La estadía y su planilla de limpieza han sido creadas",
-      })
+      if (editingBooking) {
+        const { updateBooking } = await import("./actions")
+        await updateBooking(editingBooking.id, {
+          apartment: formData.apartment,
+          pax: Number.parseInt(formData.pax),
+          checkIn: formData.checkIn,
+          checkOut: formData.checkOut,
+          notes: formData.notes,
+        })
+        toast({
+          title: "Estadía actualizada",
+          description: "La estadía y su planilla de limpieza han sido actualizadas",
+        })
+      } else {
+        await addBooking({
+          apartment: formData.apartment,
+          pax: Number.parseInt(formData.pax),
+          checkIn: formData.checkIn,
+          checkOut: formData.checkOut,
+          notes: formData.notes,
+        })
+        toast({
+          title: "Estadía agregada",
+          description: "La estadía y su planilla de limpieza han sido creadas",
+        })
+      }
 
       setFormData({
         apartment: "",
@@ -77,10 +117,10 @@ export function BookingForm({ onSuccess }: { onSuccess: () => void }) {
 
       onSuccess()
     } catch (error) {
-      console.error("Error adding booking:", error)
+      console.error("Error saving booking:", error)
       toast({
         title: "Error",
-        description: "No se pudo agregar la estadía",
+        description: editingBooking ? "No se pudo actualizar la estadía" : "No se pudo agregar la estadía",
         variant: "destructive",
       })
     } finally {
@@ -92,11 +132,13 @@ export function BookingForm({ onSuccess }: { onSuccess: () => void }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Plus className="h-5 w-5" />
-          Nueva Estadía
+          {editingBooking ? <Edit className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+          {editingBooking ? "Editar Estadía" : "Nueva Estadía"}
         </CardTitle>
         <CardDescription>
-          Registra una nueva estadía para generar automáticamente la planilla de limpieza
+          {editingBooking
+            ? "Modifica los datos de la estadía y se regenerará la planilla de limpieza"
+            : "Registra una nueva estadía para generar automáticamente la planilla de limpieza"}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -166,9 +208,22 @@ export function BookingForm({ onSuccess }: { onSuccess: () => void }) {
             />
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Agregando..." : "Agregar Estadía"}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={loading} className="flex-1">
+              {loading
+                ? editingBooking
+                  ? "Actualizando..."
+                  : "Agregando..."
+                : editingBooking
+                  ? "Actualizar Estadía"
+                  : "Agregar Estadía"}
+            </Button>
+            {editingBooking && onCancelEdit && (
+              <Button type="button" variant="outline" onClick={onCancelEdit} disabled={loading}>
+                Cancelar
+              </Button>
+            )}
+          </div>
         </form>
       </CardContent>
     </Card>

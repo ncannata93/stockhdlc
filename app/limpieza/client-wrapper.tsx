@@ -4,6 +4,7 @@ import { BookingForm } from "./booking-form"
 import { CleaningGrid } from "./cleaning-grid"
 import { BookingsList } from "./bookings-list"
 import { useRouter } from "next/navigation"
+import { useState } from "react"
 
 type Booking = {
   id: string
@@ -31,19 +32,30 @@ export function ClientWrapper({
   bookings,
   schedule,
 }: {
-  bookings: Booking[]
+  bookings: { active: Booking[]; past: Booking[] }
   schedule: CleaningRecord[]
 }) {
   const router = useRouter()
+  const [editingBooking, setEditingBooking] = useState<Booking | undefined>(undefined)
 
   const handleUpdate = () => {
+    setEditingBooking(undefined)
     router.refresh()
+  }
+
+  const handleEdit = (booking: Booking) => {
+    setEditingBooking(booking)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingBooking(undefined)
   }
 
   return (
     <>
-      <BookingForm onSuccess={handleUpdate} />
-      <BookingsList bookings={bookings} onUpdate={handleUpdate} />
+      <BookingForm onSuccess={handleUpdate} editingBooking={editingBooking} onCancelEdit={handleCancelEdit} />
+      <BookingsList bookings={bookings} onUpdate={handleUpdate} onEdit={handleEdit} />
       <CleaningGrid data={schedule} onUpdate={handleUpdate} />
     </>
   )
