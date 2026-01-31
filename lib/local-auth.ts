@@ -15,8 +15,9 @@ export interface LocalUser {
   username: string
   email: string
   fullName: string
-  role: "admin" | "user"
+  role: "admin" | "user" | "stockarg_only"
   createdAt: string
+  allowedRoutes?: string[]
 }
 
 // Usuarios predefinidos del sistema
@@ -53,6 +54,15 @@ const PREDEFINED_USERS: LocalUser[] = [
     role: "user",
     createdAt: "2024-01-01T00:00:00Z",
   },
+  {
+    id: "5",
+    username: "ruben",
+    email: "ruben@hotelescosta.com",
+    fullName: "Ruben",
+    role: "stockarg_only",
+    createdAt: "2024-01-01T00:00:00Z",
+    allowedRoutes: ["/stockarg"],
+  },
 ]
 
 // Credenciales de usuarios
@@ -61,6 +71,7 @@ const USER_CREDENTIALS: Record<string, string> = {
   admin: "admin123",
   dpili: "pili123",
   jprey: "qw425540",
+  ruben: "pincha123",
 }
 
 // Función para verificar si localStorage está disponible

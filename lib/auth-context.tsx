@@ -9,10 +9,12 @@ interface User {
   displayName: string
   role: string
   email?: string
+  allowedRoutes?: string[]
 }
 
 interface AuthContextType {
   user: User | null
+  session: User | null
   isAuthenticated: boolean
   isLoading: boolean
   signIn: (credentials: { username: string; password: string }) => Promise<{
@@ -52,6 +54,15 @@ const users = [
     role: "manager",
     email: "dpili@hotelescosta.com",
   },
+  {
+    id: "4",
+    username: "ruben",
+    password: "pincha123",
+    displayName: "Ruben",
+    role: "stockarg_only",
+    email: "ruben@hotelescosta.com",
+    allowedRoutes: ["/stockarg"],
+  },
 ]
 
 // Helper function to convert username to email format
@@ -84,12 +95,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const foundUser = users.find((u) => u.username === credentials.username && u.password === credentials.password)
 
       if (foundUser) {
-        const userWithoutPassword = {
+        const userWithoutPassword: User = {
           id: foundUser.id,
           username: foundUser.username,
           displayName: foundUser.displayName,
           role: foundUser.role,
           email: foundUser.email,
+          allowedRoutes: (foundUser as typeof foundUser & { allowedRoutes?: string[] }).allowedRoutes,
         }
 
         setUser(userWithoutPassword)
@@ -120,6 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = {
     user,
+    session: user,
     isAuthenticated: !!user,
     isLoading,
     signIn,

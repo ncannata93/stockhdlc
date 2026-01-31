@@ -32,6 +32,18 @@ export default function ProtectedRoute({ children, adminOnly = false, allowRedir
         return
       }
     }
+
+    // Verificar rutas permitidas para usuarios con restricciones
+    if (!isLoading && isAuthenticated && session?.allowedRoutes) {
+      const allowedRoutes = session.allowedRoutes
+      const isAllowed = allowedRoutes.some((route: string) => pathname.startsWith(route))
+      
+      if (!isAllowed && allowRedirect) {
+        // Redirigir a la primera ruta permitida
+        router.replace(allowedRoutes[0] || "/")
+        return
+      }
+    }
   }, [isLoading, isAuthenticated, pathname, router, adminOnly, session, allowRedirect])
 
   if (isLoading) {

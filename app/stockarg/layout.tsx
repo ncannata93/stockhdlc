@@ -1,33 +1,15 @@
 "use client"
 
 import type React from "react"
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { MainNavigation } from "@/components/main-navigation"
 import { ChevronRight } from "lucide-react"
 import Link from "next/link"
-import { useAuth } from "@/lib/auth-context"
 
-export default function StockLayout({
+export default function StockArgLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const { user, isAuthenticated, isLoading } = useAuth()
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!isLoading && isAuthenticated && user?.allowedRoutes) {
-      const isAllowed = user.allowedRoutes.some((route: string) => "/stock".startsWith(route))
-      if (!isAllowed) {
-        router.replace(user.allowedRoutes[0] || "/")
-      }
-    }
-  }, [isLoading, isAuthenticated, user, router])
-
-  if (isLoading) return null
-  if (user?.allowedRoutes && !user.allowedRoutes.some((route: string) => "/stock".startsWith(route))) return null
-
   return (
     <div className="min-h-screen bg-gray-50">
       <MainNavigation />
@@ -40,7 +22,7 @@ export default function StockLayout({
               Inicio
             </Link>
             <ChevronRight className="h-4 w-4 mx-2" />
-            <span className="text-gray-900 font-medium">Control de Stock</span>
+            <span className="text-gray-900 font-medium">Stock Argentina</span>
           </div>
         </div>
       </div>

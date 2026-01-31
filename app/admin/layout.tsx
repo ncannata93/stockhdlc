@@ -39,12 +39,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [session, isAuthenticated])
 
-  // Redireccionar si no es admin
+  // Redireccionar si no es admin o tiene rutas restringidas
   useEffect(() => {
     if (!loading && (!isAuthenticated || !isAdmin)) {
       router.push("/")
     }
-  }, [isAuthenticated, isAdmin, loading, router])
+    // Si tiene rutas restringidas, redirigir a su ruta permitida
+    if (!loading && session?.allowedRoutes) {
+      router.replace(session.allowedRoutes[0] || "/")
+    }
+  }, [isAuthenticated, isAdmin, loading, router, session])
 
   if (loading) {
     return <div className="p-8 text-center">Verificando permisos...</div>
@@ -60,25 +64,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       <div className="flex flex-wrap gap-2 mb-6">
         <Link href="/admin">
-          <Button variant="outline" size="sm" className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="flex items-center gap-2 bg-transparent">
             <Database className="h-4 w-4" />
             <span>Dashboard</span>
           </Button>
         </Link>
         <Link href="/admin/users">
-          <Button variant="outline" size="sm" className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="flex items-center gap-2 bg-transparent">
             <Users className="h-4 w-4" />
             <span>Usuarios</span>
           </Button>
         </Link>
         <Link href="/admin/create-user">
-          <Button variant="outline" size="sm" className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="flex items-center gap-2 bg-transparent">
             <UserPlus className="h-4 w-4" />
             <span>Crear Usuario</span>
           </Button>
         </Link>
         <Link href="/admin/permissions-manager">
-          <Button variant="outline" size="sm" className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="flex items-center gap-2 bg-transparent">
             <Shield className="h-4 w-4" />
             <span>Permisos</span>
           </Button>

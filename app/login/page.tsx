@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
-  const { login } = useAuth()
+  const { signIn } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,11 +28,13 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const success = await login(username, password)
-      if (success) {
-        router.push("/")
+      const result = await signIn({ username, password })
+      if (result.success) {
+        // Redirigir a la primera ruta permitida si el usuario tiene restricciones
+        const redirectTo = result.user?.allowedRoutes?.[0] || "/"
+        router.push(redirectTo)
       } else {
-        setError("Credenciales incorrectas")
+        setError(result.error || "Credenciales incorrectas")
       }
     } catch (error) {
       setError("Error al iniciar sesión")
