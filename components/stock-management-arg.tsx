@@ -82,8 +82,8 @@ export default function StockManagementArg() {
   const [recordToDelete, setRecordToDelete] = useState<number | null>(null)
 
   // Auth y notificaciones
-  const { signOut, session } = useAuth()
-  const username = session?.username || "Usuario"
+  const { logout, user } = useAuth()
+  const username = user?.username || "Usuario"
   const { notifications, addNotification, markAsRead, removeNotification, clearAllNotifications } = useNotifications()
 
   // Refs para cerrar menús al hacer clic fuera
@@ -785,7 +785,7 @@ export default function StockManagementArg() {
                   <span className="font-medium">{username}</span>
                 </div>
                 <button
-                  onClick={() => signOut()}
+                  onClick={() => logout()}
                   className="w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 flex items-center text-sm"
                 >
                   <LogOut className="h-4 w-4 mr-2" />
@@ -829,7 +829,7 @@ export default function StockManagementArg() {
               <span className="font-medium">{username}</span>
             </div>
             <button
-              onClick={() => signOut()}
+              onClick={() => logout()}
               className="px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 flex items-center"
             >
               <LogOut className="h-4 w-4 mr-2" />
