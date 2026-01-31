@@ -30,7 +30,9 @@ export default function LoginPage() {
     try {
       const result = await signIn({ username, password })
       if (result.success) {
-        router.push("/")
+        // Redirigir a la primera ruta permitida si el usuario tiene restricciones
+        const redirectTo = result.user?.allowedRoutes?.[0] || "/"
+        router.push(redirectTo)
       } else {
         setError(result.error || "Credenciales incorrectas")
       }
