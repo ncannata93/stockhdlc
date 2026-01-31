@@ -63,6 +63,11 @@ export function MainNavigation() {
     return pathname.startsWith(href)
   }
 
+  // Filtrar items de navegacion segun rutas permitidas
+  const filteredNavItems = user?.allowedRoutes 
+    ? navigationItems.filter(item => user.allowedRoutes?.some(route => item.href.startsWith(route) || item.href === route))
+    : navigationItems
+
   return (
     <nav className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -85,7 +90,7 @@ export function MainNavigation() {
 
             {/* Navegación desktop */}
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              {navigationItems.map((item) => {
+              {filteredNavItems.map((item) => {
                 const Icon = item.icon
                 return (
                   <Link
@@ -160,7 +165,7 @@ export function MainNavigation() {
                   {/* Navegación móvil */}
                   <div className="flex-1 py-4">
                     <nav className="space-y-1">
-                      {navigationItems.map((item) => {
+                      {filteredNavItems.map((item) => {
                         const Icon = item.icon
                         return (
                           <Link
