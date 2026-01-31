@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
-  const { login } = useAuth()
+  const { signIn } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,11 +28,11 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const success = await login(username, password)
-      if (success) {
+      const result = await signIn({ username, password })
+      if (result.success) {
         router.push("/")
       } else {
-        setError("Credenciales incorrectas")
+        setError(result.error || "Credenciales incorrectas")
       }
     } catch (error) {
       setError("Error al iniciar sesión")
