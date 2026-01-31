@@ -47,8 +47,14 @@ export default function HomePage() {
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace("/login")
+      return
     }
-  }, [isAuthenticated, isLoading, router])
+    
+    // Si el usuario tiene rutas restringidas, redirigir a su ruta permitida
+    if (!isLoading && isAuthenticated && user?.allowedRoutes) {
+      router.replace(user.allowedRoutes[0] || "/stockarg")
+    }
+  }, [isAuthenticated, isLoading, router, user])
 
   const handleLogout = async () => {
     try {

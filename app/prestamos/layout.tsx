@@ -1,10 +1,11 @@
 "use client"
 
 import type React from "react"
+import { useEffect } from "react"
+import { useRouter, usePathname } from "next/navigation"
 import { MainNavigation } from "@/components/main-navigation"
 import { ChevronRight } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 
 export default function PrestamosLayout({
@@ -13,22 +14,20 @@ export default function PrestamosLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const router = useRouter()
+  const { user, isAuthenticated, isLoading } = useAuth()
 
-  const handleLogout = async () => {
-    try {
-      await signOut()
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error)
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && user?.allowedRoutes) {
+      const isAllowed = user.allowedRoutes.some((route: string) => "/prestamos".startsWith(route))
+      if (!isAllowed) {
+        router.replace(user.allowedRoutes[0] || "/")
+      }
     }
-  }
+  }, [isLoading, isAuthenticated, user, router])
 
-  const isActive = (href: string) => {
-    if (href === "/") {
-      return pathname === "/"
-    }
-    return pathname.startsWith(href)
-  }
+  if (isLoading) return null
+  if (user?.allowedRoutes && !user.allowedRoutes.some((route: string) => "/prestamos".startsWith(route))) return null
 
   return (
     <div className="min-h-screen bg-gray-50">
