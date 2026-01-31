@@ -26,6 +26,11 @@ const navigationItems = [
     icon: Package,
   },
   {
+    name: "Stock ARG",
+    href: "/stockarg",
+    icon: Package,
+  },
+  {
     name: "Servicios",
     href: "/servicios",
     icon: Wrench,
