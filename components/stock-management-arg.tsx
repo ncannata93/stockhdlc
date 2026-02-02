@@ -35,8 +35,23 @@ import { useAuth } from "@/lib/auth-context"
 import { useNotifications, NotificationsPanel } from "@/components/notification-system"
 import LowStockAlert from "@/components/low-stock-alert"
 
-// Lista de hoteles para Argentina (vacía por defecto, el usuario agrega los que necesite)
-const PREDEFINED_HOTELS_ARG: string[] = []
+// Lista predefinida de hoteles para Argentina (mismos que /stock)
+const PREDEFINED_HOTELS_ARG = [
+  "Jaguel",
+  "Monaco",
+  "Mallak",
+  "Argentina",
+  "Falkner",
+  "Stromboli",
+  "San Miguel",
+  "Colores",
+  "Puntarenas",
+  "Tupe",
+  "Munich",
+  "Tiburones",
+  "Barlovento",
+  "Carama",
+]
 
 export default function StockManagementArg() {
   const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "hotels" | "admin">(
@@ -55,6 +70,7 @@ export default function StockManagementArg() {
   const [inventory, setInventory] = useState<InventoryItemArg[]>([])
   const [records, setRecords] = useState<StockRecordArg[]>([])
   const [customHotels, setCustomHotels] = useState<string[]>([])
+  const [hiddenHotels, setHiddenHotels] = useState<string[]>([])
 
   // Estados para formularios
   const [isAddingProduct, setIsAddingProduct] = useState(false)
@@ -224,7 +240,7 @@ export default function StockManagementArg() {
     return product ? product.unit : ""
   }
 
-  // Función para obtener la lista única de hoteles
+  // Función para obtener la lista única de hoteles (excluyendo los ocultos)
   const getUniqueHotels = () => {
     const hotelsFromRecords = records
       .filter((record) => record.type === "salida" && record.hotelName)
@@ -232,7 +248,11 @@ export default function StockManagementArg() {
       .filter((hotel): hotel is string => hotel !== null)
 
     const allHotels = [...new Set([...PREDEFINED_HOTELS_ARG, ...customHotels, ...hotelsFromRecords])]
-    return allHotels.sort((a, b) => a.localeCompare(b))
+    // Filtrar los hoteles ocultos (excepto si tienen movimientos)
+    const visibleHotels = allHotels.filter(hotel => 
+      !hiddenHotels.includes(hotel) || hotelsFromRecords.includes(hotel)
+    )
+    return visibleHotels.sort((a, b) => a.localeCompare(b))
   }
 
   // Función para agregar un hotel personalizado
@@ -255,7 +275,7 @@ export default function StockManagementArg() {
     localStorage.setItem("customHotelsArg", JSON.stringify(updatedHotels))
   }
 
-  // Función para eliminar un hotel personalizado
+  // Función para eliminar/ocultar un hotel
   const handleDeleteHotel = (hotelName: string) => {
     // Verificar si el hotel tiene movimientos asociados
     const hasRecords = records.some(r => r.hotelName === hotelName)
@@ -264,14 +284,25 @@ export default function StockManagementArg() {
       return
     }
     
-    const updatedHotels = customHotels.filter(h => h !== hotelName)
-    setCustomHotels(updatedHotels)
-    localStorage.setItem("customHotelsArg", JSON.stringify(updatedHotels))
+    // Si es un hotel personalizado, eliminarlo de la lista
+    if (customHotels.includes(hotelName)) {
+      const updatedHotels = customHotels.filter(h => h !== hotelName)
+      setCustomHotels(updatedHotels)
+      localStorage.setItem("customHotelsArg", JSON.stringify(updatedHotels))
+    }
+    
+    // Si es un hotel predefinido, agregarlo a la lista de ocultos
+    if (PREDEFINED_HOTELS_ARG.includes(hotelName)) {
+      const updatedHidden = [...hiddenHotels, hotelName]
+      setHiddenHotels(updatedHidden)
+      localStorage.setItem("hiddenHotelsArg", JSON.stringify(updatedHidden))
+    }
+    
     setIsConfirmingHotelDelete(false)
     setHotelToDelete(null)
   }
 
-  // Cargar hoteles personalizados de localStorage al iniciar
+  // Cargar hoteles personalizados y ocultos de localStorage al iniciar
   useEffect(() => {
     const savedHotels = localStorage.getItem("customHotelsArg")
     if (savedHotels) {
@@ -279,6 +310,15 @@ export default function StockManagementArg() {
         setCustomHotels(JSON.parse(savedHotels))
       } catch (e) {
         console.error("Error al cargar hoteles personalizados:", e)
+      }
+    }
+    
+    const savedHiddenHotels = localStorage.getItem("hiddenHotelsArg")
+    if (savedHiddenHotels) {
+      try {
+        setHiddenHotels(JSON.parse(savedHiddenHotels))
+      } catch (e) {
+        console.error("Error al cargar hoteles ocultos:", e)
       }
     }
   }, [])
@@ -1577,32 +1617,71 @@ export default function StockManagementArg() {
               </div>
             </div>
 
-            {/* Lista de hoteles */}
-            {customHotels.length > 0 ? (
+            {/* Lista de todos los hoteles */}
+            {getUniqueHotels().length > 0 ? (
               <div>
-                <h4 className="font-medium mb-3 text-gray-700">Hoteles Registrados ({customHotels.length})</h4>
+                <h4 className="font-medium mb-3 text-gray-700">Hoteles Disponibles ({getUniqueHotels().length})</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {customHotels.map((hotel) => (
-                    <div key={hotel} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                      <span className="text-sm font-medium">{hotel}</span>
-                      <button
-                        onClick={() => {
-                          setHotelToDelete(hotel)
-                          setIsConfirmingHotelDelete(true)
-                        }}
-                        className="text-red-600 hover:text-red-800 p-1"
-                        title="Eliminar hotel"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+                  {getUniqueHotels().map((hotel) => {
+                    const isPredefined = PREDEFINED_HOTELS_ARG.includes(hotel)
+                    const hasRecords = records.some(r => r.hotelName === hotel)
+                    return (
+                      <div key={hotel} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{hotel}</span>
+                          {isPredefined && (
+                            <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded">Base</span>
+                          )}
+                        </div>
+                        {!hasRecords && (
+                          <button
+                            onClick={() => {
+                              setHotelToDelete(hotel)
+                              setIsConfirmingHotelDelete(true)
+                            }}
+                            className="text-red-600 hover:text-red-800 p-1"
+                            title="Eliminar hotel"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        {hasRecords && (
+                          <span className="text-xs text-gray-400" title="Tiene movimientos asociados">En uso</span>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             ) : (
               <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
                 <p className="text-gray-500 mb-2">No hay hoteles registrados</p>
                 <p className="text-gray-400 text-sm">Agrega hoteles usando el formulario de arriba</p>
+              </div>
+            )}
+
+            {/* Hoteles ocultos que se pueden restaurar */}
+            {hiddenHotels.length > 0 && (
+              <div className="mt-6">
+                <h4 className="font-medium mb-3 text-gray-700">Hoteles Ocultos ({hiddenHotels.length})</h4>
+                <p className="text-sm text-gray-500 mb-3">Estos hoteles fueron eliminados pero puedes restaurarlos:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {hiddenHotels.map((hotel) => (
+                    <div key={hotel} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                      <span className="text-sm text-gray-500">{hotel}</span>
+                      <button
+                        onClick={() => {
+                          const updatedHidden = hiddenHotels.filter(h => h !== hotel)
+                          setHiddenHotels(updatedHidden)
+                          localStorage.setItem("hiddenHotelsArg", JSON.stringify(updatedHidden))
+                        }}
+                        className="text-sky-600 hover:text-sky-800 text-sm font-medium"
+                      >
+                        Restaurar
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
