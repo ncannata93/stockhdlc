@@ -35,19 +35,8 @@ import { useAuth } from "@/lib/auth-context"
 import { useNotifications, NotificationsPanel } from "@/components/notification-system"
 import LowStockAlert from "@/components/low-stock-alert"
 
-// Lista predefinida de hoteles para Argentina
-const PREDEFINED_HOTELS_ARG = [
-  "Hotel Argentina",
-  "Hotel Buenos Aires",
-  "Hotel Cordoba",
-  "Hotel Mendoza",
-  "Hotel Rosario",
-  "Hotel Tucuman",
-  "Hotel Mar del Plata",
-  "Hotel Bariloche",
-  "Hotel Salta",
-  "Hotel Ushuaia",
-]
+// Lista de hoteles para Argentina (vacía por defecto, el usuario agrega los que necesite)
+const PREDEFINED_HOTELS_ARG: string[] = []
 
 export default function StockManagementArg() {
   const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "hotels" | "admin">(
@@ -253,8 +242,7 @@ export default function StockManagementArg() {
       return
     }
     
-    const allCurrentHotels = [...PREDEFINED_HOTELS_ARG, ...customHotels]
-    if (allCurrentHotels.some(h => h.toLowerCase() === newHotelName.trim().toLowerCase())) {
+    if (customHotels.some(h => h.toLowerCase() === newHotelName.trim().toLowerCase())) {
       alert("Este hotel ya existe")
       return
     }
@@ -1572,6 +1560,12 @@ export default function StockManagementArg() {
                   onChange={(e) => setNewHotelName(e.target.value)}
                   placeholder="Nombre del hotel"
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-sky-500 focus:border-sky-500"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      handleAddHotel()
+                    }
+                  }}
                 />
                 <button
                   onClick={handleAddHotel}
@@ -1583,27 +1577,14 @@ export default function StockManagementArg() {
               </div>
             </div>
 
-            {/* Lista de hoteles predefinidos */}
-            <div className="mb-6">
-              <h4 className="font-medium mb-3 text-gray-700">Hoteles Predefinidos</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {PREDEFINED_HOTELS_ARG.map((hotel) => (
-                  <div key={hotel} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <span className="text-sm">{hotel}</span>
-                    <span className="text-xs text-gray-400 italic">Predefinido</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Lista de hoteles personalizados */}
-            {customHotels.length > 0 && (
+            {/* Lista de hoteles */}
+            {customHotels.length > 0 ? (
               <div>
-                <h4 className="font-medium mb-3 text-gray-700">Hoteles Personalizados</h4>
+                <h4 className="font-medium mb-3 text-gray-700">Hoteles Registrados ({customHotels.length})</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {customHotels.map((hotel) => (
-                    <div key={hotel} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
-                      <span className="text-sm">{hotel}</span>
+                    <div key={hotel} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                      <span className="text-sm font-medium">{hotel}</span>
                       <button
                         onClick={() => {
                           setHotelToDelete(hotel)
@@ -1618,10 +1599,11 @@ export default function StockManagementArg() {
                   ))}
                 </div>
               </div>
-            )}
-
-            {customHotels.length === 0 && (
-              <p className="text-gray-500 text-sm">No hay hoteles personalizados agregados.</p>
+            ) : (
+              <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <p className="text-gray-500 mb-2">No hay hoteles registrados</p>
+                <p className="text-gray-400 text-sm">Agrega hoteles usando el formulario de arriba</p>
+              </div>
             )}
           </div>
         )}
