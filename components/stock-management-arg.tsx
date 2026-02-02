@@ -50,7 +50,7 @@ const PREDEFINED_HOTELS_ARG = [
 ]
 
 export default function StockManagementArg() {
-  const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "admin">(
+  const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "hotels" | "admin">(
     "inventory",
   )
   const [isLoading, setIsLoading] = useState(true)
@@ -65,6 +65,7 @@ export default function StockManagementArg() {
   const [products, setProducts] = useState<ProductArg[]>([])
   const [inventory, setInventory] = useState<InventoryItemArg[]>([])
   const [records, setRecords] = useState<StockRecordArg[]>([])
+  const [customHotels, setCustomHotels] = useState<string[]>([])
 
   // Estados para formularios
   const [isAddingProduct, setIsAddingProduct] = useState(false)
@@ -72,6 +73,9 @@ export default function StockManagementArg() {
   const [currentProduct, setCurrentProduct] = useState<ProductArg | null>(null)
   const [isAddingRecord, setIsAddingRecord] = useState(false)
   const [recordType, setRecordType] = useState<"entrada" | "salida">("entrada")
+  const [newHotelName, setNewHotelName] = useState("")
+  const [hotelToDelete, setHotelToDelete] = useState<string | null>(null)
+  const [isConfirmingHotelDelete, setIsConfirmingHotelDelete] = useState(false)
 
   // Estados para administrador
   const [isAdminMode, setIsAdminMode] = useState(false)
@@ -238,9 +242,58 @@ export default function StockManagementArg() {
       .map((record) => record.hotelName)
       .filter((hotel): hotel is string => hotel !== null)
 
-    const allHotels = [...new Set([...PREDEFINED_HOTELS_ARG, ...hotelsFromRecords])]
+    const allHotels = [...new Set([...PREDEFINED_HOTELS_ARG, ...customHotels, ...hotelsFromRecords])]
     return allHotels.sort((a, b) => a.localeCompare(b))
   }
+
+  // Función para agregar un hotel personalizado
+  const handleAddHotel = () => {
+    if (newHotelName.trim() === "") {
+      alert("El nombre del hotel no puede estar vacío")
+      return
+    }
+    
+    const allCurrentHotels = [...PREDEFINED_HOTELS_ARG, ...customHotels]
+    if (allCurrentHotels.some(h => h.toLowerCase() === newHotelName.trim().toLowerCase())) {
+      alert("Este hotel ya existe")
+      return
+    }
+    
+    setCustomHotels([...customHotels, newHotelName.trim()])
+    setNewHotelName("")
+    
+    // Guardar en localStorage para persistencia
+    const updatedHotels = [...customHotels, newHotelName.trim()]
+    localStorage.setItem("customHotelsArg", JSON.stringify(updatedHotels))
+  }
+
+  // Función para eliminar un hotel personalizado
+  const handleDeleteHotel = (hotelName: string) => {
+    // Verificar si el hotel tiene movimientos asociados
+    const hasRecords = records.some(r => r.hotelName === hotelName)
+    if (hasRecords) {
+      alert("No se puede eliminar este hotel porque tiene movimientos asociados. Primero elimina o edita esos movimientos.")
+      return
+    }
+    
+    const updatedHotels = customHotels.filter(h => h !== hotelName)
+    setCustomHotels(updatedHotels)
+    localStorage.setItem("customHotelsArg", JSON.stringify(updatedHotels))
+    setIsConfirmingHotelDelete(false)
+    setHotelToDelete(null)
+  }
+
+  // Cargar hoteles personalizados de localStorage al iniciar
+  useEffect(() => {
+    const savedHotels = localStorage.getItem("customHotelsArg")
+    if (savedHotels) {
+      try {
+        setCustomHotels(JSON.parse(savedHotels))
+      } catch (e) {
+        console.error("Error al cargar hoteles personalizados:", e)
+      }
+    }
+  }, [])
 
   // Función para añadir un nuevo producto
   const handleAddProduct = async (e: React.FormEvent) => {
@@ -883,6 +936,14 @@ export default function StockManagementArg() {
             </button>
             <button
               className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "hotels" ? "text-sky-600 border-b-2 border-sky-600" : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("hotels")}
+            >
+              Hoteles
+            </button>
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
                 activeTab === "admin" ? "text-sky-600 border-b-2 border-sky-600" : "text-gray-500 hover:text-gray-700"
               }`}
               onClick={() => setActiveTab("admin")}
@@ -934,11 +995,19 @@ export default function StockManagementArg() {
           </button>
           <button
             className={`px-4 py-2 font-medium ${
+              activeTab === "hotels" ? "text-sky-600 border-b-2 border-sky-600" : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("hotels")}
+          >
+            Hoteles
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
               activeTab === "admin" ? "text-sky-600 border-b-2 border-sky-600" : "text-gray-500 hover:text-gray-700"
             }`}
             onClick={() => setActiveTab("admin")}
           >
-            Administración
+            Administracion
           </button>
         </div>
 
@@ -1369,9 +1438,31 @@ export default function StockManagementArg() {
                     >
                       {record.type === "entrada" ? "Entrada" : "Salida"}
                     </span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(record.date).toLocaleDateString()} {new Date(record.date).toLocaleTimeString()}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500">
+                        {new Date(record.date).toLocaleDateString()} {new Date(record.date).toLocaleTimeString()}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setCurrentRecord(record)
+                          setIsEditingRecord(true)
+                        }}
+                        className="text-sky-600 hover:text-sky-800 p-1"
+                        title="Editar"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRecordToDelete(record.id)
+                          setIsConfirmingDelete(true)
+                        }}
+                        className="text-red-600 hover:text-red-800 p-1"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                   <div className="mb-1">
                     <h4 className="font-medium">{record.productName}</h4>
@@ -1404,6 +1495,7 @@ export default function StockManagementArg() {
                     <th className="py-2 px-4 border-b text-left">Cantidad</th>
                     <th className="py-2 px-4 border-b text-left">Hotel</th>
                     <th className="py-2 px-4 border-b text-left">Usuario</th>
+                    <th className="py-2 px-4 border-b text-left">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1427,6 +1519,30 @@ export default function StockManagementArg() {
                       </td>
                       <td className="py-2 px-4 border-b">{record.hotelName || "-"}</td>
                       <td className="py-2 px-4 border-b">{record.username || "Sistema"}</td>
+                      <td className="py-2 px-4 border-b">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => {
+                              setCurrentRecord(record)
+                              setIsEditingRecord(true)
+                            }}
+                            className="text-sky-600 hover:text-sky-800 p-1"
+                            title="Editar"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setRecordToDelete(record.id)
+                              setIsConfirmingDelete(true)
+                            }}
+                            className="text-red-600 hover:text-red-800 p-1"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1439,6 +1555,103 @@ export default function StockManagementArg() {
           <div>
             <h3 className="text-lg font-medium mb-4">Resumen de Gastos por Hotel</h3>
             <div className="overflow-x-auto">{generateHotelSummary()}</div>
+          </div>
+        )}
+
+        {activeTab === "hotels" && (
+          <div>
+            <h3 className="text-lg font-medium mb-4">Gestion de Hoteles</h3>
+            
+            {/* Formulario para agregar hotel */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+              <h4 className="font-medium mb-3">Agregar Nuevo Hotel</h4>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={newHotelName}
+                  onChange={(e) => setNewHotelName(e.target.value)}
+                  placeholder="Nombre del hotel"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-sky-500 focus:border-sky-500"
+                />
+                <button
+                  onClick={handleAddHotel}
+                  className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 flex items-center justify-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Agregar
+                </button>
+              </div>
+            </div>
+
+            {/* Lista de hoteles predefinidos */}
+            <div className="mb-6">
+              <h4 className="font-medium mb-3 text-gray-700">Hoteles Predefinidos</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {PREDEFINED_HOTELS_ARG.map((hotel) => (
+                  <div key={hotel} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <span className="text-sm">{hotel}</span>
+                    <span className="text-xs text-gray-400 italic">Predefinido</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Lista de hoteles personalizados */}
+            {customHotels.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-3 text-gray-700">Hoteles Personalizados</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {customHotels.map((hotel) => (
+                    <div key={hotel} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
+                      <span className="text-sm">{hotel}</span>
+                      <button
+                        onClick={() => {
+                          setHotelToDelete(hotel)
+                          setIsConfirmingHotelDelete(true)
+                        }}
+                        className="text-red-600 hover:text-red-800 p-1"
+                        title="Eliminar hotel"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {customHotels.length === 0 && (
+              <p className="text-gray-500 text-sm">No hay hoteles personalizados agregados.</p>
+            )}
+          </div>
+        )}
+
+        {/* Modal de confirmacion para eliminar hotel */}
+        {isConfirmingHotelDelete && hotelToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-lg font-medium mb-4">Confirmar Eliminacion</h3>
+              <p className="text-gray-600 mb-6">
+                Estas seguro de que deseas eliminar el hotel <strong>{hotelToDelete}</strong>?
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setIsConfirmingHotelDelete(false)
+                    setHotelToDelete(null)
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => handleDeleteHotel(hotelToDelete)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1612,124 +1825,125 @@ export default function StockManagementArg() {
               </div>
             )}
 
-            {/* Modal para editar registro */}
-            {isEditingRecord && currentRecord && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
-                  <h3 className="text-lg font-medium mb-4">Editar Registro</h3>
-                  <form onSubmit={handleEditRecord}>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Registro</label>
-                      <select
-                        name="recordType"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        defaultValue={currentRecord.type}
-                        required
-                      >
-                        <option value="entrada">Entrada</option>
-                        <option value="salida">Salida</option>
-                      </select>
-                    </div>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
-                      <select
-                        name="productId"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        defaultValue={currentRecord.productId}
-                        required
-                      >
-                        <option value="">Seleccionar producto</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name} ({product.unit})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                      <input
-                        type="number"
-                        name="quantity"
-                        min="1"
-                        defaultValue={currentRecord.quantity}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        required
-                      />
-                    </div>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Hotel (solo para salidas)</label>
-                      <select
-                        name="hotelName"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        defaultValue={currentRecord.hotelName || ""}
-                      >
-                        <option value="">Seleccionar hotel...</option>
-                        {getUniqueHotels().map((hotel) => (
-                          <option key={hotel} value={hotel}>
-                            {hotel}
-                          </option>
-                        ))}
-                        <option value="nuevo">+ Añadir nuevo hotel</option>
-                      </select>
-                      <div id="newHotelInputArg" className="mt-2 hidden">
-                        <input
-                          type="text"
-                          id="newHotelNameArg"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          placeholder="Nombre del nuevo hotel"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-end space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditingRecord(false)
-                          setCurrentRecord(null)
-                        }}
-                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-                      >
-                        Cancelar
-                      </button>
-                      <button type="submit" className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700">
-                        Actualizar
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
+          </div>
+        )}
 
-            {/* Modal de confirmación para eliminar */}
-            {isConfirmingDelete && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
-                  <h3 className="text-lg font-medium mb-4 text-red-600">Confirmar Eliminación</h3>
-                  <p className="text-gray-600 mb-4">
-                    ¿Estás seguro de que deseas eliminar este registro? Esta acción también actualizará el inventario y
-                    no se puede deshacer.
-                  </p>
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      onClick={() => {
-                        setIsConfirmingDelete(false)
-                        setRecordToDelete(null)
-                      }}
-                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={() => recordToDelete && handleDeleteRecord(recordToDelete)}
-                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                    >
-                      Eliminar
-                    </button>
+        {/* Modal para editar registro (disponible globalmente) */}
+        {isEditingRecord && currentRecord && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
+              <h3 className="text-lg font-medium mb-4">Editar Registro</h3>
+              <form onSubmit={handleEditRecord}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Registro</label>
+                  <select
+                    name="recordType"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    defaultValue={currentRecord.type}
+                    required
+                  >
+                    <option value="entrada">Entrada</option>
+                    <option value="salida">Salida</option>
+                  </select>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                  <select
+                    name="productId"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    defaultValue={currentRecord.productId}
+                    required
+                  >
+                    <option value="">Seleccionar producto</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} ({product.unit})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                  <input
+                    type="number"
+                    name="quantity"
+                    min="1"
+                    defaultValue={currentRecord.quantity}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    required
+                  />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Hotel (solo para salidas)</label>
+                  <select
+                    name="hotelName"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    defaultValue={currentRecord.hotelName || ""}
+                  >
+                    <option value="">Seleccionar hotel...</option>
+                    {getUniqueHotels().map((hotel) => (
+                      <option key={hotel} value={hotel}>
+                        {hotel}
+                      </option>
+                    ))}
+                    <option value="nuevo">+ Anadir nuevo hotel</option>
+                  </select>
+                  <div id="newHotelInputArg" className="mt-2 hidden">
+                    <input
+                      type="text"
+                      id="newHotelNameArg"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      placeholder="Nombre del nuevo hotel"
+                    />
                   </div>
                 </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingRecord(false)
+                      setCurrentRecord(null)
+                    }}
+                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700">
+                    Actualizar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmacion para eliminar registro */}
+        {isConfirmingDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-4 md:p-6 w-full max-w-md">
+              <h3 className="text-lg font-medium mb-4 text-red-600">Confirmar Eliminacion</h3>
+              <p className="text-gray-600 mb-4">
+                Estas seguro de que deseas eliminar este registro? Esta accion tambien actualizara el inventario y
+                no se puede deshacer.
+              </p>
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => {
+                    setIsConfirmingDelete(false)
+                    setRecordToDelete(null)
+                  }}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteRecord}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                >
+                  Eliminar
+                </button>
               </div>
-            )}
+            </div>
           </div>
         )}
       </div>
