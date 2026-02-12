@@ -203,8 +203,7 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
     }
   }, [isSendingChat])
 
-  const parsearLineaChat = (linea: string): PrestamoParseado => {
-    const partes = linea.split(",").map((parte) => parte.trim())
+  const parsearPartes = (partes: string[]): PrestamoParseado => {
     const errores: string[] = []
 
     if (partes.length !== 6) {
@@ -251,6 +250,19 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
     }
   }
 
+  // Detects whether input is comma-separated or multiline, then parses
+  const parsearLineaChat = (texto: string): PrestamoParseado => {
+    // If contains commas and enough parts, treat as comma-separated
+    const commaPartes = texto.split(",").map((p) => p.trim()).filter(Boolean)
+    if (commaPartes.length >= 4) {
+      return parsearPartes(commaPartes)
+    }
+
+    // Otherwise treat as line-separated
+    const linePartes = texto.split("\n").map((l) => l.trim()).filter(Boolean)
+    return parsearPartes(linePartes)
+  }
+
   const handleChatSend = async () => {
     const text = chatInput.trim()
     if (!text || isSendingChat) return
@@ -277,6 +289,10 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
     setChatMsgId(userMsgId)
     setChatMessages((prev) => [...prev, { id: userMsgId, role: "user", text, timestamp: new Date() }])
     setChatInput("")
+    // Reset textarea height
+    if (chatInputRef.current) {
+      ;(chatInputRef.current as HTMLTextAreaElement).style.height = "auto"
+    }
     setIsSendingChat(true)
 
     const prestamo = parsearLineaChat(text)
@@ -511,15 +527,19 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
 
             {showChatHelp && (
               <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 mb-3 text-xs">
-                <p className="font-medium text-sky-800 mb-1">Ejemplo:</p>
-                <code className="text-sky-700">Claudia, Argentina, Falkner, Toallas, 20, 15000</code>
-                <div className="mt-2 text-sky-600 space-y-0.5">
-                  <div>1. Responsable (nombre de la persona)</div>
-                  <div>2. Hotel Origen (de donde sale)</div>
-                  <div>3. Hotel Destino (a donde va)</div>
-                  <div>4. Producto (que se presta)</div>
-                  <div>5. Cantidad</div>
-                  <div>6. Valor ($)</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <p className="font-medium text-sky-800 mb-1">Formato comas (1 linea, Enter envia):</p>
+                    <code className="text-sky-700 text-xs">Claudia, Argentina, Falkner, Toallas, 20, 15000</code>
+                  </div>
+                  <div>
+                    <p className="font-medium text-sky-800 mb-1">Formato lineas (1 por linea):</p>
+                    <pre className="text-sky-700 text-xs leading-relaxed">{"Claudia\nArgentina\nFalkner\nToallas\n20\n15000"}</pre>
+                  </div>
+                </div>
+                <div className="mt-2 text-sky-600 space-y-0.5 border-t border-sky-200 pt-2">
+                  <div>1. Responsable - 2. Origen - 3. Destino - 4. Producto - 5. Cantidad - 6. Valor</div>
+                  <div className="text-sky-400 mt-1">En modo lineas: Enter agrega linea, al completar 6 Enter envia. Ctrl+Enter envia en cualquier momento.</div>
                 </div>
               </div>
             )}
@@ -550,7 +570,7 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
                           : "bg-red-100 text-red-800 border border-red-200 rounded-bl-md"
                     }`}
                   >
-                    <p className="break-words">{msg.text}</p>
+                    <p className="break-words whitespace-pre-line">{msg.text}</p>
                     <p
                       className={`text-xs mt-1 ${
                         msg.role === "user"
@@ -582,21 +602,43 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
             </div>
 
             {/* Chat input */}
-            <div className="flex gap-2 mt-3">
-              <input
-                ref={chatInputRef}
-                type="text"
+            <div className="flex items-end gap-2 mt-3">
+              <textarea
+                ref={chatInputRef as React.RefObject<HTMLTextAreaElement>}
                 value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
+                onChange={(e) => {
+                  setChatInput(e.target.value)
+                  // Auto-resize
+                  e.target.style.height = "auto"
+                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    handleChatSend()
+                  const lines = chatInput.split("\n").filter(l => l.trim()).length
+                  const hasCommas = chatInput.includes(",")
+                  // If single-line or comma mode: Enter sends
+                  // If multiline mode (no commas, building lines): Enter adds line, Ctrl/Cmd+Enter sends
+                  if (e.key === "Enter") {
+                    if (hasCommas && !e.shiftKey) {
+                      // Comma format: Enter sends
+                      e.preventDefault()
+                      handleChatSend()
+                    } else if (!hasCommas && lines >= 5 && !e.shiftKey) {
+                      // Already have 5+ lines (just need value), next Enter sends
+                      e.preventDefault()
+                      handleChatSend()
+                    } else if ((e.ctrlKey || e.metaKey) && !hasCommas) {
+                      // Ctrl+Enter always sends in multiline mode
+                      e.preventDefault()
+                      handleChatSend()
+                    }
+                    // Otherwise: normal Enter adds a new line
                   }
                 }}
-                placeholder="Responsable, Origen, Destino, Producto, Cant, Valor"
+                placeholder={"Responsable, Origen, Destino, Producto, Cant, Valor\no escribe linea por linea (Enter para nueva linea)"}
                 disabled={isSendingChat}
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:opacity-50 disabled:bg-gray-100"
+                rows={1}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:opacity-50 disabled:bg-gray-100 resize-none overflow-hidden"
+                style={{ minHeight: "42px" }}
               />
               <button
                 type="button"
@@ -607,6 +649,13 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
                 <Send className="h-4 w-4" />
               </button>
             </div>
+
+            {/* Multiline hint */}
+            {chatInput.includes("\n") && !chatInput.includes(",") && (
+              <div className="text-xs text-gray-400 mt-1 ml-1">
+                {chatInput.split("\n").filter(l => l.trim()).length}/6 campos {chatInput.split("\n").filter(l => l.trim()).length >= 6 ? "- Presiona Enter para enviar" : "- Ctrl+Enter para enviar antes"}
+              </div>
+            )}
 
             {/* Chat stats */}
             {chatMessages.filter((m) => m.role === "system" && m.success).length > 0 && (
