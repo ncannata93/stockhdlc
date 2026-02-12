@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -20,6 +20,11 @@ import {
   EyeOff,
   Copy,
   FileText,
+  MessageCircle,
+  List,
+  Send,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -40,6 +45,17 @@ interface PrestamoParseado extends PrestamoInput {
   errores: string[]
 }
 
+interface ChatMessage {
+  id: number
+  role: "user" | "system"
+  text: string
+  timestamp: Date
+  success?: boolean
+  prestamo?: PrestamoParseado
+}
+
+type ModoIngreso = "chat" | "masivo"
+
 export function IngresoRapido({ onPrestamosCreados }: IngresoRapidoProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -48,6 +64,16 @@ export function IngresoRapido({ onPrestamosCreados }: IngresoRapidoProps) {
   const [textoEntrada, setTextoEntrada] = useState("")
   const [prestamosParseados, setPrestamosParseados] = useState<PrestamoParseado[]>([])
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false)
+
+  // Chat mode state
+  const [modo, setModo] = useState<ModoIngreso>("chat")
+  const [chatInput, setChatInput] = useState("")
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatMsgId, setChatMsgId] = useState(0)
+  const [isSendingChat, setIsSendingChat] = useState(false)
+  const [showChatHelp, setShowChatHelp] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatInputRef = useRef<HTMLInputElement>(null)
 
   // Ejemplo de formato con comas - mucho más claro
   const ejemploTexto = `Claudia Juan Manuel, Argentina, Falkner, Toallas, 20, 15000
@@ -165,6 +191,161 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
     setPrestamosParseados(prestamosParseados)
   }
 
+  // Chat: scroll to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [chatMessages])
+
+  // Chat: focus input after sending
+  useEffect(() => {
+    if (!isSendingChat) {
+      chatInputRef.current?.focus()
+    }
+  }, [isSendingChat])
+
+  const parsearLineaChat = (linea: string): PrestamoParseado => {
+    const partes = linea.split(",").map((parte) => parte.trim())
+    const errores: string[] = []
+
+    if (partes.length !== 6) {
+      errores.push(
+        `Formato incorrecto (${partes.length} campos). Se necesitan 6: Responsable, Origen, Destino, Producto, Cantidad, Valor`,
+      )
+    }
+
+    const responsable = partes[0] || ""
+    const hotelOrigen = partes[1] || ""
+    const hotelDestino = partes[2] || ""
+    const producto = partes[3] || ""
+    const cantidad = partes[4] || ""
+    const valor = partes[5] || ""
+
+    if (!responsable.trim()) errores.push("Responsable requerido")
+    if (!hotelOrigen.trim()) errores.push("Origen requerido")
+    if (!hotelDestino.trim()) errores.push("Destino requerido")
+    if (!producto.trim()) errores.push("Producto requerido")
+    if (!cantidad.trim()) errores.push("Cantidad requerida")
+    if (!valor.trim()) errores.push("Valor requerido")
+
+    if (hotelOrigen && hotelDestino && hotelOrigen === hotelDestino) {
+      errores.push("Origen y destino no pueden ser iguales")
+    }
+
+    const valorNumerico = Number.parseFloat(valor.replace(/[^0-9.-]/g, "") || "0")
+    if (valor.trim() && (isNaN(valorNumerico) || valorNumerico <= 0)) {
+      errores.push("Valor debe ser un numero mayor a 0")
+    }
+
+    return {
+      linea: 1,
+      fecha: new Date().toISOString().split("T")[0],
+      responsable: responsable.trim(),
+      hotel_origen: hotelOrigen.trim(),
+      hotel_destino: hotelDestino.trim(),
+      producto: producto.trim(),
+      cantidad: cantidad.trim(),
+      valor: valorNumerico,
+      estado: "pendiente",
+      valido: errores.length === 0,
+      errores,
+    }
+  }
+
+  const handleChatSend = async () => {
+    const text = chatInput.trim()
+    if (!text || isSendingChat) return
+
+    if (!conectado || !tablaExiste) {
+      const newId = chatMsgId + 2
+      setChatMsgId(newId)
+      setChatMessages((prev) => [
+        ...prev,
+        { id: newId - 1, role: "user", text, timestamp: new Date() },
+        {
+          id: newId,
+          role: "system",
+          text: "Sin conexion a Supabase. No se puede guardar.",
+          timestamp: new Date(),
+          success: false,
+        },
+      ])
+      setChatInput("")
+      return
+    }
+
+    const userMsgId = chatMsgId + 1
+    setChatMsgId(userMsgId)
+    setChatMessages((prev) => [...prev, { id: userMsgId, role: "user", text, timestamp: new Date() }])
+    setChatInput("")
+    setIsSendingChat(true)
+
+    const prestamo = parsearLineaChat(text)
+
+    if (!prestamo.valido) {
+      const sysMsgId = userMsgId + 1
+      setChatMsgId(sysMsgId)
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: sysMsgId,
+          role: "system",
+          text: prestamo.errores.join(". "),
+          timestamp: new Date(),
+          success: false,
+        },
+      ])
+      setIsSendingChat(false)
+      return
+    }
+
+    try {
+      const resultado = await crearPrestamosMasivos([prestamo])
+      const sysMsgId = userMsgId + 1
+      setChatMsgId(sysMsgId)
+
+      if (resultado.exitosos > 0) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: sysMsgId,
+            role: "system",
+            text: `Guardado: ${prestamo.responsable} | ${prestamo.hotel_origen} -> ${prestamo.hotel_destino} | ${prestamo.producto} x${prestamo.cantidad} | ${formatearMonto(prestamo.valor)}`,
+            timestamp: new Date(),
+            success: true,
+            prestamo,
+          },
+        ])
+        onPrestamosCreados?.()
+      } else {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: sysMsgId,
+            role: "system",
+            text: `Error al guardar: ${resultado.errores.join(", ")}`,
+            timestamp: new Date(),
+            success: false,
+          },
+        ])
+      }
+    } catch (error) {
+      const sysMsgId = userMsgId + 1
+      setChatMsgId(sysMsgId)
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: sysMsgId,
+          role: "system",
+          text: "Error de conexion al guardar el prestamo",
+          timestamp: new Date(),
+          success: false,
+        },
+      ])
+    } finally {
+      setIsSendingChat(false)
+    }
+  }
+
   const handleSubmit = async () => {
     if (!conectado || !tablaExiste) {
       toast({
@@ -259,20 +440,48 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
         <CardTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
-            <span>Ingreso Rápido Masivo</span>
+            <span>Ingreso Rapido</span>
           </div>
           <div className="sm:ml-auto">{estadoConexion()}</div>
         </CardTitle>
         <CardDescription className="text-sm">
-          Ingresa múltiples préstamos separados por comas (más preciso)
+          Ingresa prestamos de forma rapida y fluida
         </CardDescription>
+
+        {/* Mode toggle */}
+        <div className="flex gap-1 mt-3 bg-gray-100 rounded-lg p-1">
+          <button
+            type="button"
+            onClick={() => setModo("chat")}
+            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              modo === "chat"
+                ? "bg-white text-sky-700 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <MessageCircle className="h-4 w-4" />
+            Chat
+          </button>
+          <button
+            type="button"
+            onClick={() => setModo("masivo")}
+            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              modo === "masivo"
+                ? "bg-white text-sky-700 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <List className="h-4 w-4" />
+            Masivo
+          </button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {!conectado && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-sm">
-              Sin conexión a Supabase. Los préstamos no se pueden guardar en este momento.
+              Sin conexion a Supabase. Los prestamos no se pueden guardar en este momento.
             </AlertDescription>
           </Alert>
         )}
@@ -281,12 +490,138 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
           <Alert variant="destructive">
             <Database className="h-4 w-4" />
             <AlertDescription className="text-sm">
-              La tabla 'prestamos' no existe en Supabase. Ejecuta el script 'create-prestamos-table-complete.sql'
-              primero.
+              La tabla &apos;prestamos&apos; no existe en Supabase.
             </AlertDescription>
           </Alert>
         )}
 
+        {/* ========== MODO CHAT ========== */}
+        {modo === "chat" && (
+          <div className="flex flex-col">
+            {/* Help toggle */}
+            <button
+              type="button"
+              onClick={() => setShowChatHelp(!showChatHelp)}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 mb-2 self-start"
+            >
+              <FileText className="h-3 w-3" />
+              Formato: Responsable, Origen, Destino, Producto, Cantidad, Valor
+              {showChatHelp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+
+            {showChatHelp && (
+              <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 mb-3 text-xs">
+                <p className="font-medium text-sky-800 mb-1">Ejemplo:</p>
+                <code className="text-sky-700">Claudia, Argentina, Falkner, Toallas, 20, 15000</code>
+                <div className="mt-2 text-sky-600 space-y-0.5">
+                  <div>1. Responsable (nombre de la persona)</div>
+                  <div>2. Hotel Origen (de donde sale)</div>
+                  <div>3. Hotel Destino (a donde va)</div>
+                  <div>4. Producto (que se presta)</div>
+                  <div>5. Cantidad</div>
+                  <div>6. Valor ($)</div>
+                </div>
+              </div>
+            )}
+
+            {/* Chat messages area */}
+            <div className="border border-gray-200 rounded-lg bg-gray-50 h-80 sm:h-96 overflow-y-auto p-3 space-y-3">
+              {chatMessages.length === 0 && (
+                <div className="flex items-center justify-center h-full text-gray-400 text-sm text-center px-4">
+                  <div>
+                    <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Escribe un prestamo y presiona Enter</p>
+                    <p className="text-xs mt-1 text-gray-300">Ej: Claudia, Argentina, Falkner, Toallas, 20, 15000</p>
+                  </div>
+                </div>
+              )}
+
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                      msg.role === "user"
+                        ? "bg-sky-600 text-white rounded-br-md"
+                        : msg.success
+                          ? "bg-green-100 text-green-800 border border-green-200 rounded-bl-md"
+                          : "bg-red-100 text-red-800 border border-red-200 rounded-bl-md"
+                    }`}
+                  >
+                    <p className="break-words">{msg.text}</p>
+                    <p
+                      className={`text-xs mt-1 ${
+                        msg.role === "user"
+                          ? "text-sky-200"
+                          : msg.success
+                            ? "text-green-500"
+                            : "text-red-500"
+                      }`}
+                    >
+                      {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+              {isSendingChat && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-200 rounded-2xl rounded-bl-md px-4 py-2">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Chat input */}
+            <div className="flex gap-2 mt-3">
+              <input
+                ref={chatInputRef}
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    handleChatSend()
+                  }
+                }}
+                placeholder="Responsable, Origen, Destino, Producto, Cant, Valor"
+                disabled={isSendingChat}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:opacity-50 disabled:bg-gray-100"
+              />
+              <button
+                type="button"
+                onClick={handleChatSend}
+                disabled={isSendingChat || !chatInput.trim()}
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 disabled:hover:bg-sky-600 transition-colors shrink-0"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Chat stats */}
+            {chatMessages.filter((m) => m.role === "system" && m.success).length > 0 && (
+              <div className="flex items-center justify-center gap-2 text-xs text-green-600 mt-2">
+                <CheckCircle className="h-3 w-3" />
+                <span>
+                  {chatMessages.filter((m) => m.role === "system" && m.success).length} prestamos guardados en esta sesion
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========== MODO MASIVO (original) ========== */}
+        {modo === "masivo" && <>
         {/* Formato de ejemplo - con comas */}
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
@@ -517,10 +852,11 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
           {conectado && tablaExiste && prestamosValidos > 0 && (
             <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-green-600">
               <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span>Listo para guardar {prestamosValidos} préstamos en Supabase</span>
+              <span>Listo para guardar {prestamosValidos} prestamos en Supabase</span>
             </div>
           )}
         </div>
+        </>}
       </CardContent>
     </Card>
   )
