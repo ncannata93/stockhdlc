@@ -10,8 +10,14 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Save, X } from "lucide-react"
-import { obtenerPrestamoPorId, actualizarPrestamo, obtenerHoteles, obtenerResponsables } from "@/lib/prestamos-db"
-import type { Prestamo, PrestamoInput } from "@/lib/prestamos-types"
+import {
+  actualizarPrestamo,
+  obtenerHoteles,
+  obtenerResponsables,
+  type Prestamo,
+  type PrestamoInput,
+} from "@/lib/prestamos-supabase"
+import { supabase } from "@/lib/supabase"
 
 interface EditarPrestamoProps {
   prestamoId: string | null
@@ -46,11 +52,9 @@ export function EditarPrestamo({ prestamoId, abierto, onCerrar, onActualizado }:
   const cargarDatos = async () => {
     setCargando(true)
     try {
-      const [prestamoData, hotelesData, responsablesData] = await Promise.all([
-        obtenerPrestamoPorId(prestamoId!),
-        obtenerHoteles(),
-        obtenerResponsables(),
-      ])
+      const { data: prestamoRaw } = await supabase.from("prestamos").select("*").eq("id", prestamoId!).single()
+      const [hotelesData, responsablesData] = await Promise.all([obtenerHoteles(), obtenerResponsables()])
+      const prestamoData = prestamoRaw as Prestamo | null
 
       if (prestamoData) {
         setPrestamo(prestamoData)
