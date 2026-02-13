@@ -53,6 +53,15 @@ export interface ResultadoMasivo {
   errores: string[]
 }
 
+// Normalizar texto a Title Case para unificar mayusculas/minusculas
+const normalizarTexto = (texto: string): string => {
+  if (!texto) return ""
+  return texto
+    .trim()
+    .toLowerCase()
+    .replace(/(?:^|\s)\S/g, (match) => match.toUpperCase())
+}
+
 // Función para formatear montos
 export const formatearMonto = (valor: number | string): string => {
   const numero = typeof valor === "string" ? Number.parseFloat(valor) : valor
@@ -147,10 +156,10 @@ export const crearPrestamo = async (prestamo: PrestamoInput): Promise<Prestamo |
 
     const datosParaInsertar = {
       fecha: fechaISO,
-      responsable: prestamo.responsable,
-      hotel_origen: prestamo.hotel_origen,
-      hotel_destino: prestamo.hotel_destino,
-      producto: prestamo.producto,
+      responsable: normalizarTexto(prestamo.responsable),
+      hotel_origen: normalizarTexto(prestamo.hotel_origen),
+      hotel_destino: normalizarTexto(prestamo.hotel_destino),
+      producto: normalizarTexto(prestamo.producto),
       cantidad: prestamo.cantidad,
       valor: valor,
       estado: prestamo.estado || "pendiente",
@@ -294,8 +303,8 @@ export const obtenerHoteles = async (): Promise<string[]> => {
 
     const hoteles = new Set<string>()
     data?.forEach((prestamo) => {
-      if (prestamo.hotel_origen) hoteles.add(prestamo.hotel_origen)
-      if (prestamo.hotel_destino) hoteles.add(prestamo.hotel_destino)
+      if (prestamo.hotel_origen) hoteles.add(normalizarTexto(prestamo.hotel_origen))
+      if (prestamo.hotel_destino) hoteles.add(normalizarTexto(prestamo.hotel_destino))
     })
 
     return Array.from(hoteles).sort()
@@ -317,7 +326,7 @@ export const obtenerResponsables = async (): Promise<string[]> => {
 
     const responsables = new Set<string>()
     data?.forEach((prestamo) => {
-      if (prestamo.responsable) responsables.add(prestamo.responsable)
+      if (prestamo.responsable) responsables.add(normalizarTexto(prestamo.responsable))
     })
 
     return Array.from(responsables).sort()
@@ -390,10 +399,12 @@ export const obtenerBalanceHoteles = async (): Promise<BalanceHotel[]> => {
       }
     >()
 
-    // Inicializar todos los hoteles
+    // Inicializar todos los hoteles (normalizando nombres)
     prestamosActivos.forEach((prestamo) => {
-      if (!balanceMap.has(prestamo.hotel_origen)) {
-        balanceMap.set(prestamo.hotel_origen, {
+      const origen = normalizarTexto(prestamo.hotel_origen)
+      const destino = normalizarTexto(prestamo.hotel_destino)
+      if (!balanceMap.has(origen)) {
+        balanceMap.set(origen, {
           acreedor: 0,
           deudor: 0,
           transacciones: 0,
@@ -401,8 +412,8 @@ export const obtenerBalanceHoteles = async (): Promise<BalanceHotel[]> => {
           deudorDe: new Map(),
         })
       }
-      if (!balanceMap.has(prestamo.hotel_destino)) {
-        balanceMap.set(prestamo.hotel_destino, {
+      if (!balanceMap.has(destino)) {
+        balanceMap.set(destino, {
           acreedor: 0,
           deudor: 0,
           transacciones: 0,
@@ -412,11 +423,11 @@ export const obtenerBalanceHoteles = async (): Promise<BalanceHotel[]> => {
       }
     })
 
-    // Calcular balances
+    // Calcular balances (normalizando nombres)
     prestamosActivos.forEach((prestamo) => {
       const valor = prestamo.valor
-      const origen = prestamo.hotel_origen
-      const destino = prestamo.hotel_destino
+      const origen = normalizarTexto(prestamo.hotel_origen)
+      const destino = normalizarTexto(prestamo.hotel_destino)
 
       // Hotel origen es acreedor (le deben)
       const balanceOrigen = balanceMap.get(origen)!
