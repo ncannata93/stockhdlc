@@ -20,6 +20,7 @@ import {
   Search,
   Filter,
   Eye,
+  Pencil,
   Trash2,
   RefreshCw,
   Calendar,
@@ -31,6 +32,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react"
+import { EditarPrestamo } from "@/components/prestamos/editar-prestamo"
 import { useToast } from "@/hooks/use-toast"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import {
@@ -56,6 +58,8 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
   const [responsables, setResponsables] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [prestamoSeleccionado, setPrestamoSeleccionado] = useState<Prestamo | null>(null)
+  const [editarPrestamoId, setEditarPrestamoId] = useState<string | null>(null)
+  const [editarAbierto, setEditarAbierto] = useState(false)
   const [mostrarFiltros, setMostrarFiltros] = useState(!isMobile)
 
   const [filtros, setFiltros] = useState<FiltrosPrestamos>({
@@ -84,27 +88,6 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
         obtenerResponsables(),
       ])
 
-      console.log("[v0] 📋 Total transacciones cargadas:", prestamosData.length)
-
-      const juanManuelTransaction = prestamosData.find(
-        (p) => p.responsable === "Juan Manuel" && p.hotel_origen === "Mallak" && p.hotel_destino === "Argentina",
-      )
-
-      if (juanManuelTransaction) {
-        console.log("[v0] ✅ Transacción de Juan Manuel encontrada en lista:", {
-          id: juanManuelTransaction.id,
-          fecha: juanManuelTransaction.fecha,
-          responsable: juanManuelTransaction.responsable,
-          origen: juanManuelTransaction.hotel_origen,
-          destino: juanManuelTransaction.hotel_destino,
-          producto: juanManuelTransaction.producto,
-          valor: juanManuelTransaction.valor,
-          estado: juanManuelTransaction.estado,
-        })
-      } else {
-        console.log("[v0] ❌ Transacción de Juan Manuel NO encontrada en lista inicial")
-      }
-
       setPrestamos(prestamosData)
       setHoteles(hotelesData)
       setResponsables(responsablesData)
@@ -130,23 +113,7 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
       if (filtros.estado && filtros.estado !== "all") filtrosLimpios.estado = filtros.estado
       if (filtros.responsable && filtros.responsable !== "all") filtrosLimpios.responsable = filtros.responsable
 
-      console.log("[v0] 🔍 Filtros activos:", filtrosLimpios)
-
       const prestamosData = await obtenerPrestamosFiltrados(filtrosLimpios)
-
-      console.log("[v0] 📊 Transacciones después de filtrar:", prestamosData.length)
-
-      const juanManuelTransaction = prestamosData.find(
-        (p) => p.responsable === "Juan Manuel" && p.hotel_origen === "Mallak" && p.hotel_destino === "Argentina",
-      )
-
-      if (juanManuelTransaction) {
-        console.log("[v0] ✅ Transacción de Juan Manuel VISIBLE después de filtros")
-      } else {
-        console.log("[v0] ⚠️ Transacción de Juan Manuel OCULTA por filtros activos")
-        console.log("[v0] 💡 Revisa los filtros: Hotel, Estado, Responsable, o Búsqueda")
-      }
-
       setPrestamos(prestamosData)
     } catch (error) {
       console.error("Error al filtrar:", error)
@@ -177,6 +144,16 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
         variant: "destructive",
       })
     }
+  }
+
+  const handleEditar = (prestamo: Prestamo) => {
+    setEditarPrestamoId(prestamo.id)
+    setEditarAbierto(true)
+  }
+
+  const handleEditarActualizado = () => {
+    aplicarFiltros()
+    onActualizar?.()
   }
 
   const getEstadoBadge = (estado: string) => {
@@ -246,7 +223,7 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
                   <DollarSign className="h-5 w-5 text-green-600" />
                   <span className="text-xl font-bold text-green-600">{formatearMonto(prestamo.valor)}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button variant="ghost" size="sm" onClick={() => setPrestamoSeleccionado(prestamo)}>
@@ -255,8 +232,8 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                       <DialogHeader>
-                        <DialogTitle>Detalle de Transacción</DialogTitle>
-                        <DialogDescription>Información completa de la transacción</DialogDescription>
+                        <DialogTitle>Detalle de Transaccion</DialogTitle>
+                        <DialogDescription>Informacion completa de la transaccion</DialogDescription>
                       </DialogHeader>
                       {prestamoSeleccionado && (
                         <div className="space-y-4">
@@ -308,6 +285,14 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
                       )}
                     </DialogContent>
                   </Dialog>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditar(prestamo)}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -434,6 +419,14 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleEditar(prestamo)}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleEliminar(prestamo.id)}
                     className="text-red-600 hover:text-red-700"
                   >
@@ -554,6 +547,17 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
           </>
         )}
       </CardContent>
+
+      {/* Dialog de edicion */}
+      <EditarPrestamo
+        prestamoId={editarPrestamoId}
+        abierto={editarAbierto}
+        onCerrar={() => {
+          setEditarAbierto(false)
+          setEditarPrestamoId(null)
+        }}
+        onActualizado={handleEditarActualizado}
+      />
     </Card>
   )
 }
