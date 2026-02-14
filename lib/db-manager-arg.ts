@@ -10,6 +10,7 @@ export interface ProductArg {
   unit: string
   price: number
   min_stock: number
+  pack_size: number
 }
 
 export interface InventoryItemArg {
@@ -169,6 +170,7 @@ export const getProductsArg = async (): Promise<ProductArg[]> => {
       unit: p.unit,
       price: p.price || 0,
       min_stock: p.min_stock || 0,
+      pack_size: p.pack_size || 0,
     }))
   } catch (error) {
     console.error("Error al obtener productos ARG:", error)
@@ -192,6 +194,7 @@ export const saveProductArg = async (product: ProductArg): Promise<boolean> => {
       unit: product.unit,
       price: product.price,
       min_stock: product.min_stock,
+      pack_size: product.pack_size,
     })
 
     if (error) throw error

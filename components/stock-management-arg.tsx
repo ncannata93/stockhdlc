@@ -338,6 +338,7 @@ export default function StockManagementArg() {
       unit: formData.get("unit") as string,
       price: Number.parseFloat(formData.get("price") as string),
       min_stock: Number.parseInt(formData.get("min_stock") as string, 10),
+      pack_size: Number.parseInt(formData.get("pack_size") as string, 10) || 0,
     }
 
     try {
@@ -375,6 +376,7 @@ export default function StockManagementArg() {
       unit: formData.get("unit") as string,
       price: Number.parseFloat(formData.get("price") as string),
       min_stock: Number.parseInt(formData.get("min_stock") as string, 10),
+      pack_size: Number.parseInt(formData.get("pack_size") as string, 10) || 0,
     }
 
     try {
@@ -1093,6 +1095,11 @@ export default function StockManagementArg() {
                         <span className="text-gray-500">Cantidad:</span>
                         <span className="ml-1 font-medium">
                           {item.quantity} {getProductUnit(item.productId)}
+                          {product && product.pack_size > 0 && (
+                            <span className="text-gray-500 ml-1">
+                              ({Math.floor(item.quantity / product.pack_size)} pack)
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div>
@@ -1127,7 +1134,14 @@ export default function StockManagementArg() {
                     return (
                       <tr key={item.productId} className={isLowStock ? "bg-red-50" : ""}>
                         <td className="py-2 px-4 border-b">{getProductName(item.productId)}</td>
-                        <td className="py-2 px-4 border-b">{item.quantity}</td>
+                        <td className="py-2 px-4 border-b">
+                          {item.quantity}
+                          {product && product.pack_size > 0 && (
+                            <span className="text-gray-500 ml-1">
+                              ({Math.floor(item.quantity / product.pack_size)} pack)
+                            </span>
+                          )}
+                        </td>
                         <td className="py-2 px-4 border-b">{getProductUnit(item.productId)}</td>
                         <td className="py-2 px-4 border-b">{product?.min_stock || "N/A"}</td>
                         <td className="py-2 px-4 border-b">
@@ -1269,6 +1283,10 @@ export default function StockManagementArg() {
                       <span className="text-gray-500">Stock Mínimo:</span>
                       <span className="ml-1">{product.min_stock}</span>
                     </div>
+                    <div>
+                      <span className="text-gray-500">Pack:</span>
+                      <span className="ml-1">{product.pack_size > 0 ? `${product.pack_size} ${product.unit}` : "N/A"}</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1284,6 +1302,7 @@ export default function StockManagementArg() {
                     <th className="py-2 px-4 border-b text-left">Unidad</th>
                     <th className="py-2 px-4 border-b text-left">Precio</th>
                     <th className="py-2 px-4 border-b text-left">Stock Mínimo</th>
+                    <th className="py-2 px-4 border-b text-left">Pack</th>
                     <th className="py-2 px-4 border-b text-left">Acciones</th>
                   </tr>
                 </thead>
@@ -1295,6 +1314,7 @@ export default function StockManagementArg() {
                       <td className="py-2 px-4 border-b">{product.unit}</td>
                       <td className="py-2 px-4 border-b">${product.price.toLocaleString()}</td>
                       <td className="py-2 px-4 border-b">{product.min_stock}</td>
+                      <td className="py-2 px-4 border-b">{product.pack_size > 0 ? `${product.pack_size} ${product.unit}` : "-"}</td>
                       <td className="py-2 px-4 border-b">
                         <button
                           onClick={() => {
@@ -1355,6 +1375,18 @@ export default function StockManagementArg() {
                         min="0"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md"
                         required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Unidades por Pack <span className="text-gray-400 font-normal">(0 = sin pack)</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="pack_size"
+                        min="0"
+                        defaultValue="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       />
                     </div>
                     <div className="flex justify-end space-x-2">
@@ -1421,6 +1453,18 @@ export default function StockManagementArg() {
                         defaultValue={currentProduct.min_stock}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md"
                         required
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Unidades por Pack <span className="text-gray-400 font-normal">(0 = sin pack)</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="pack_size"
+                        min="0"
+                        defaultValue={currentProduct.pack_size}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       />
                     </div>
                     <div className="flex justify-end space-x-2">
