@@ -351,6 +351,74 @@ export const updateRecordArg = async (record: StockRecordArg): Promise<boolean> 
   }
 }
 
+// Recalcular inventario desde los registros (fuente de verdad)
+export const recalculateInventoryArg = async (): Promise<InventoryItemArg[]> => {
+  if (!isInitialized) {
+    const result = await initializeDBArg()
+    if (!result.success) return []
+  }
+
+  try {
+    const supabase = getSupabaseClient()
+    if (!supabase) return []
+
+    // Obtener todos los registros
+    const { data: allRecords, error: recordsError } = await supabase
+      .from("records_arg")
+      .select("product_id, quantity, type")
+
+    if (recordsError) throw recordsError
+
+    // Obtener todos los productos
+    const { data: allProducts, error: productsError } = await supabase
+      .from("products_arg")
+      .select("id")
+
+    if (productsError) throw productsError
+
+    // Calcular cantidades correctas por producto
+    const quantities: { [productId: number]: number } = {}
+
+    // Inicializar todos los productos en 0
+    for (const product of allProducts || []) {
+      quantities[product.id] = 0
+    }
+
+    // Sumar entradas y restar salidas
+    for (const record of allRecords || []) {
+      if (!quantities[record.product_id]) {
+        quantities[record.product_id] = 0
+      }
+      if (record.type === "entrada") {
+        quantities[record.product_id] += record.quantity
+      } else if (record.type === "salida") {
+        quantities[record.product_id] -= record.quantity
+      }
+    }
+
+    // Actualizar la tabla inventory_arg con los valores correctos
+    const updatedInventory: InventoryItemArg[] = []
+    for (const [productIdStr, quantity] of Object.entries(quantities)) {
+      const productId = Number(productIdStr)
+      const { error: upsertError } = await supabase.from("inventory_arg").upsert({
+        product_id: productId,
+        quantity: quantity,
+      })
+
+      if (upsertError) {
+        console.error(`Error al actualizar inventario para producto ${productId}:`, upsertError)
+      }
+
+      updatedInventory.push({ productId, quantity })
+    }
+
+    return updatedInventory
+  } catch (error) {
+    console.error("Error al recalcular inventario ARG:", error)
+    return []
+  }
+}
+
 export const deleteRecordArg = async (recordId: number): Promise<boolean> => {
   if (!isInitialized) {
     const result = await initializeDBArg()
