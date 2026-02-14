@@ -12,6 +12,7 @@ import {
   saveRecordArg,
   updateRecordArg,
   deleteRecordArg,
+  recalculateInventoryArg,
   type ProductArg,
   type InventoryItemArg,
   type StockRecordArg,
@@ -152,15 +153,17 @@ export default function StockManagementArg() {
           setIsConnected(true)
 
           try {
-            const [productsData, inventoryData, recordsData] = await Promise.all([
+            const [productsData, recordsData] = await Promise.all([
               getProductsArg(),
-              getInventoryArg(),
               getRecordsArg(),
             ])
 
             setProducts(productsData)
-            setInventory(inventoryData)
             setRecords(recordsData)
+
+            // Recalcular inventario desde registros para asegurar consistencia
+            const recalculatedInventory = await recalculateInventoryArg()
+            setInventory(recalculatedInventory)
           } catch (dataError) {
             console.error("Error al cargar datos iniciales ARG:", dataError)
             setError(
@@ -448,6 +451,9 @@ export default function StockManagementArg() {
       const success = await updateRecordArg(updatedRecord)
       if (success) {
         setRecords(records.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)))
+        // Recalcular inventario desde registros para reflejar los cambios correctamente
+        const recalculatedInventory = await recalculateInventoryArg()
+        setInventory(recalculatedInventory)
         setIsEditingRecord(false)
         setCurrentRecord(null)
       } else {
@@ -465,9 +471,9 @@ export default function StockManagementArg() {
       const success = await deleteRecordArg(recordId)
       if (success) {
         setRecords(records.filter((r) => r.id !== recordId))
-        // Recargar inventario
-        const inventoryData = await getInventoryArg()
-        setInventory(inventoryData)
+        // Recalcular inventario desde registros
+        const recalculatedInventory = await recalculateInventoryArg()
+        setInventory(recalculatedInventory)
         setIsConfirmingDelete(false)
         setRecordToDelete(null)
       } else {
@@ -525,40 +531,29 @@ export default function StockManagementArg() {
       if (success) {
         setRecords([newRecord, ...records])
 
-        // Actualizar inventario
-        const currentItem = inventory.find((i) => i.productId === productId)
-        if (currentItem) {
-          const newQuantity =
-            recordType === "entrada" ? currentItem.quantity + quantity : currentItem.quantity - quantity
+        // Recalcular inventario desde registros
+        const recalculatedInventory = await recalculateInventoryArg()
+        setInventory(recalculatedInventory)
 
-          const updatedItem: InventoryItemArg = {
-            ...currentItem,
-            quantity: newQuantity,
+        // Verificar stock bajo
+        if (recordType === "salida") {
+          const updatedItem = recalculatedInventory.find((i) => i.productId === productId)
+          const productInfo = products.find((p) => p.id === productId)
+
+          if (updatedItem && productInfo && updatedItem.quantity < productInfo.min_stock) {
+            addNotification({
+              type: "warning",
+              title: "Stock Bajo Detectado (ARG)",
+              message: `${productInfo.name} ha caído por debajo del nivel mínimo (${updatedItem.quantity} < ${productInfo.min_stock})`,
+            })
           }
 
-          await saveInventoryItemArg(updatedItem)
-          setInventory(inventory.map((i) => (i.productId === productId ? updatedItem : i)))
-
-          // Verificar stock bajo
-          if (recordType === "salida") {
-            const updatedQuantity = currentItem.quantity - quantity
-            const productInfo = products.find((p) => p.id === productId)
-
-            if (productInfo && updatedQuantity < productInfo.min_stock) {
-              addNotification({
-                type: "warning",
-                title: "Stock Bajo Detectado (ARG)",
-                message: `${productInfo.name} ha caído por debajo del nivel mínimo (${updatedQuantity} < ${productInfo.min_stock})`,
-              })
-            }
-
-            if (updatedQuantity <= 0) {
-              addNotification({
-                type: "warning",
-                title: "¡Stock Agotado! (ARG)",
-                message: `${productInfo?.name || "Un producto"} se ha agotado completamente`,
-              })
-            }
+          if (updatedItem && updatedItem.quantity <= 0) {
+            addNotification({
+              type: "warning",
+              title: "Stock Agotado (ARG)",
+              message: `${productInfo?.name || "Un producto"} se ha agotado completamente`,
+            })
           }
         }
 
