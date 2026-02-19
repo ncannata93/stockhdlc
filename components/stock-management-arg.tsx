@@ -2037,7 +2037,7 @@ export default function StockManagementArg() {
                   Cancelar
                 </button>
                 <button
-                  onClick={handleDeleteRecord}
+                  onClick={() => recordToDelete !== null && handleDeleteRecord(recordToDelete)}
                   className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
                 >
                   Eliminar
