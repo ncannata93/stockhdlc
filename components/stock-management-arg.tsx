@@ -90,6 +90,11 @@ export default function StockManagementArg() {
   const [hotelToDelete, setHotelToDelete] = useState<string | null>(null)
   const [isConfirmingHotelDelete, setIsConfirmingHotelDelete] = useState(false)
 
+  // Estados para entrada por packs
+  const [inputInPacks, setInputInPacks] = useState(false)
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
+  const [packQuantity, setPackQuantity] = useState<number>(1)
+
   // Estados para administrador
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [adminPassword, setAdminPassword] = useState("")
@@ -248,6 +253,19 @@ export default function StockManagementArg() {
   const getProductUnit = (productId: number) => {
     const product = products.find((p) => p.id === productId)
     return product ? product.unit : ""
+  }
+
+  // Helper: obtener pack_size del producto seleccionado
+  const getSelectedProductPackSize = (productId: number | null): number => {
+    if (!productId) return 0
+    const product = products.find(p => p.id === productId)
+    return product?.pack_size || 0
+  }
+
+  // Calcular unidades totales a partir de packs
+  const getUnitsFromPacks = (packs: number, productId: number | null): number => {
+    const packSize = getSelectedProductPackSize(productId)
+    return packSize > 0 ? packs * packSize : packs
   }
 
   // Función para obtener la lista única de hoteles (excluyendo los ocultos)
@@ -1056,21 +1074,27 @@ export default function StockManagementArg() {
               <h3 className="text-lg font-medium mb-2 md:mb-0">Inventario Actual</h3>
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    setIsAddingRecord(true)
-                    setRecordType("entrada")
-                  }}
-                  className="flex-1 md:flex-none px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center justify-center"
+                onClick={() => {
+                  setIsAddingRecord(true)
+                  setRecordType("entrada")
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                }}
+                className="flex-1 md:flex-none px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center justify-center"
                 >
                   <ArrowDown className="h-4 w-4 mr-1" />
                   Entrada
                 </button>
                 <button
-                  onClick={() => {
-                    setIsAddingRecord(true)
-                    setRecordType("salida")
-                  }}
-                  className="flex-1 md:flex-none px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center"
+                onClick={() => {
+                  setIsAddingRecord(true)
+                  setRecordType("salida")
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                }}
+                className="flex-1 md:flex-none px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center"
                 >
                   <ArrowUp className="h-4 w-4 mr-1" />
                   Salida
@@ -1181,7 +1205,17 @@ export default function StockManagementArg() {
                   <form onSubmit={handleAddRecord}>
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
-                      <select name="productId" className="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                      <select
+                        name="productId"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                        onChange={(e) => {
+                          const id = Number.parseInt(e.target.value, 10)
+                          setSelectedProductId(isNaN(id) ? null : id)
+                          setInputInPacks(false)
+                          setPackQuantity(1)
+                        }}
+                      >
                         <option value="">Seleccionar producto</option>
                         {products.map((product) => (
                           <option key={product.id} value={product.id}>
@@ -1191,14 +1225,57 @@ export default function StockManagementArg() {
                       </select>
                     </div>
                     <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                      <input
-                        type="number"
-                        name="quantity"
-                        min="1"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        required
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">Cantidad</label>
+                        {getSelectedProductPackSize(selectedProductId) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInputInPacks(!inputInPacks)
+                              setPackQuantity(1)
+                            }}
+                            className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                              inputInPacks
+                                ? "bg-sky-100 border-sky-300 text-sky-700"
+                                : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                            }`}
+                          >
+                            {inputInPacks ? "Ingresando en packs" : "Ingresar en packs"}
+                          </button>
+                        )}
+                      </div>
+                      {inputInPacks && getSelectedProductPackSize(selectedProductId) > 0 ? (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              value={packQuantity}
+                              onChange={(e) => setPackQuantity(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              required
+                            />
+                            <span className="text-sm text-gray-500 whitespace-nowrap">
+                              packs
+                            </span>
+                          </div>
+                          <input type="hidden" name="quantity" value={getUnitsFromPacks(packQuantity, selectedProductId)} />
+                          <p className="text-sm text-sky-600 mt-1">
+                            {'='} {getUnitsFromPacks(packQuantity, selectedProductId)} {products.find(p => p.id === selectedProductId)?.unit || "unidades"}
+                            <span className="text-gray-400 ml-1">
+                              ({packQuantity} x {getSelectedProductPackSize(selectedProductId)} por pack)
+                            </span>
+                          </p>
+                        </>
+                      ) : (
+                        <input
+                          type="number"
+                          name="quantity"
+                          min="1"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          required
+                        />
+                      )}
                     </div>
                     {recordType === "salida" && (
                       <div className="mb-4">
@@ -1521,12 +1598,16 @@ export default function StockManagementArg() {
                       </span>
                       <button
                         onClick={() => {
-                          setCurrentRecord(record)
-                          setIsEditingRecord(true)
-                        }}
-                        className="text-sky-600 hover:text-sky-800 p-1"
-                        title="Editar"
-                      >
+                  setCurrentRecord(record)
+                  setIsEditingRecord(true)
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                  }}
+                  className="text-sky-600 hover:text-sky-800 p-1"
+                  title="Editar"
+                  >
+
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
@@ -1602,6 +1683,9 @@ export default function StockManagementArg() {
                             onClick={() => {
                               setCurrentRecord(record)
                               setIsEditingRecord(true)
+                              setInputInPacks(false)
+                              setSelectedProductId(null)
+                              setPackQuantity(1)
                             }}
                             className="text-sky-600 hover:text-sky-800 p-1"
                             title="Editar"
@@ -1825,12 +1909,16 @@ export default function StockManagementArg() {
                         <div className="flex space-x-2">
                           <button
                             onClick={() => {
-                              setCurrentRecord(record)
-                              setIsEditingRecord(true)
-                            }}
-                            className="text-sky-600 hover:text-sky-800"
-                            title="Editar"
-                          >
+                  setCurrentRecord(record)
+                  setIsEditingRecord(true)
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                  }}
+                  className="text-sky-600 hover:text-sky-800"
+                  title="Editar"
+                  >
+
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
@@ -1909,6 +1997,9 @@ export default function StockManagementArg() {
                                 onClick={() => {
                                   setCurrentRecord(record)
                                   setIsEditingRecord(true)
+                                  setInputInPacks(false)
+                                  setSelectedProductId(null)
+                                  setPackQuantity(1)
                                 }}
                                 className="text-sky-600 hover:text-sky-800"
                                 title="Editar"
@@ -1963,6 +2054,12 @@ export default function StockManagementArg() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     defaultValue={currentRecord.productId}
                     required
+                    onChange={(e) => {
+                      const id = Number.parseInt(e.target.value, 10)
+                      setSelectedProductId(isNaN(id) ? null : id)
+                      setInputInPacks(false)
+                      setPackQuantity(1)
+                    }}
                   >
                     <option value="">Seleccionar producto</option>
                     {products.map((product) => (
@@ -1973,15 +2070,58 @@ export default function StockManagementArg() {
                   </select>
                 </div>
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                  <input
-                    type="number"
-                    name="quantity"
-                    min="1"
-                    defaultValue={currentRecord.quantity}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    required
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">Cantidad</label>
+                    {getSelectedProductPackSize(selectedProductId || currentRecord.productId) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInputInPacks(!inputInPacks)
+                          setPackQuantity(1)
+                        }}
+                        className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                          inputInPacks
+                            ? "bg-sky-100 border-sky-300 text-sky-700"
+                            : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {inputInPacks ? "Ingresando en packs" : "Ingresar en packs"}
+                      </button>
+                    )}
+                  </div>
+                  {inputInPacks && getSelectedProductPackSize(selectedProductId || currentRecord.productId) > 0 ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          value={packQuantity}
+                          onChange={(e) => setPackQuantity(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          required
+                        />
+                        <span className="text-sm text-gray-500 whitespace-nowrap">
+                          packs
+                        </span>
+                      </div>
+                      <input type="hidden" name="quantity" value={getUnitsFromPacks(packQuantity, selectedProductId || currentRecord.productId)} />
+                      <p className="text-sm text-sky-600 mt-1">
+                        {'='} {getUnitsFromPacks(packQuantity, selectedProductId || currentRecord.productId)} {products.find(p => p.id === (selectedProductId || currentRecord.productId))?.unit || "unidades"}
+                        <span className="text-gray-400 ml-1">
+                          ({packQuantity} x {getSelectedProductPackSize(selectedProductId || currentRecord.productId)} por pack)
+                        </span>
+                      </p>
+                    </>
+                  ) : (
+                    <input
+                      type="number"
+                      name="quantity"
+                      min="1"
+                      defaultValue={currentRecord.quantity}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    />
+                  )}
                 </div>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Hotel (solo para salidas)</label>
