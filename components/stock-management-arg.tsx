@@ -31,6 +31,12 @@ import {
   Menu,
   X,
   Bell,
+  LayoutDashboard,
+  Package,
+  TrendingDown,
+  TrendingUp,
+  Clock,
+  AlertCircle,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useNotifications, NotificationsPanel } from "@/components/notification-system"
@@ -62,8 +68,8 @@ const PREDEFINED_HOTELS_ARG = [
 ]
 
 export default function StockManagementArg() {
-  const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "hotels" | "admin">(
-    "inventory",
+  const [activeTab, setActiveTab] = useState<"dashboard" | "inventory" | "products" | "records" | "hotelSummary" | "hotels" | "admin">(
+    "dashboard",
   )
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -949,6 +955,16 @@ export default function StockManagementArg() {
           <div className="flex border-b border-gray-200 min-w-max">
             <button
               className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "dashboard"
+                  ? "text-sky-600 border-b-2 border-sky-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("dashboard")}
+            >
+              Inicio
+            </button>
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
                 activeTab === "inventory"
                   ? "text-sky-600 border-b-2 border-sky-600"
                   : "text-gray-500 hover:text-gray-700"
@@ -1010,6 +1026,16 @@ export default function StockManagementArg() {
         <div className="hidden md:flex border-b border-gray-200 mb-6">
           <button
             className={`px-4 py-2 font-medium ${
+              activeTab === "dashboard"
+                ? "text-sky-600 border-b-2 border-sky-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("dashboard")}
+          >
+            Inicio
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
               activeTab === "inventory"
                 ? "text-sky-600 border-b-2 border-sky-600"
                 : "text-gray-500 hover:text-gray-700"
@@ -1068,6 +1094,311 @@ export default function StockManagementArg() {
         <LowStockAlert products={products} inventory={inventory} />
 
         {/* Contenido según la pestaña activa */}
+        {activeTab === "dashboard" && (() => {
+          const today = new Date()
+          const todayStr = today.toISOString().split("T")[0]
+          const sevenDaysAgo = new Date(today)
+          sevenDaysAgo.setDate(today.getDate() - 7)
+
+          // Movimientos de hoy
+          const todayRecords = records.filter(r => {
+            const d = new Date(r.date)
+            return d.toISOString().split("T")[0] === todayStr
+          })
+          const todayEntradas = todayRecords.filter(r => r.type === "entrada")
+          const todaySalidas = todayRecords.filter(r => r.type === "salida")
+
+          // Movimientos ultimos 7 dias
+          const weekRecords = records.filter(r => new Date(r.date) >= sevenDaysAgo)
+          const weekEntradas = weekRecords.filter(r => r.type === "entrada").reduce((acc, r) => acc + r.quantity, 0)
+          const weekSalidas = weekRecords.filter(r => r.type === "salida").reduce((acc, r) => acc + r.quantity, 0)
+
+          // Total unidades en stock
+          const totalUnits = inventory.reduce((acc, item) => acc + item.quantity, 0)
+
+          // Productos con stock bajo (menos de 10 unidades)
+          const lowStockItems = inventory
+            .map(item => {
+              const product = products.find(p => p.id === item.productId)
+              return { ...item, productName: product?.name || "Desconocido", unit: product?.unit || "u" }
+            })
+            .filter(item => item.quantity <= 10 && item.quantity > 0)
+            .sort((a, b) => a.quantity - b.quantity)
+            .slice(0, 6)
+
+          // Productos sin stock
+          const outOfStockItems = inventory
+            .map(item => {
+              const product = products.find(p => p.id === item.productId)
+              return { ...item, productName: product?.name || "Desconocido" }
+            })
+            .filter(item => item.quantity === 0)
+
+          // Ultimos 8 movimientos
+          const recentRecords = [...records]
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 8)
+
+          // Actividad por dia (ultimos 7 dias)
+          const dailyActivity: { day: string; entradas: number; salidas: number }[] = []
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date(today)
+            d.setDate(today.getDate() - i)
+            const dateStr = d.toISOString().split("T")[0]
+            const dayName = d.toLocaleDateString("es-AR", { weekday: "short" })
+            const dayRecords = records.filter(r => new Date(r.date).toISOString().split("T")[0] === dateStr)
+            dailyActivity.push({
+              day: dayName.charAt(0).toUpperCase() + dayName.slice(1),
+              entradas: dayRecords.filter(r => r.type === "entrada").reduce((acc, r) => acc + r.quantity, 0),
+              salidas: dayRecords.filter(r => r.type === "salida").reduce((acc, r) => acc + r.quantity, 0),
+            })
+          }
+          const maxActivity = Math.max(...dailyActivity.map(d => Math.max(d.entradas, d.salidas)), 1)
+
+          return (
+            <div className="space-y-6">
+              {/* Indicadores principales */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Package className="h-4 w-4 text-sky-600" />
+                    <span className="text-xs text-gray-500 font-medium">Productos</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+                  <p className="text-xs text-gray-400 mt-1">{totalUnits} unidades totales</p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-4 w-4 text-amber-500" />
+                    <span className="text-xs text-gray-500 font-medium">Hoy</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">{todayRecords.length}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {todayEntradas.length} entradas, {todaySalidas.length} salidas
+                  </p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    <span className="text-xs text-gray-500 font-medium">Entradas 7d</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-700">{weekEntradas}</p>
+                  <p className="text-xs text-gray-400 mt-1">unidades ingresadas</p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                    <span className="text-xs text-gray-500 font-medium">Salidas 7d</span>
+                  </div>
+                  <p className="text-2xl font-bold text-red-600">{weekSalidas}</p>
+                  <p className="text-xs text-gray-400 mt-1">unidades despachadas</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Grafico de actividad semanal */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-4">Actividad ultimos 7 dias</h4>
+                  <div className="space-y-3">
+                    {dailyActivity.map((day, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-gray-600 w-10">{day.day}</span>
+                          <div className="flex gap-3 text-xs text-gray-400">
+                            {day.entradas > 0 && <span className="text-green-600">+{day.entradas}</span>}
+                            {day.salidas > 0 && <span className="text-red-500">-{day.salidas}</span>}
+                            {day.entradas === 0 && day.salidas === 0 && <span>sin actividad</span>}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 h-3">
+                          {day.entradas > 0 && (
+                            <div
+                              className="bg-green-400 rounded-sm transition-all"
+                              style={{ width: `${(day.entradas / maxActivity) * 100}%`, minWidth: "4px" }}
+                            />
+                          )}
+                          {day.salidas > 0 && (
+                            <div
+                              className="bg-red-400 rounded-sm transition-all"
+                              style={{ width: `${(day.salidas / maxActivity) * 100}%`, minWidth: "4px" }}
+                            />
+                          )}
+                          {day.entradas === 0 && day.salidas === 0 && (
+                            <div className="bg-gray-100 rounded-sm w-full" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-sm bg-green-400" />
+                      <span className="text-xs text-gray-500">Entradas</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-sm bg-red-400" />
+                      <span className="text-xs text-gray-500">Salidas</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stock bajo y sin stock */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Alertas de stock</h4>
+                  {outOfStockItems.length > 0 && (
+                    <div className="mb-4">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                        <span className="text-xs font-medium text-red-600">Sin stock ({outOfStockItems.length})</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {outOfStockItems.slice(0, 8).map((item, idx) => (
+                          <span
+                            key={idx}
+                            className="text-xs px-2 py-1 bg-red-50 text-red-700 rounded-md border border-red-100"
+                          >
+                            {item.productName}
+                          </span>
+                        ))}
+                        {outOfStockItems.length > 8 && (
+                          <span className="text-xs px-2 py-1 text-red-400">
+                            +{outOfStockItems.length - 8} mas
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {lowStockItems.length > 0 ? (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        <span className="text-xs font-medium text-amber-600">Stock bajo (10 o menos)</span>
+                      </div>
+                      <div className="space-y-2">
+                        {lowStockItems.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-700">{item.productName}</span>
+                            <span className={`text-sm font-semibold ${
+                              item.quantity <= 3 ? "text-red-600" : item.quantity <= 6 ? "text-amber-600" : "text-amber-500"
+                            }`}>
+                              {item.quantity} {item.unit}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : outOfStockItems.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-4">
+                      Todos los productos tienen stock suficiente
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Ultimos movimientos */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-700">Ultimos movimientos</h4>
+                  <button
+                    onClick={() => setActiveTab("records")}
+                    className="text-xs text-sky-600 hover:text-sky-800 font-medium"
+                  >
+                    Ver todos
+                  </button>
+                </div>
+                {recentRecords.length > 0 ? (
+                  <div className="space-y-2">
+                    {recentRecords.map((record) => {
+                      const product = products.find((p) => p.id === record.productId)
+                      return (
+                        <div
+                          key={record.id}
+                          className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
+                              record.type === "entrada" ? "bg-green-100" : "bg-red-100"
+                            }`}>
+                              {record.type === "entrada" ? (
+                                <ArrowDown className="h-3.5 w-3.5 text-green-600" />
+                              ) : (
+                                <ArrowUp className="h-3.5 w-3.5 text-red-600" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">
+                                {product?.name || "Producto desconocido"}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {record.hotelName ? normalizeHotelName(record.hotelName) : record.type === "entrada" ? "Entrada de stock" : "Salida"}
+                                {" - "}
+                                {new Date(record.date).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`text-sm font-semibold flex-shrink-0 ${
+                            record.type === "entrada" ? "text-green-600" : "text-red-600"
+                          }`}>
+                            {record.type === "entrada" ? "+" : "-"}{record.quantity}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-4">No hay movimientos registrados</p>
+                )}
+              </div>
+
+              {/* Acciones rapidas */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <button
+                  onClick={() => {
+                    setActiveTab("inventory")
+                    setIsAddingRecord(true)
+                    setRecordType("entrada")
+                    setInputInPacks(false)
+                    setSelectedProductId(null)
+                    setPackQuantity(1)
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100 transition-colors text-sm font-medium"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                  Nueva entrada
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTab("inventory")
+                    setIsAddingRecord(true)
+                    setRecordType("salida")
+                    setInputInPacks(false)
+                    setSelectedProductId(null)
+                    setPackQuantity(1)
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-700 hover:bg-red-100 transition-colors text-sm font-medium"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                  Nueva salida
+                </button>
+                <button
+                  onClick={() => setActiveTab("hotelSummary")}
+                  className="flex items-center gap-2 px-4 py-3 bg-sky-50 border border-sky-200 rounded-lg text-sky-700 hover:bg-sky-100 transition-colors text-sm font-medium"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Resumen hoteles
+                </button>
+                <button
+                  onClick={() => setActiveTab("products")}
+                  className="flex items-center gap-2 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors text-sm font-medium"
+                >
+                  <Package className="h-4 w-4" />
+                  Ver productos
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
         {activeTab === "inventory" && (
           <div>
             <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
