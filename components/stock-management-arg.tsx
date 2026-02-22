@@ -31,10 +31,23 @@ import {
   Menu,
   X,
   Bell,
+  LayoutDashboard,
+  Package,
+  TrendingDown,
+  TrendingUp,
+  Clock,
+  AlertCircle,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useNotifications, NotificationsPanel } from "@/components/notification-system"
 import LowStockAlert from "@/components/low-stock-alert"
+
+// Normalizar nombre de hotel: primera letra de cada palabra en mayúscula
+const normalizeHotelName = (name: string): string => {
+  return name.trim().replace(/\s+/g, ' ').split(' ').map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  ).join(' ')
+}
 
 // Lista predefinida de hoteles para Argentina (mismos que /stock)
 const PREDEFINED_HOTELS_ARG = [
@@ -55,8 +68,8 @@ const PREDEFINED_HOTELS_ARG = [
 ]
 
 export default function StockManagementArg() {
-  const [activeTab, setActiveTab] = useState<"inventory" | "products" | "records" | "hotelSummary" | "hotels" | "admin">(
-    "inventory",
+  const [activeTab, setActiveTab] = useState<"dashboard" | "inventory" | "products" | "records" | "hotelSummary" | "hotels" | "admin">(
+    "dashboard",
   )
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,6 +95,11 @@ export default function StockManagementArg() {
   const [newHotelName, setNewHotelName] = useState("")
   const [hotelToDelete, setHotelToDelete] = useState<string | null>(null)
   const [isConfirmingHotelDelete, setIsConfirmingHotelDelete] = useState(false)
+
+  // Estados para entrada por packs
+  const [inputInPacks, setInputInPacks] = useState(false)
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
+  const [packQuantity, setPackQuantity] = useState<number>(1)
 
   // Estados para administrador
   const [isAdminMode, setIsAdminMode] = useState(false)
@@ -243,17 +261,32 @@ export default function StockManagementArg() {
     return product ? product.unit : ""
   }
 
+  // Helper: obtener pack_size del producto seleccionado
+  const getSelectedProductPackSize = (productId: number | null): number => {
+    if (!productId) return 0
+    const product = products.find(p => p.id === productId)
+    return product?.pack_size || 0
+  }
+
+  // Calcular unidades totales a partir de packs
+  const getUnitsFromPacks = (packs: number, productId: number | null): number => {
+    const packSize = getSelectedProductPackSize(productId)
+    return packSize > 0 ? packs * packSize : packs
+  }
+
   // Función para obtener la lista única de hoteles (excluyendo los ocultos)
   const getUniqueHotels = () => {
     const hotelsFromRecords = records
       .filter((record) => record.type === "salida" && record.hotelName)
-      .map((record) => record.hotelName)
+      .map((record) => normalizeHotelName(record.hotelName!))
       .filter((hotel): hotel is string => hotel !== null)
 
-    const allHotels = [...new Set([...PREDEFINED_HOTELS_ARG, ...customHotels, ...hotelsFromRecords])]
+    const allNormalized = [...PREDEFINED_HOTELS_ARG.map(normalizeHotelName), ...customHotels.map(normalizeHotelName), ...hotelsFromRecords]
+    const allHotels = [...new Set(allNormalized)]
     // Filtrar los hoteles ocultos (excepto si tienen movimientos)
+    const hiddenNormalized = hiddenHotels.map(h => normalizeHotelName(h))
     const visibleHotels = allHotels.filter(hotel => 
-      !hiddenHotels.includes(hotel) || hotelsFromRecords.includes(hotel)
+      !hiddenNormalized.includes(hotel) || hotelsFromRecords.includes(hotel)
     )
     return visibleHotels.sort((a, b) => a.localeCompare(b))
   }
@@ -264,24 +297,25 @@ export default function StockManagementArg() {
       alert("El nombre del hotel no puede estar vacío")
       return
     }
-    
-    if (customHotels.some(h => h.toLowerCase() === newHotelName.trim().toLowerCase())) {
+
+    const normalized = normalizeHotelName(newHotelName)
+    const allExisting = [...PREDEFINED_HOTELS_ARG.map(normalizeHotelName), ...customHotels.map(normalizeHotelName)]
+    if (allExisting.includes(normalized)) {
       alert("Este hotel ya existe")
       return
     }
-    
-    setCustomHotels([...customHotels, newHotelName.trim()])
+    setCustomHotels([...customHotels, normalized])
     setNewHotelName("")
-    
-    // Guardar en localStorage para persistencia
-    const updatedHotels = [...customHotels, newHotelName.trim()]
+
+    const updatedHotels = [...customHotels, normalized]
     localStorage.setItem("customHotelsArg", JSON.stringify(updatedHotels))
   }
 
   // Función para eliminar/ocultar un hotel
   const handleDeleteHotel = (hotelName: string) => {
     // Verificar si el hotel tiene movimientos asociados
-    const hasRecords = records.some(r => r.hotelName === hotelName)
+    const normalizedTarget = normalizeHotelName(hotelName)
+    const hasRecords = records.some(r => r.hotelName && normalizeHotelName(r.hotelName) === normalizedTarget)
     if (hasRecords) {
       alert("No se puede eliminar este hotel porque tiene movimientos asociados. Primero elimina o edita esos movimientos.")
       return
@@ -444,7 +478,7 @@ export default function StockManagementArg() {
       productUnit: product.unit,
       quantity,
       price: product.price,
-      hotelName: recordTypeValue === "salida" ? hotelName : null,
+      hotelName: recordTypeValue === "salida" ? normalizeHotelName(hotelName) : null,
       type: recordTypeValue,
       username: username,
     }
@@ -517,7 +551,7 @@ export default function StockManagementArg() {
     const newRecord: StockRecordArg = {
       id: records.length > 0 ? Math.max(...records.map((r) => r.id)) + 1 : 1,
       hotelId: null,
-      hotelName: hotelName || null,
+      hotelName: hotelName ? normalizeHotelName(hotelName) : null,
       productId,
       productName: product.name,
       productUnit: product.unit,
@@ -588,7 +622,7 @@ export default function StockManagementArg() {
       )
     }
 
-    const hotels = [...new Set(hotelRecords.map((record) => record.hotelName))]
+    const hotels = [...new Set(hotelRecords.map((record) => normalizeHotelName(record.hotelName!)))]
     const productIds = [...new Set(hotelRecords.map((record) => record.productId))]
 
     const summary: {
@@ -622,7 +656,7 @@ export default function StockManagementArg() {
 
     hotelRecords.forEach((record) => {
       if (record.hotelName) {
-        const hotel = record.hotelName
+        const hotel = normalizeHotelName(record.hotelName)
         const productId = record.productId
         const total = record.quantity * record.price
 
@@ -921,6 +955,16 @@ export default function StockManagementArg() {
           <div className="flex border-b border-gray-200 min-w-max">
             <button
               className={`px-3 py-2 font-medium whitespace-nowrap ${
+                activeTab === "dashboard"
+                  ? "text-sky-600 border-b-2 border-sky-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setActiveTab("dashboard")}
+            >
+              Inicio
+            </button>
+            <button
+              className={`px-3 py-2 font-medium whitespace-nowrap ${
                 activeTab === "inventory"
                   ? "text-sky-600 border-b-2 border-sky-600"
                   : "text-gray-500 hover:text-gray-700"
@@ -982,6 +1026,16 @@ export default function StockManagementArg() {
         <div className="hidden md:flex border-b border-gray-200 mb-6">
           <button
             className={`px-4 py-2 font-medium ${
+              activeTab === "dashboard"
+                ? "text-sky-600 border-b-2 border-sky-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("dashboard")}
+          >
+            Inicio
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
               activeTab === "inventory"
                 ? "text-sky-600 border-b-2 border-sky-600"
                 : "text-gray-500 hover:text-gray-700"
@@ -1040,27 +1094,338 @@ export default function StockManagementArg() {
         <LowStockAlert products={products} inventory={inventory} />
 
         {/* Contenido según la pestaña activa */}
+        {activeTab === "dashboard" && (() => {
+          const today = new Date()
+          const todayStr = today.toISOString().split("T")[0]
+          const sevenDaysAgo = new Date(today)
+          sevenDaysAgo.setDate(today.getDate() - 7)
+
+          // Movimientos de hoy
+          const todayRecords = records.filter(r => {
+            const d = new Date(r.date)
+            return d.toISOString().split("T")[0] === todayStr
+          })
+          const todayEntradas = todayRecords.filter(r => r.type === "entrada")
+          const todaySalidas = todayRecords.filter(r => r.type === "salida")
+
+          // Movimientos ultimos 7 dias
+          const weekRecords = records.filter(r => new Date(r.date) >= sevenDaysAgo)
+          const weekEntradas = weekRecords.filter(r => r.type === "entrada").reduce((acc, r) => acc + r.quantity, 0)
+          const weekSalidas = weekRecords.filter(r => r.type === "salida").reduce((acc, r) => acc + r.quantity, 0)
+
+          // Total unidades en stock
+          const totalUnits = inventory.reduce((acc, item) => acc + item.quantity, 0)
+
+          // Productos con stock bajo (menos de 10 unidades)
+          const lowStockItems = inventory
+            .map(item => {
+              const product = products.find(p => p.id === item.productId)
+              return { ...item, productName: product?.name || "Desconocido", unit: product?.unit || "u" }
+            })
+            .filter(item => item.quantity <= 10 && item.quantity > 0)
+            .sort((a, b) => a.quantity - b.quantity)
+            .slice(0, 6)
+
+          // Productos sin stock
+          const outOfStockItems = inventory
+            .map(item => {
+              const product = products.find(p => p.id === item.productId)
+              return { ...item, productName: product?.name || "Desconocido" }
+            })
+            .filter(item => item.quantity === 0)
+
+          // Ultimos 8 movimientos
+          const recentRecords = [...records]
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 8)
+
+          // Actividad por dia (ultimos 7 dias)
+          const dailyActivity: { day: string; entradas: number; salidas: number }[] = []
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date(today)
+            d.setDate(today.getDate() - i)
+            const dateStr = d.toISOString().split("T")[0]
+            const dayName = d.toLocaleDateString("es-AR", { weekday: "short" })
+            const dayRecords = records.filter(r => new Date(r.date).toISOString().split("T")[0] === dateStr)
+            dailyActivity.push({
+              day: dayName.charAt(0).toUpperCase() + dayName.slice(1),
+              entradas: dayRecords.filter(r => r.type === "entrada").reduce((acc, r) => acc + r.quantity, 0),
+              salidas: dayRecords.filter(r => r.type === "salida").reduce((acc, r) => acc + r.quantity, 0),
+            })
+          }
+          const maxActivity = Math.max(...dailyActivity.map(d => Math.max(d.entradas, d.salidas)), 1)
+
+          return (
+            <div className="space-y-6">
+              {/* Indicadores principales */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Package className="h-4 w-4 text-sky-600" />
+                    <span className="text-xs text-gray-500 font-medium">Productos</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+                  <p className="text-xs text-gray-400 mt-1">{totalUnits} unidades totales</p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-4 w-4 text-amber-500" />
+                    <span className="text-xs text-gray-500 font-medium">Hoy</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">{todayRecords.length}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {todayEntradas.length} entradas, {todaySalidas.length} salidas
+                  </p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    <span className="text-xs text-gray-500 font-medium">Entradas 7d</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-700">{weekEntradas}</p>
+                  <p className="text-xs text-gray-400 mt-1">unidades ingresadas</p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                    <span className="text-xs text-gray-500 font-medium">Salidas 7d</span>
+                  </div>
+                  <p className="text-2xl font-bold text-red-600">{weekSalidas}</p>
+                  <p className="text-xs text-gray-400 mt-1">unidades despachadas</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Grafico de actividad semanal */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-4">Actividad ultimos 7 dias</h4>
+                  <div className="space-y-3">
+                    {dailyActivity.map((day, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-gray-600 w-10">{day.day}</span>
+                          <div className="flex gap-3 text-xs text-gray-400">
+                            {day.entradas > 0 && <span className="text-green-600">+{day.entradas}</span>}
+                            {day.salidas > 0 && <span className="text-red-500">-{day.salidas}</span>}
+                            {day.entradas === 0 && day.salidas === 0 && <span>sin actividad</span>}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 h-3">
+                          {day.entradas > 0 && (
+                            <div
+                              className="bg-green-400 rounded-sm transition-all"
+                              style={{ width: `${(day.entradas / maxActivity) * 100}%`, minWidth: "4px" }}
+                            />
+                          )}
+                          {day.salidas > 0 && (
+                            <div
+                              className="bg-red-400 rounded-sm transition-all"
+                              style={{ width: `${(day.salidas / maxActivity) * 100}%`, minWidth: "4px" }}
+                            />
+                          )}
+                          {day.entradas === 0 && day.salidas === 0 && (
+                            <div className="bg-gray-100 rounded-sm w-full" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-sm bg-green-400" />
+                      <span className="text-xs text-gray-500">Entradas</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-sm bg-red-400" />
+                      <span className="text-xs text-gray-500">Salidas</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stock bajo y sin stock */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Alertas de stock</h4>
+                  {outOfStockItems.length > 0 && (
+                    <div className="mb-4">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                        <span className="text-xs font-medium text-red-600">Sin stock ({outOfStockItems.length})</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {outOfStockItems.slice(0, 8).map((item, idx) => (
+                          <span
+                            key={idx}
+                            className="text-xs px-2 py-1 bg-red-50 text-red-700 rounded-md border border-red-100"
+                          >
+                            {item.productName}
+                          </span>
+                        ))}
+                        {outOfStockItems.length > 8 && (
+                          <span className="text-xs px-2 py-1 text-red-400">
+                            +{outOfStockItems.length - 8} mas
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {lowStockItems.length > 0 ? (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        <span className="text-xs font-medium text-amber-600">Stock bajo (10 o menos)</span>
+                      </div>
+                      <div className="space-y-2">
+                        {lowStockItems.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-700">{item.productName}</span>
+                            <span className={`text-sm font-semibold ${
+                              item.quantity <= 3 ? "text-red-600" : item.quantity <= 6 ? "text-amber-600" : "text-amber-500"
+                            }`}>
+                              {item.quantity} {item.unit}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : outOfStockItems.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-4">
+                      Todos los productos tienen stock suficiente
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Ultimos movimientos */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-700">Ultimos movimientos</h4>
+                  <button
+                    onClick={() => setActiveTab("records")}
+                    className="text-xs text-sky-600 hover:text-sky-800 font-medium"
+                  >
+                    Ver todos
+                  </button>
+                </div>
+                {recentRecords.length > 0 ? (
+                  <div className="space-y-2">
+                    {recentRecords.map((record) => {
+                      const product = products.find((p) => p.id === record.productId)
+                      return (
+                        <div
+                          key={record.id}
+                          className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
+                              record.type === "entrada" ? "bg-green-100" : "bg-red-100"
+                            }`}>
+                              {record.type === "entrada" ? (
+                                <ArrowDown className="h-3.5 w-3.5 text-green-600" />
+                              ) : (
+                                <ArrowUp className="h-3.5 w-3.5 text-red-600" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">
+                                {product?.name || "Producto desconocido"}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {record.hotelName ? normalizeHotelName(record.hotelName) : record.type === "entrada" ? "Entrada de stock" : "Salida"}
+                                {" - "}
+                                {new Date(record.date).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`text-sm font-semibold flex-shrink-0 ${
+                            record.type === "entrada" ? "text-green-600" : "text-red-600"
+                          }`}>
+                            {record.type === "entrada" ? "+" : "-"}{record.quantity}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-4">No hay movimientos registrados</p>
+                )}
+              </div>
+
+              {/* Acciones rapidas */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <button
+                  onClick={() => {
+                    setActiveTab("inventory")
+                    setIsAddingRecord(true)
+                    setRecordType("entrada")
+                    setInputInPacks(false)
+                    setSelectedProductId(null)
+                    setPackQuantity(1)
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100 transition-colors text-sm font-medium"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                  Nueva entrada
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTab("inventory")
+                    setIsAddingRecord(true)
+                    setRecordType("salida")
+                    setInputInPacks(false)
+                    setSelectedProductId(null)
+                    setPackQuantity(1)
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-700 hover:bg-red-100 transition-colors text-sm font-medium"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                  Nueva salida
+                </button>
+                <button
+                  onClick={() => setActiveTab("hotelSummary")}
+                  className="flex items-center gap-2 px-4 py-3 bg-sky-50 border border-sky-200 rounded-lg text-sky-700 hover:bg-sky-100 transition-colors text-sm font-medium"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Resumen hoteles
+                </button>
+                <button
+                  onClick={() => setActiveTab("products")}
+                  className="flex items-center gap-2 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors text-sm font-medium"
+                >
+                  <Package className="h-4 w-4" />
+                  Ver productos
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
         {activeTab === "inventory" && (
           <div>
             <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
               <h3 className="text-lg font-medium mb-2 md:mb-0">Inventario Actual</h3>
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    setIsAddingRecord(true)
-                    setRecordType("entrada")
-                  }}
-                  className="flex-1 md:flex-none px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center justify-center"
+                onClick={() => {
+                  setIsAddingRecord(true)
+                  setRecordType("entrada")
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                }}
+                className="flex-1 md:flex-none px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center justify-center"
                 >
                   <ArrowDown className="h-4 w-4 mr-1" />
                   Entrada
                 </button>
                 <button
-                  onClick={() => {
-                    setIsAddingRecord(true)
-                    setRecordType("salida")
-                  }}
-                  className="flex-1 md:flex-none px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center"
+                onClick={() => {
+                  setIsAddingRecord(true)
+                  setRecordType("salida")
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                }}
+                className="flex-1 md:flex-none px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center"
                 >
                   <ArrowUp className="h-4 w-4 mr-1" />
                   Salida
@@ -1171,7 +1536,17 @@ export default function StockManagementArg() {
                   <form onSubmit={handleAddRecord}>
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
-                      <select name="productId" className="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                      <select
+                        name="productId"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                        onChange={(e) => {
+                          const id = Number.parseInt(e.target.value, 10)
+                          setSelectedProductId(isNaN(id) ? null : id)
+                          setInputInPacks(false)
+                          setPackQuantity(1)
+                        }}
+                      >
                         <option value="">Seleccionar producto</option>
                         {products.map((product) => (
                           <option key={product.id} value={product.id}>
@@ -1181,14 +1556,57 @@ export default function StockManagementArg() {
                       </select>
                     </div>
                     <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                      <input
-                        type="number"
-                        name="quantity"
-                        min="1"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        required
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">Cantidad</label>
+                        {getSelectedProductPackSize(selectedProductId) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInputInPacks(!inputInPacks)
+                              setPackQuantity(1)
+                            }}
+                            className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                              inputInPacks
+                                ? "bg-sky-100 border-sky-300 text-sky-700"
+                                : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                            }`}
+                          >
+                            {inputInPacks ? "Ingresando en packs" : "Ingresar en packs"}
+                          </button>
+                        )}
+                      </div>
+                      {inputInPacks && getSelectedProductPackSize(selectedProductId) > 0 ? (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              value={packQuantity}
+                              onChange={(e) => setPackQuantity(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              required
+                            />
+                            <span className="text-sm text-gray-500 whitespace-nowrap">
+                              packs
+                            </span>
+                          </div>
+                          <input type="hidden" name="quantity" value={getUnitsFromPacks(packQuantity, selectedProductId)} />
+                          <p className="text-sm text-sky-600 mt-1">
+                            {'='} {getUnitsFromPacks(packQuantity, selectedProductId)} {products.find(p => p.id === selectedProductId)?.unit || "unidades"}
+                            <span className="text-gray-400 ml-1">
+                              ({packQuantity} x {getSelectedProductPackSize(selectedProductId)} por pack)
+                            </span>
+                          </p>
+                        </>
+                      ) : (
+                        <input
+                          type="number"
+                          name="quantity"
+                          min="1"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          required
+                        />
+                      )}
                     </div>
                     {recordType === "salida" && (
                       <div className="mb-4">
@@ -1511,12 +1929,16 @@ export default function StockManagementArg() {
                       </span>
                       <button
                         onClick={() => {
-                          setCurrentRecord(record)
-                          setIsEditingRecord(true)
-                        }}
-                        className="text-sky-600 hover:text-sky-800 p-1"
-                        title="Editar"
-                      >
+                  setCurrentRecord(record)
+                  setIsEditingRecord(true)
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                  }}
+                  className="text-sky-600 hover:text-sky-800 p-1"
+                  title="Editar"
+                  >
+
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
@@ -1592,6 +2014,9 @@ export default function StockManagementArg() {
                             onClick={() => {
                               setCurrentRecord(record)
                               setIsEditingRecord(true)
+                              setInputInPacks(false)
+                              setSelectedProductId(null)
+                              setPackQuantity(1)
                             }}
                             className="text-sky-600 hover:text-sky-800 p-1"
                             title="Editar"
@@ -1815,12 +2240,16 @@ export default function StockManagementArg() {
                         <div className="flex space-x-2">
                           <button
                             onClick={() => {
-                              setCurrentRecord(record)
-                              setIsEditingRecord(true)
-                            }}
-                            className="text-sky-600 hover:text-sky-800"
-                            title="Editar"
-                          >
+                  setCurrentRecord(record)
+                  setIsEditingRecord(true)
+                  setInputInPacks(false)
+                  setSelectedProductId(null)
+                  setPackQuantity(1)
+                  }}
+                  className="text-sky-600 hover:text-sky-800"
+                  title="Editar"
+                  >
+
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
@@ -1899,6 +2328,9 @@ export default function StockManagementArg() {
                                 onClick={() => {
                                   setCurrentRecord(record)
                                   setIsEditingRecord(true)
+                                  setInputInPacks(false)
+                                  setSelectedProductId(null)
+                                  setPackQuantity(1)
                                 }}
                                 className="text-sky-600 hover:text-sky-800"
                                 title="Editar"
@@ -1953,6 +2385,12 @@ export default function StockManagementArg() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     defaultValue={currentRecord.productId}
                     required
+                    onChange={(e) => {
+                      const id = Number.parseInt(e.target.value, 10)
+                      setSelectedProductId(isNaN(id) ? null : id)
+                      setInputInPacks(false)
+                      setPackQuantity(1)
+                    }}
                   >
                     <option value="">Seleccionar producto</option>
                     {products.map((product) => (
@@ -1963,15 +2401,58 @@ export default function StockManagementArg() {
                   </select>
                 </div>
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                  <input
-                    type="number"
-                    name="quantity"
-                    min="1"
-                    defaultValue={currentRecord.quantity}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    required
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">Cantidad</label>
+                    {getSelectedProductPackSize(selectedProductId || currentRecord.productId) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInputInPacks(!inputInPacks)
+                          setPackQuantity(1)
+                        }}
+                        className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                          inputInPacks
+                            ? "bg-sky-100 border-sky-300 text-sky-700"
+                            : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {inputInPacks ? "Ingresando en packs" : "Ingresar en packs"}
+                      </button>
+                    )}
+                  </div>
+                  {inputInPacks && getSelectedProductPackSize(selectedProductId || currentRecord.productId) > 0 ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          value={packQuantity}
+                          onChange={(e) => setPackQuantity(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          required
+                        />
+                        <span className="text-sm text-gray-500 whitespace-nowrap">
+                          packs
+                        </span>
+                      </div>
+                      <input type="hidden" name="quantity" value={getUnitsFromPacks(packQuantity, selectedProductId || currentRecord.productId)} />
+                      <p className="text-sm text-sky-600 mt-1">
+                        {'='} {getUnitsFromPacks(packQuantity, selectedProductId || currentRecord.productId)} {products.find(p => p.id === (selectedProductId || currentRecord.productId))?.unit || "unidades"}
+                        <span className="text-gray-400 ml-1">
+                          ({packQuantity} x {getSelectedProductPackSize(selectedProductId || currentRecord.productId)} por pack)
+                        </span>
+                      </p>
+                    </>
+                  ) : (
+                    <input
+                      type="number"
+                      name="quantity"
+                      min="1"
+                      defaultValue={currentRecord.quantity}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    />
+                  )}
                 </div>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Hotel (solo para salidas)</label>
