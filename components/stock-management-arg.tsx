@@ -36,6 +36,13 @@ import { useAuth } from "@/lib/auth-context"
 import { useNotifications, NotificationsPanel } from "@/components/notification-system"
 import LowStockAlert from "@/components/low-stock-alert"
 
+// Normalizar nombre de hotel: primera letra de cada palabra en mayúscula
+const normalizeHotelName = (name: string): string => {
+  return name.trim().replace(/\s+/g, ' ').split(' ').map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  ).join(' ')
+}
+
 // Lista predefinida de hoteles para Argentina (mismos que /stock)
 const PREDEFINED_HOTELS_ARG = [
   "Jaguel",
@@ -247,13 +254,15 @@ export default function StockManagementArg() {
   const getUniqueHotels = () => {
     const hotelsFromRecords = records
       .filter((record) => record.type === "salida" && record.hotelName)
-      .map((record) => record.hotelName)
+      .map((record) => normalizeHotelName(record.hotelName!))
       .filter((hotel): hotel is string => hotel !== null)
 
-    const allHotels = [...new Set([...PREDEFINED_HOTELS_ARG, ...customHotels, ...hotelsFromRecords])]
+    const allNormalized = [...PREDEFINED_HOTELS_ARG.map(normalizeHotelName), ...customHotels.map(normalizeHotelName), ...hotelsFromRecords]
+    const allHotels = [...new Set(allNormalized)]
     // Filtrar los hoteles ocultos (excepto si tienen movimientos)
+    const hiddenNormalized = hiddenHotels.map(h => normalizeHotelName(h))
     const visibleHotels = allHotels.filter(hotel => 
-      !hiddenHotels.includes(hotel) || hotelsFromRecords.includes(hotel)
+      !hiddenNormalized.includes(hotel) || hotelsFromRecords.includes(hotel)
     )
     return visibleHotels.sort((a, b) => a.localeCompare(b))
   }
@@ -264,24 +273,25 @@ export default function StockManagementArg() {
       alert("El nombre del hotel no puede estar vacío")
       return
     }
-    
-    if (customHotels.some(h => h.toLowerCase() === newHotelName.trim().toLowerCase())) {
+
+    const normalized = normalizeHotelName(newHotelName)
+    const allExisting = [...PREDEFINED_HOTELS_ARG.map(normalizeHotelName), ...customHotels.map(normalizeHotelName)]
+    if (allExisting.includes(normalized)) {
       alert("Este hotel ya existe")
       return
     }
-    
-    setCustomHotels([...customHotels, newHotelName.trim()])
+    setCustomHotels([...customHotels, normalized])
     setNewHotelName("")
-    
-    // Guardar en localStorage para persistencia
-    const updatedHotels = [...customHotels, newHotelName.trim()]
+
+    const updatedHotels = [...customHotels, normalized]
     localStorage.setItem("customHotelsArg", JSON.stringify(updatedHotels))
   }
 
   // Función para eliminar/ocultar un hotel
   const handleDeleteHotel = (hotelName: string) => {
     // Verificar si el hotel tiene movimientos asociados
-    const hasRecords = records.some(r => r.hotelName === hotelName)
+    const normalizedTarget = normalizeHotelName(hotelName)
+    const hasRecords = records.some(r => r.hotelName && normalizeHotelName(r.hotelName) === normalizedTarget)
     if (hasRecords) {
       alert("No se puede eliminar este hotel porque tiene movimientos asociados. Primero elimina o edita esos movimientos.")
       return
@@ -444,7 +454,7 @@ export default function StockManagementArg() {
       productUnit: product.unit,
       quantity,
       price: product.price,
-      hotelName: recordTypeValue === "salida" ? hotelName : null,
+      hotelName: recordTypeValue === "salida" ? normalizeHotelName(hotelName) : null,
       type: recordTypeValue,
       username: username,
     }
@@ -517,7 +527,7 @@ export default function StockManagementArg() {
     const newRecord: StockRecordArg = {
       id: records.length > 0 ? Math.max(...records.map((r) => r.id)) + 1 : 1,
       hotelId: null,
-      hotelName: hotelName || null,
+      hotelName: hotelName ? normalizeHotelName(hotelName) : null,
       productId,
       productName: product.name,
       productUnit: product.unit,
@@ -588,7 +598,7 @@ export default function StockManagementArg() {
       )
     }
 
-    const hotels = [...new Set(hotelRecords.map((record) => record.hotelName))]
+    const hotels = [...new Set(hotelRecords.map((record) => normalizeHotelName(record.hotelName!)))]
     const productIds = [...new Set(hotelRecords.map((record) => record.productId))]
 
     const summary: {
@@ -622,7 +632,7 @@ export default function StockManagementArg() {
 
     hotelRecords.forEach((record) => {
       if (record.hotelName) {
-        const hotel = record.hotelName
+        const hotel = normalizeHotelName(record.hotelName)
         const productId = record.productId
         const total = record.quantity * record.price
 
