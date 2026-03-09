@@ -124,8 +124,13 @@ export const getAssignments = async (filters?: {
     }
 
     const { data, error } = await query
-    if (error) return []
+    if (error) {
+      console.error("[v0] Error en getAssignments:", error)
+      return []
+    }
 
+    console.log("[v0] getAssignments - Total registros obtenidos:", data?.length || 0)
+    
     return (data || []).map((item: any) => ({
       ...item,
       employee_name: item.employees?.name,
