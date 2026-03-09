@@ -112,8 +112,6 @@ export const getAssignments = async (filters?: {
         *,
         employees!inner(name)
       `)
-      .order("assignment_date", { ascending: false })
-      .limit(10000) // Supabase default is 1000, we need more for annual reports
 
     if (filters?.employee_id) {
       query = query.eq("employee_id", filters.employee_id)
@@ -122,6 +120,9 @@ export const getAssignments = async (filters?: {
     if (filters?.start_date && filters?.end_date) {
       query = query.gte("assignment_date", filters.start_date).lte("assignment_date", filters.end_date)
     }
+
+    // Apply order and limit at the end - Supabase defaults to 1000 rows
+    query = query.order("assignment_date", { ascending: false }).limit(10000)
 
     const { data, error } = await query
     if (error) {
