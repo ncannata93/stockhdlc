@@ -97,6 +97,7 @@ export const deleteEmployee = async (id: number): Promise<boolean> => {
 }
 
 // Funciones para asignaciones
+// Supabase has a hard limit of 1000 rows per request, so we paginate
 export const getAssignments = async (filters?: {
   employee_id?: number
   start_date?: string
@@ -106,30 +107,51 @@ export const getAssignments = async (filters?: {
   if (!supabase) return []
 
   try {
-    let query = supabase
-      .from("employee_assignments")
-      .select(`
-        *,
-        employees!inner(name)
-      `)
-      .order("assignment_date", { ascending: false })
+    const PAGE_SIZE = 1000
+    let allData: any[] = []
+    let from = 0
+    let hasMore = true
 
-    if (filters?.employee_id) {
-      query = query.eq("employee_id", filters.employee_id)
+    while (hasMore) {
+      let query = supabase
+        .from("employee_assignments")
+        .select(`
+          *,
+          employees!inner(name)
+        `)
+        .order("assignment_date", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1)
+
+      if (filters?.employee_id) {
+        query = query.eq("employee_id", filters.employee_id)
+      }
+
+      if (filters?.start_date && filters?.end_date) {
+        query = query.gte("assignment_date", filters.start_date).lte("assignment_date", filters.end_date)
+      }
+
+      const { data, error } = await query
+      
+      if (error) {
+        console.error("[v0] Error en getAssignments página", from, ":", error)
+        break
+      }
+
+      if (data && data.length > 0) {
+        allData = [...allData, ...data]
+        from += PAGE_SIZE
+        hasMore = data.length === PAGE_SIZE
+      } else {
+        hasMore = false
+      }
     }
 
-    if (filters?.start_date && filters?.end_date) {
-      query = query.gte("assignment_date", filters.start_date).lte("assignment_date", filters.end_date)
-    }
-
-    const { data, error } = await query
-    if (error) return []
-
-    return (data || []).map((item: any) => ({
+    return allData.map((item: any) => ({
       ...item,
       employee_name: item.employees?.name,
     }))
   } catch (err) {
+    console.error("[v0] Error general en getAssignments:", err)
     return []
   }
 }
