@@ -308,9 +308,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
           return assignment.assignment_date >= startDate && assignment.assignment_date <= endDate
         })
 
-        console.log("[v0] Total asignaciones en BD:", allAssignmentsData.length)
-        console.log("[v0] Asignaciones del año", year, ":", yearAssignments.length)
-
         let finalAssignments = yearAssignments
         if (employeeFilter !== "todos") {
           const employeeId = Number.parseInt(employeeFilter)
@@ -318,8 +315,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
             finalAssignments = yearAssignments.filter((a) => a.employee_id === employeeId)
           }
         }
-
-        console.log("[v0] Asignaciones finales (post filtro empleado):", finalAssignments.length)
 
         // 🏨 CALCULAR RESUMEN ANUAL POR HOTEL
         const hotelSummary = finalAssignments.reduce(
@@ -362,10 +357,6 @@ export default function EmpleadosResumen({ onStatsChange }: EmpleadosResumenProp
 
         // Ordenar por total amount descendente
         annualHotelData.sort((a, b) => b.totalAmount - a.totalAmount)
-
-        const totalDaysCalculated = annualHotelData.reduce((sum, h) => sum + h.totalDays, 0)
-        console.log("[v0] Total días calculados:", totalDaysCalculated)
-        console.log("[v0] Resumen por hotel:", annualHotelData.map(h => ({ hotel: h.hotelName, days: h.totalDays })))
 
         setAnnualData(annualHotelData)
         console.log(`✅ Datos anuales por hotel cargados: ${annualHotelData.length} hoteles`)

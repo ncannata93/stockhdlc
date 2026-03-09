@@ -113,6 +113,7 @@ export const getAssignments = async (filters?: {
         employees!inner(name)
       `)
       .order("assignment_date", { ascending: false })
+      .limit(10000) // Supabase default is 1000, we need more for annual reports
 
     if (filters?.employee_id) {
       query = query.eq("employee_id", filters.employee_id)
