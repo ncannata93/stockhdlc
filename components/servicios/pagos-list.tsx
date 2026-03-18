@@ -271,7 +271,7 @@ export function PagosList({ initialFilterStatus }: PagosListProps) {
     setShowEditModal(true)
   }
 
-  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement> | React.ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setEditFormData((prev) => ({ ...prev, [name]: value }))
   }
