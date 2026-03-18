@@ -271,7 +271,7 @@ export function PagosList({ initialFilterStatus }: PagosListProps) {
     setShowEditModal(true)
   }
 
-  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement> | React.ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setEditFormData((prev) => ({ ...prev, [name]: value }))
   }
@@ -530,134 +530,126 @@ export function PagosList({ initialFilterStatus }: PagosListProps) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      {/* Header con filtros */}
-      <div className="p-4 sm:p-6 border-b border-gray-200">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800">Pagos de Servicios</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Total: {payments.length} pagos | Mostrando: {filteredPayments.length} pagos
-            </p>
+    <div className="bg-white rounded-lg shadow flex flex-col h-full max-h-[calc(100vh-180px)]">
+      {/* Header compacto con filtros */}
+      <div className="p-3 border-b border-gray-200 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-800">Pagos de Servicios</h2>
+            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+              {filteredPayments.length} de {payments.length}
+            </span>
             {filterMonth && filterYear && (
-              <p className="text-sm text-blue-600 mt-1">
-                📅 Filtrado por: {MONTHS[Number(filterMonth) as keyof typeof MONTHS]} {filterYear}
-              </p>
+              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                {MONTHS[Number(filterMonth) as keyof typeof MONTHS]} {filterYear}
+              </span>
             )}
           </div>
 
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap">
+            {filteredPayments.filter(p => p.status === "pendiente" || p.status === "vencido").length > 0 && (
+              <button
+                onClick={() => setFilterStatus("pendiente")}
+                className="flex items-center gap-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs hover:bg-yellow-200 transition-colors font-medium"
+                title="Ver solo pendientes"
+              >
+                <AlertCircle className="h-3 w-3" />
+                {filteredPayments.filter(p => p.status === "pendiente" || p.status === "vencido").length} Pend.
+              </button>
+            )}
             <button
               onClick={handleRefresh}
-              className="flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-md hover:bg-green-200 transition-colors"
+              className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded text-xs hover:bg-green-200 transition-colors"
               title="Recargar datos"
             >
-              <RefreshCw className="h-4 w-4" />
-              Recargar
+              <RefreshCw className="h-3 w-3" />
             </button>
             <button
               onClick={resetToCurrentMonth}
-              className="flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-md hover:bg-blue-200 transition-colors"
+              className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs hover:bg-blue-200 transition-colors"
               title="Volver al mes actual"
             >
-              <Calendar className="h-4 w-4" />
-              Mes Actual
+              <Calendar className="h-3 w-3" />
             </button>
             <button
               onClick={clearAllFilters}
-              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
+              className="flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-200 transition-colors"
             >
-              Ver Todos
+              Todos
             </button>
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition-colors font-medium"
             >
-              <Plus className="h-4 w-4" />
-              Agregar Pago
+              <Plus className="h-3 w-3" />
+              Nuevo
             </button>
           </div>
         </div>
 
-        {/* Filtros */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-          {/* Búsqueda */}
-          <div className="lg:col-span-2">
+        {/* Filtros compactos en una linea */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+          {/* Busqueda */}
+          <div className="col-span-2 sm:col-span-2">
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
-              </div>
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
               <input
                 type="text"
-                placeholder="Buscar pagos..."
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Buscar..."
+                className="pl-7 pr-2 py-1 text-xs border border-gray-300 rounded w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
 
-          {/* Filtro por Hotel */}
-          <div>
-            <select
-              value={filterHotel}
-              onChange={(e) => setFilterHotel(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los hoteles</option>
-              {hotels.map((hotel) => (
-                <option key={hotel.id} value={hotel.id}>
-                  {hotel.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Hotel */}
+          <select
+            value={filterHotel}
+            onChange={(e) => setFilterHotel(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">Hotel</option>
+            {hotels.map((hotel) => (
+              <option key={hotel.id} value={hotel.id}>{hotel.name}</option>
+            ))}
+          </select>
 
-          {/* Filtro por Estado */}
-          <div>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los estados</option>
-              <option value="pendiente">Pendiente</option>
-              <option value="abonado">Abonado</option>
-              <option value="vencido">Vencido</option>
-            </select>
-          </div>
+          {/* Estado */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">Estado</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="abonado">Abonado</option>
+            <option value="vencido">Vencido</option>
+          </select>
 
-          {/* Filtro por Mes - CON VALOR POR DEFECTO */}
-          <div>
-            <select
-              value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
-            >
-              <option value="">Todos los meses</option>
-              {Object.entries(MONTHS).map(([num, name]) => (
-                <option key={num} value={num}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Mes */}
+          <select
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-blue-50"
+          >
+            <option value="">Mes</option>
+            {Object.entries(MONTHS).map(([num, name]) => (
+              <option key={num} value={num}>{name.substring(0, 3)}</option>
+            ))}
+          </select>
 
-          {/* Filtro por Año - CON VALOR POR DEFECTO */}
-          <div>
-            <select
-              value={filterYear}
-              onChange={(e) => setFilterYear(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
-            >
-              <option value="">Todos los años</option>
-              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Ano */}
+          <select
+            value={filterYear}
+            onChange={(e) => setFilterYear(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-blue-50"
+          >
+            <option value="">Ano</option>
+            {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -696,143 +688,92 @@ export function PagosList({ initialFilterStatus }: PagosListProps) {
           </div>
         </div>
       ) : (
-        <>
+        <div className="flex-1 overflow-auto">
           {/* Vista desktop - Tabla */}
-          <div className="hidden lg:block overflow-x-auto">
+          <div className="hidden lg:block">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("hotel_name")}
-                  >
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("hotel_name")}>
                     Hotel {renderSortIndicator("hotel_name")}
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("service_name")}
-                  >
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("service_name")}>
                     Servicio {renderSortIndicator("service_name")}
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("period")}
-                  >
-                    Período {renderSortIndicator("period")}
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("period")}>
+                    Periodo {renderSortIndicator("period")}
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("amount")}
-                  >
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("amount")}>
                     Monto {renderSortIndicator("amount")}
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("due_date")}
-                  >
-                    Vencimiento {renderSortIndicator("due_date")}
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("due_date")}>
+                    Vence {renderSortIndicator("due_date")}
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("status")}
-                  >
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("status")}>
                     Estado {renderSortIndicator("status")}
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("payment_date")}
-                  >
-                    Fecha Pago {renderSortIndicator("payment_date")}
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("payment_date")}>
+                    F. Pago {renderSortIndicator("payment_date")}
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("payment_method")}
-                  >
-                    Forma de Pago {renderSortIndicator("payment_method")}
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort("payment_method")}>
+                    Forma {renderSortIndicator("payment_method")}
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                     Acciones
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-gray-100">
                 {paginatedPayments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Building2 className="h-4 w-4 text-blue-600 mr-2" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {payment.hotel_name || "Hotel no encontrado"}
-                        </span>
-                      </div>
+                  <tr key={payment.id} className="hover:bg-blue-50">
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className="text-xs font-medium text-gray-900">{payment.hotel_name || "N/A"}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{payment.service_name}</div>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className="text-xs text-gray-700">{payment.service_name}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {MONTHS[payment.month as keyof typeof MONTHS]} {payment.year}
-                      </div>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className="text-xs text-gray-600">{MONTHS[payment.month as keyof typeof MONTHS]?.substring(0, 3)} {payment.year}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <DollarSign className="h-4 w-4 text-green-600 mr-1" />
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(payment.amount)}</span>
-                      </div>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className="text-xs font-semibold text-green-700">{formatCurrency(payment.amount)}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Calendar className="h-4 w-4 text-gray-400 mr-1" />
-                        <span className="text-sm text-gray-900">{formatDate(payment.due_date)}</span>
-                      </div>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className="text-xs text-gray-600">{formatDate(payment.due_date)}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(payment.status)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {payment.payment_date ? (
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 text-green-600 mr-1" />
-                          <span className="text-sm text-gray-900">{formatDate(payment.payment_date)}</span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">-</span>
-                      )}
+                    <td className="px-3 py-1.5 whitespace-nowrap">{getStatusBadge(payment.status)}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className="text-xs text-gray-600">{payment.payment_date ? formatDate(payment.payment_date) : "-"}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {payment.payment_method ? (
-                        <div className="flex items-center">
-                          <CreditCard className="h-4 w-4 text-blue-600 mr-1" />
-                          <span className="text-sm font-medium text-gray-900">
-                            {getPaymentMethodLabel(payment.payment_method)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">-</span>
-                      )}
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className="text-xs text-gray-600">{payment.payment_method ? getPaymentMethodLabel(payment.payment_method) : "-"}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-2">
+                    <td className="px-3 py-1.5 whitespace-nowrap text-right">
+                      <div className="flex justify-end gap-1">
                         {(payment.status === "pendiente" || payment.status === "vencido") && (
                           <button
-                            className="text-green-600 hover:text-green-900"
+                            className="inline-flex items-center gap-0.5 px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors font-medium text-xs"
                             onClick={() => handlePaymentClick(payment)}
                             title="Marcar como pagado"
                           >
-                            <CreditCard className="h-5 w-5" />
+                            <CreditCard className="h-3 w-3" />
+                            Pagar
                           </button>
                         )}
                         <button
-                          className="text-blue-600 hover:text-blue-900"
+                          className="inline-flex items-center gap-0.5 px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors font-medium text-xs"
                           onClick={() => handleEditClick(payment)}
                           title="Editar pago"
                         >
-                          <Edit className="h-5 w-5" />
+                          <Edit className="h-3 w-3" />
+                          Editar
                         </button>
                         <button
-                          className="text-red-600 hover:text-red-900"
+                          className="inline-flex items-center px-1.5 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors text-xs"
                           onClick={() => handleDeletePayment(payment.id)}
                           title="Eliminar pago"
                         >
-                          <Trash2 className="h-5 w-5" />
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </td>
@@ -860,24 +801,29 @@ export function PagosList({ initialFilterStatus }: PagosListProps) {
                         {MONTHS[payment.month as keyof typeof MONTHS]} {payment.year}
                       </p>
                     </div>
-                    <div className="flex space-x-2">
+                    <div className="flex gap-2">
                       {(payment.status === "pendiente" || payment.status === "vencido") && (
                         <button
-                          className="text-green-600 hover:text-green-900"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors font-medium text-xs"
                           onClick={() => handlePaymentClick(payment)}
                           title="Marcar como pagado"
                         >
-                          <CreditCard className="h-5 w-5" />
+                          <CreditCard className="h-4 w-4" />
+                          Pagar
                         </button>
                       )}
-                      <button className="text-blue-600 hover:text-blue-900" onClick={() => handleEditClick(payment)}>
-                        <Edit className="h-5 w-5" />
+                      <button 
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors font-medium text-xs" 
+                        onClick={() => handleEditClick(payment)}
+                      >
+                        <Edit className="h-4 w-4" />
+                        Editar
                       </button>
                       <button
-                        className="text-red-600 hover:text-red-900"
+                        className="inline-flex items-center px-2 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors text-xs"
                         onClick={() => handleDeletePayment(payment.id)}
                       >
-                        <Trash2 className="h-5 w-5" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -945,72 +891,54 @@ export function PagosList({ initialFilterStatus }: PagosListProps) {
             </div>
           </div>
 
-          {/* Footer con totales y paginacion */}
-          <div className="border-t border-gray-200 bg-gray-50 p-4">
-            {/* Totales */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="bg-white rounded-lg p-3 border">
-                <p className="text-xs text-gray-500 uppercase">Total Filtrado</p>
-                <p className="text-lg font-bold text-gray-900">{formatCurrency(totals.total)}</p>
-                <p className="text-xs text-gray-500">{totals.count} pagos</p>
+          {/* Footer compacto con totales y paginacion */}
+          <div className="border-t border-gray-200 bg-gray-50 px-3 py-2 flex-shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* Totales en linea */}
+              <div className="flex gap-3 text-xs">
+                <span className="font-medium text-gray-700">Total: <span className="text-gray-900">{formatCurrency(totals.total)}</span></span>
+                <span className="text-yellow-700">Pend: {formatCurrency(totals.pendiente)}</span>
+                <span className="text-green-700">Abon: {formatCurrency(totals.abonado)}</span>
+                <span className="text-red-700">Venc: {formatCurrency(totals.vencido)}</span>
               </div>
-              <div className="bg-white rounded-lg p-3 border border-yellow-200">
-                <p className="text-xs text-yellow-600 uppercase">Pendiente</p>
-                <p className="text-lg font-bold text-yellow-700">{formatCurrency(totals.pendiente)}</p>
-              </div>
-              <div className="bg-white rounded-lg p-3 border border-green-200">
-                <p className="text-xs text-green-600 uppercase">Abonado</p>
-                <p className="text-lg font-bold text-green-700">{formatCurrency(totals.abonado)}</p>
-              </div>
-              <div className="bg-white rounded-lg p-3 border border-red-200">
-                <p className="text-xs text-red-600 uppercase">Vencido</p>
-                <p className="text-lg font-bold text-red-700">{formatCurrency(totals.vencido)}</p>
-              </div>
-            </div>
 
-            {/* Paginacion */}
-            {totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <p className="text-sm text-gray-600">
-                  Mostrando {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, sortedPayments.length)} de {sortedPayments.length} pagos
-                </p>
-                <div className="flex items-center gap-2">
+              {/* Paginacion compacta */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1 text-xs">
                   <button
                     onClick={() => setCurrentPage(1)}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                    className="px-2 py-0.5 border rounded disabled:opacity-50 hover:bg-gray-100"
                   >
-                    Primera
+                    1
                   </button>
                   <button
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                    className="px-2 py-0.5 border rounded disabled:opacity-50 hover:bg-gray-100"
                   >
-                    Anterior
+                    Ant
                   </button>
-                  <span className="px-3 py-1 text-sm font-medium">
-                    Pagina {currentPage} de {totalPages}
-                  </span>
+                  <span className="px-2 font-medium">{currentPage}/{totalPages}</span>
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                    className="px-2 py-0.5 border rounded disabled:opacity-50 hover:bg-gray-100"
                   >
-                    Siguiente
+                    Sig
                   </button>
                   <button
                     onClick={() => setCurrentPage(totalPages)}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                    className="px-2 py-0.5 border rounded disabled:opacity-50 hover:bg-gray-100"
                   >
-                    Ultima
+                    {totalPages}
                   </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Modal de pago */}
