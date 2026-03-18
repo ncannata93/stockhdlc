@@ -55,8 +55,6 @@ export function Inicio() {
           const dataPromise = getServicePayments()
           const payments = (await Promise.race([dataPromise, timeoutPromise])) as any[]
 
-          console.log("🔍 Datos recibidos de la base de datos:", payments?.length || 0, "pagos")
-
           setDbStatus("connected")
           const calculatedStats = calculateStats(payments || [])
           setStats(calculatedStats)
@@ -96,12 +94,7 @@ export function Inicio() {
     const now = new Date()
     now.setHours(0, 0, 0, 0) // Resetear horas para comparación de solo fecha
 
-    console.log("=== CALCULANDO ESTADÍSTICAS REALES ===")
-    console.log("Total de pagos recibidos:", payments.length)
-    console.log("Fecha actual para comparación:", now.toISOString().split("T")[0])
-
     if (payments.length === 0) {
-      console.log("⚠️ No hay pagos para procesar")
       return {
         pendientes: 0,
         abonados: 0,
@@ -119,19 +112,13 @@ export function Inicio() {
       amount: typeof p.amount === "number" ? p.amount : Number.parseFloat(p.amount) || 0,
     }))
 
-    console.log("Pagos válidos procesados:", validPayments.length)
-    console.log("Primeros 3 pagos:", validPayments.slice(0, 3))
-
     // Separar pagos por estado real (no solo por campo status)
     const abonados = validPayments.filter((p) => p.status === "paid" || p.status === "abonado")
-    console.log("Pagos abonados:", abonados.length)
 
     // Para pendientes y vencidos, verificar tanto el status como la fecha
     const pendientesYVencidos = validPayments.filter(
       (p) => p.status === "pending" || p.status === "pendiente" || p.status === "vencido",
     )
-
-    console.log("Pagos pendientes/vencidos por status:", pendientesYVencidos.length)
 
     // Separar entre realmente pendientes y realmente vencidos
     const pendientes = []
@@ -151,29 +138,20 @@ export function Inicio() {
         if (dueDate < now) {
           // Está vencido
           vencidos.push(payment)
-          console.log(`Pago vencido: ${payment.service_name || "Sin nombre"} - Vence: ${payment.due_date}`)
         } else {
           // Está pendiente
           pendientes.push(payment)
         }
-      } catch (error) {
-        console.error("Error parseando fecha:", payment.due_date, error)
+      } catch {
         // Si hay error parseando fecha, considerarlo pendiente
         pendientes.push(payment)
       }
     }
 
-    console.log("Pagos realmente pendientes:", pendientes.length)
-    console.log("Pagos realmente vencidos:", vencidos.length)
-
     // Calcular totales con valores numéricos garantizados
     const totalPendiente = pendientes.reduce((sum, p) => sum + p.amount, 0)
     const totalAbonado = abonados.reduce((sum, p) => sum + p.amount, 0)
     const totalVencido = vencidos.reduce((sum, p) => sum + p.amount, 0)
-
-    console.log("Total pendiente: $", totalPendiente)
-    console.log("Total abonado: $", totalAbonado)
-    console.log("Total vencido: $", totalVencido)
 
     // Pagos próximos a vencer (pendientes en los próximos 30 días)
     const proximosVencer = pendientes
@@ -199,8 +177,6 @@ export function Inicio() {
       })
       .slice(0, 10)
 
-    console.log("Próximos a vencer:", proximosVencer.length)
-
     const stats = {
       pendientes: pendientes.length,
       abonados: abonados.length,
@@ -211,7 +187,6 @@ export function Inicio() {
       proximosVencer,
     }
 
-    console.log("=== ESTADÍSTICAS FINALES ===", stats)
     return stats
   }
 

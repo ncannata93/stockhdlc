@@ -132,9 +132,7 @@ export function PagosList() {
           await updateServicePayment(payment.id, { status: "vencido" })
           updatedPayments.push({ ...payment, status: "vencido" as const })
           hasUpdates = true
-          console.log(`Pago ${payment.id} marcado como vencido automáticamente`)
-        } catch (error) {
-          console.error(`Error actualizando pago ${payment.id}:`, error)
+        } catch {
           updatedPayments.push(payment)
         }
       } else {
@@ -149,145 +147,14 @@ export function PagosList() {
     setLoading(true)
     setError("")
     try {
-      console.log("🔄 INICIANDO CARGA COMPLETA DE DATOS...")
-
       const [paymentsData, hotelsData] = await Promise.all([getServicePayments(), getHotels()])
 
-      console.log("📊 DATOS CARGADOS:")
-      console.log("- Total pagos obtenidos:", paymentsData?.length || 0)
-      console.log("- Total hoteles obtenidos:", hotelsData?.length || 0)
-
-      if (paymentsData && paymentsData.length > 0) {
-        console.log("🔍 ANÁLISIS DETALLADO DE PAGOS:")
-
-        // Análisis por hotel
-        const paymentsByHotel = paymentsData.reduce(
-          (acc, payment) => {
-            const hotelName = payment.hotel_name || "Sin hotel"
-            if (!acc[hotelName]) acc[hotelName] = []
-            acc[hotelName].push(payment)
-            return acc
-          },
-          {} as Record<string, ServicePayment[]>,
-        )
-
-        console.log("🏨 PAGOS POR HOTEL:")
-        Object.entries(paymentsByHotel).forEach(([hotel, payments]) => {
-          console.log(`- ${hotel}: ${payments.length} pagos`)
-        })
-
-        // Análisis específico de Argentina
-        const argentinaPayments = paymentsData.filter(
-          (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
-        )
-        console.log("🇦🇷 PAGOS DE ARGENTINA:", argentinaPayments.length)
-
-        if (argentinaPayments.length > 0) {
-          // Agrupar por mes/año
-          const argentinaByPeriod = argentinaPayments.reduce(
-            (acc, payment) => {
-              const key = `${payment.month}/${payment.year}`
-              if (!acc[key]) acc[key] = []
-              acc[key].push(payment)
-              return acc
-            },
-            {} as Record<string, ServicePayment[]>,
-          )
-
-          console.log("🇦🇷 ARGENTINA POR PERÍODO:")
-          Object.entries(argentinaByPeriod)
-            .sort(([a], [b]) => {
-              const [monthA, yearA] = a.split("/").map(Number)
-              const [monthB, yearB] = b.split("/").map(Number)
-              return yearA !== yearB ? yearA - yearB : monthA - monthB
-            })
-            .forEach(([period, payments]) => {
-              console.log(`- ${period}: ${payments.length} pagos`)
-              payments.forEach((p) => {
-                console.log(`  * ${p.service_name}: $${p.amount} (${p.status})`)
-              })
-            })
-
-          // Verificar específicamente el mes/año actual
-          const currentMonth = currentDate.getMonth() + 1
-          const currentYear = currentDate.getFullYear()
-          const currentPeriod = argentinaPayments.filter((p) => p.month === currentMonth && p.year === currentYear)
-          console.log(
-            `🗓️ ARGENTINA ${MONTHS[currentMonth as keyof typeof MONTHS]} ${currentYear}:`,
-            currentPeriod.length,
-            "pagos",
-          )
-          currentPeriod.forEach((p) => {
-            console.log(`- ${p.service_name}: $${p.amount} (${p.status}) - ID: ${p.id}`)
-          })
-        }
-
-        // Análisis por año
-        const paymentsByYear = paymentsData.reduce(
-          (acc, payment) => {
-            acc[payment.year] = (acc[payment.year] || 0) + 1
-            return acc
-          },
-          {} as Record<number, number>,
-        )
-
-        console.log("📅 PAGOS POR AÑO:")
-        Object.entries(paymentsByYear)
-          .sort(([a], [b]) => Number(b) - Number(a))
-          .forEach(([year, count]) => {
-            console.log(`- ${year}: ${count} pagos`)
-          })
-
-        // Análisis por estado
-        const paymentsByStatus = paymentsData.reduce(
-          (acc, payment) => {
-            acc[payment.status] = (acc[payment.status] || 0) + 1
-            return acc
-          },
-          {} as Record<string, number>,
-        )
-
-        console.log("📊 PAGOS POR ESTADO:")
-        Object.entries(paymentsByStatus).forEach(([status, count]) => {
-          console.log(`- ${status}: ${count} pagos`)
-        })
-
-        // Verificar estructura de datos
-        console.log("🔍 ESTRUCTURA DEL PRIMER PAGO:")
-        console.log(paymentsData[0])
-
-        // Verificar si hay pagos sin hotel_name
-        const paymentsWithoutHotel = paymentsData.filter((p) => !p.hotel_name)
-        if (paymentsWithoutHotel.length > 0) {
-          console.warn("⚠️ PAGOS SIN HOTEL_NAME:", paymentsWithoutHotel.length)
-          console.log("Primeros 3:", paymentsWithoutHotel.slice(0, 3))
-        }
-      } else {
-        console.warn("⚠️ NO SE ENCONTRARON PAGOS")
-      }
-
       // Actualizar pagos vencidos automáticamente
-      const { updatedPayments, hasUpdates } = await updateOverduePayments(paymentsData || [])
+      const { updatedPayments } = await updateOverduePayments(paymentsData || [])
 
       setPayments(updatedPayments)
       setHotels(hotelsData || [])
-
-      if (hasUpdates) {
-        console.log("✅ Se actualizaron pagos vencidos automáticamente")
-      }
-
-      console.log("✅ CARGA COMPLETA FINALIZADA")
-      console.log("- Pagos en estado:", updatedPayments.length)
-      console.log("- Hoteles en estado:", hotelsData?.length || 0)
-
-      // Log de filtros por defecto aplicados
-      const currentMonth = currentDate.getMonth() + 1
-      const currentYear = currentDate.getFullYear()
-      const currentMonthPayments = updatedPayments.filter((p) => p.month === currentMonth && p.year === currentYear)
-      console.log(`🎯 FILTROS POR DEFECTO APLICADOS: ${MONTHS[currentMonth as keyof typeof MONTHS]} ${currentYear}`)
-      console.log(`📊 Pagos del mes actual: ${currentMonthPayments.length}`)
-    } catch (error) {
-      console.error("❌ ERROR AL CARGAR DATOS:", error)
+    } catch {
       setError("Error al cargar los datos. Por favor, intenta nuevamente.")
     } finally {
       setLoading(false)
@@ -308,8 +175,7 @@ export function PagosList() {
       try {
         await deleteServicePayment(id)
         await loadData()
-      } catch (error) {
-        console.error("Error al eliminar pago:", error)
+      } catch {
         alert("Error al eliminar el pago")
       }
     }
@@ -369,8 +235,7 @@ export function PagosList() {
       setShowEditModal(false)
       setEditingPayment(null)
       await loadData()
-    } catch (error) {
-      console.error("Error al actualizar pago:", error)
+    } catch {
       alert("Error al actualizar el pago. Intente nuevamente.")
     }
   }
@@ -409,8 +274,7 @@ export function PagosList() {
       setShowPaymentModal(false)
       setSelectedPayment(null)
       await loadData()
-    } catch (error) {
-      console.error("Error al marcar como pagado:", error)
+    } catch {
       alert("Error al marcar el pago como abonado")
     }
   }
@@ -471,17 +335,6 @@ export function PagosList() {
     const matchesYear = filterYear === "" || payment.year === Number(filterYear)
 
     return matchesSearch && matchesHotel && matchesStatus && matchesMonth && matchesYear
-  })
-
-  // Debug de filtros
-  console.log("🔍 FILTROS APLICADOS:", {
-    searchTerm,
-    filterHotel,
-    filterStatus,
-    filterMonth: filterMonth ? `${MONTHS[Number(filterMonth) as keyof typeof MONTHS]} (${filterMonth})` : "Todos",
-    filterYear: filterYear || "Todos",
-    totalPayments: payments.length,
-    filteredPayments: filteredPayments.length,
   })
 
   // Ordenar los pagos según el campo y dirección seleccionados
@@ -549,7 +402,6 @@ export function PagosList() {
     setFilterStatus("")
     setFilterMonth("")
     setFilterYear("")
-    console.log("🧹 Filtros limpiados - mostrando todos los pagos")
   }
 
   // Función para restablecer filtros por defecto (mes y año actual)
@@ -562,14 +414,10 @@ export function PagosList() {
     setFilterStatus("")
     setFilterMonth(currentMonth)
     setFilterYear(currentYear)
-    console.log(
-      `🎯 Filtros restablecidos al mes actual: ${MONTHS[Number(currentMonth) as keyof typeof MONTHS]} ${currentYear}`,
-    )
   }
 
   // Función para recargar datos
   const handleRefresh = () => {
-    console.log("🔄 Recargando datos manualmente...")
     loadData()
   }
 

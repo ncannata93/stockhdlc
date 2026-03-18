@@ -57,20 +57,11 @@ export function ServicesList() {
     setLoading(true)
     setError("")
     try {
-      console.log("🔄 Cargando servicios y hoteles...")
-
       const [servicesData, hotelsData] = await Promise.all([getServices(), getHotels()])
-
-      console.log("📊 Datos cargados:")
-      console.log("- Servicios:", servicesData?.length || 0)
-      console.log("- Hoteles:", hotelsData?.length || 0)
 
       setServices(servicesData || [])
       setHotels(hotelsData || [])
-
-      console.log("✅ Datos cargados exitosamente")
-    } catch (error) {
-      console.error("❌ Error al cargar datos:", error)
+    } catch {
       setError("Error al cargar los datos. Por favor, intenta nuevamente.")
     } finally {
       setLoading(false)
@@ -86,8 +77,7 @@ export function ServicesList() {
       try {
         await deleteService(id)
         await loadData()
-      } catch (error) {
-        console.error("Error al eliminar servicio:", error)
+      } catch {
         alert("Error al eliminar el servicio")
       }
     }
@@ -125,8 +115,7 @@ export function ServicesList() {
       setShowEditModal(false)
       setEditingService(null)
       await loadData()
-    } catch (error) {
-      console.error("Error al actualizar servicio:", error)
+    } catch {
       alert("Error al actualizar el servicio. Intente nuevamente.")
     }
   }
