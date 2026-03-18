@@ -495,42 +495,6 @@ export function PagosList() {
           </div>
         </div>
 
-        {/* Información de debug */}
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="text-sm text-blue-800">
-            <strong>Debug Info:</strong>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-              <div>Pagos cargados: {payments.length}</div>
-              <div>Hoteles: {hotels.length}</div>
-              <div>
-                Filtros activos:{" "}
-                {[searchTerm, filterHotel, filterStatus, filterMonth, filterYear].filter((f) => f !== "").length}
-              </div>
-              <div>Mostrando: {filteredPayments.length}</div>
-            </div>
-            {/* Debug específico para Argentina */}
-            {(() => {
-              const argentinaPayments = payments.filter(
-                (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
-              )
-              const currentMonth = currentDate.getMonth() + 1
-              const currentYear = currentDate.getFullYear()
-              const argentinaCurrentMonth = argentinaPayments.filter(
-                (p) => p.month === currentMonth && p.year === currentYear,
-              )
-              return (
-                <div className="mt-2 pt-2 border-t border-blue-300">
-                  <div>Argentina total: {argentinaPayments.length} pagos</div>
-                  <div>
-                    Argentina {MONTHS[currentMonth as keyof typeof MONTHS]} {currentYear}:{" "}
-                    {argentinaCurrentMonth.length} pagos
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-        </div>
-
         {/* Filtros */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Búsqueda */}
