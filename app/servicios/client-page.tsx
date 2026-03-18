@@ -9,8 +9,9 @@ import { PagosList } from "@/components/servicios/pagos-list"
 import { Estadisticas } from "@/components/servicios/estadisticas"
 import { ServicesList } from "@/components/servicios/servicios-list"
 import { Mantenimiento } from "@/components/servicios/mantenimiento"
+import { HotelesList } from "@/components/servicios/hoteles-list"
 
-type TabType = "inicio" | "pagos" | "servicios" | "estadisticas" | "mantenimiento"
+type TabType = "inicio" | "pagos" | "servicios" | "hoteles" | "estadisticas" | "mantenimiento"
 
 interface TabConfig {
   id: TabType
@@ -21,6 +22,7 @@ const TABS: TabConfig[] = [
   { id: "inicio", label: "Inicio" },
   { id: "pagos", label: "Pagos" },
   { id: "servicios", label: "Servicios" },
+  { id: "hoteles", label: "Hoteles" },
   { id: "estadisticas", label: "Estadisticas" },
   { id: "mantenimiento", label: "Mantenimiento" },
 ]
@@ -73,6 +75,7 @@ export default function ServiceClientPage() {
             {activeTab === "inicio" && <Inicio onNavigate={setActiveTab} />}
             {activeTab === "pagos" && <PagosList initialFilterStatus={filterStatus} />}
             {activeTab === "servicios" && <ServicesList />}
+            {activeTab === "hoteles" && <HotelesList />}
             {activeTab === "estadisticas" && <Estadisticas />}
             {activeTab === "mantenimiento" && <Mantenimiento />}
           </div>

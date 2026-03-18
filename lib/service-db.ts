@@ -58,6 +58,86 @@ export async function getHotelNameById(hotelId: string): Promise<string> {
   }
 }
 
+// Función para agregar hotel
+export async function addHotel(hotel: { name: string; code?: string }): Promise<Hotel> {
+  try {
+    console.log("Agregando hotel:", hotel.name)
+
+    const newHotel = {
+      id: generateUniqueId(),
+      name: hotel.name,
+      code: hotel.code || hotel.name.substring(0, 3).toUpperCase(),
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data, error } = await supabase.from("hotels").insert([newHotel]).select().single()
+
+    if (error) {
+      console.error("Error de Supabase al agregar hotel:", error)
+      throw error
+    }
+
+    console.log("Hotel agregado a Supabase:", data)
+    return data
+  } catch (error) {
+    console.error("Error al agregar hotel:", error)
+    throw error
+  }
+}
+
+// Función para actualizar hotel
+export async function updateHotel(id: string, updates: { name?: string; code?: string; active?: boolean }): Promise<Hotel> {
+  try {
+    console.log("Actualizando hotel:", id)
+
+    const { data, error } = await supabase
+      .from("hotels")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error de Supabase al actualizar hotel:", error)
+      throw error
+    }
+
+    console.log("Hotel actualizado:", data)
+    return data
+  } catch (error) {
+    console.error("Error al actualizar hotel:", error)
+    throw error
+  }
+}
+
+// Función para eliminar hotel
+export async function deleteHotel(id: string): Promise<void> {
+  try {
+    console.log("Eliminando hotel:", id)
+
+    // Verificar si hay servicios asociados
+    const { data: services } = await supabase.from("services").select("id").eq("hotel_id", id)
+    
+    if (services && services.length > 0) {
+      throw new Error(`No se puede eliminar el hotel porque tiene ${services.length} servicio(s) asociado(s)`)
+    }
+
+    const { error } = await supabase.from("hotels").delete().eq("id", id)
+
+    if (error) {
+      console.error("Error de Supabase al eliminar hotel:", error)
+      throw error
+    }
+
+    console.log("Hotel eliminado")
+  } catch (error) {
+    console.error("Error al eliminar hotel:", error)
+    throw error
+  }
+}
+
 // Función para agregar servicio
 export async function addService(service: Omit<Service, "id" | "created_at">): Promise<Service> {
   try {
