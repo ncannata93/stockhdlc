@@ -9,7 +9,10 @@ import {
   deleteServicePayment,
   markPaymentAsPaid,
   updateServicePayment,
+  getServices,
+  addServicePayment,
 } from "@/lib/service-db"
+import type { Service } from "@/lib/service-types"
 import type { ServicePayment, Hotel } from "@/lib/service-types"
 import { PAYMENT_METHODS } from "@/lib/service-types"
 import {
@@ -55,19 +58,29 @@ const STATUS_LABELS = {
   vencido: "Vencido",
 }
 
-export function PagosList() {
+interface PagosListProps {
+  initialFilterStatus?: string | null
+}
+
+const ITEMS_PER_PAGE = 50
+
+export function PagosList({ initialFilterStatus }: PagosListProps) {
   const [payments, setPayments] = useState<ServicePayment[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
+  const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>("")
   const [searchTerm, setSearchTerm] = useState("")
   const [filterHotel, setFilterHotel] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
+  const [filterStatus, setFilterStatus] = useState(initialFilterStatus || "")
 
-  // Inicializar filtros con mes y año actual
+  // Inicializar filtros con mes y ano actual (sin filtro si viene de acceso rapido)
   const currentDate = new Date()
-  const [filterMonth, setFilterMonth] = useState((currentDate.getMonth() + 1).toString())
-  const [filterYear, setFilterYear] = useState(currentDate.getFullYear().toString())
+  const [filterMonth, setFilterMonth] = useState(initialFilterStatus ? "" : (currentDate.getMonth() + 1).toString())
+  const [filterYear, setFilterYear] = useState(initialFilterStatus ? "" : currentDate.getFullYear().toString())
+  
+  // Paginacion
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Estado para ordenamiento
   const [sortField, setSortField] = useState<string>("")
@@ -80,7 +93,18 @@ export function PagosList() {
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [paymentMethod, setPaymentMethod] = useState("")
 
-  // Estado para modal de edición
+  // Estado para modal de agregar pago
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [addFormData, setAddFormData] = useState({
+    serviceId: "",
+    hotelId: "",
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+    amount: "",
+    dueDate: "",
+  })
+
+  // Estado para modal de edicion
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingPayment, setEditingPayment] = useState<ServicePayment | null>(null)
   const [editFormData, setEditFormData] = useState({
@@ -132,9 +156,7 @@ export function PagosList() {
           await updateServicePayment(payment.id, { status: "vencido" })
           updatedPayments.push({ ...payment, status: "vencido" as const })
           hasUpdates = true
-          console.log(`Pago ${payment.id} marcado como vencido automáticamente`)
-        } catch (error) {
-          console.error(`Error actualizando pago ${payment.id}:`, error)
+        } catch {
           updatedPayments.push(payment)
         }
       } else {
@@ -149,148 +171,56 @@ export function PagosList() {
     setLoading(true)
     setError("")
     try {
-      console.log("🔄 INICIANDO CARGA COMPLETA DE DATOS...")
+      const [paymentsData, hotelsData, servicesData] = await Promise.all([
+        getServicePayments(), 
+        getHotels(),
+        getServices()
+      ])
 
-      const [paymentsData, hotelsData] = await Promise.all([getServicePayments(), getHotels()])
-
-      console.log("📊 DATOS CARGADOS:")
-      console.log("- Total pagos obtenidos:", paymentsData?.length || 0)
-      console.log("- Total hoteles obtenidos:", hotelsData?.length || 0)
-
-      if (paymentsData && paymentsData.length > 0) {
-        console.log("🔍 ANÁLISIS DETALLADO DE PAGOS:")
-
-        // Análisis por hotel
-        const paymentsByHotel = paymentsData.reduce(
-          (acc, payment) => {
-            const hotelName = payment.hotel_name || "Sin hotel"
-            if (!acc[hotelName]) acc[hotelName] = []
-            acc[hotelName].push(payment)
-            return acc
-          },
-          {} as Record<string, ServicePayment[]>,
-        )
-
-        console.log("🏨 PAGOS POR HOTEL:")
-        Object.entries(paymentsByHotel).forEach(([hotel, payments]) => {
-          console.log(`- ${hotel}: ${payments.length} pagos`)
-        })
-
-        // Análisis específico de Argentina
-        const argentinaPayments = paymentsData.filter(
-          (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
-        )
-        console.log("🇦🇷 PAGOS DE ARGENTINA:", argentinaPayments.length)
-
-        if (argentinaPayments.length > 0) {
-          // Agrupar por mes/año
-          const argentinaByPeriod = argentinaPayments.reduce(
-            (acc, payment) => {
-              const key = `${payment.month}/${payment.year}`
-              if (!acc[key]) acc[key] = []
-              acc[key].push(payment)
-              return acc
-            },
-            {} as Record<string, ServicePayment[]>,
-          )
-
-          console.log("🇦🇷 ARGENTINA POR PERÍODO:")
-          Object.entries(argentinaByPeriod)
-            .sort(([a], [b]) => {
-              const [monthA, yearA] = a.split("/").map(Number)
-              const [monthB, yearB] = b.split("/").map(Number)
-              return yearA !== yearB ? yearA - yearB : monthA - monthB
-            })
-            .forEach(([period, payments]) => {
-              console.log(`- ${period}: ${payments.length} pagos`)
-              payments.forEach((p) => {
-                console.log(`  * ${p.service_name}: $${p.amount} (${p.status})`)
-              })
-            })
-
-          // Verificar específicamente el mes/año actual
-          const currentMonth = currentDate.getMonth() + 1
-          const currentYear = currentDate.getFullYear()
-          const currentPeriod = argentinaPayments.filter((p) => p.month === currentMonth && p.year === currentYear)
-          console.log(
-            `🗓️ ARGENTINA ${MONTHS[currentMonth as keyof typeof MONTHS]} ${currentYear}:`,
-            currentPeriod.length,
-            "pagos",
-          )
-          currentPeriod.forEach((p) => {
-            console.log(`- ${p.service_name}: $${p.amount} (${p.status}) - ID: ${p.id}`)
-          })
-        }
-
-        // Análisis por año
-        const paymentsByYear = paymentsData.reduce(
-          (acc, payment) => {
-            acc[payment.year] = (acc[payment.year] || 0) + 1
-            return acc
-          },
-          {} as Record<number, number>,
-        )
-
-        console.log("📅 PAGOS POR AÑO:")
-        Object.entries(paymentsByYear)
-          .sort(([a], [b]) => Number(b) - Number(a))
-          .forEach(([year, count]) => {
-            console.log(`- ${year}: ${count} pagos`)
-          })
-
-        // Análisis por estado
-        const paymentsByStatus = paymentsData.reduce(
-          (acc, payment) => {
-            acc[payment.status] = (acc[payment.status] || 0) + 1
-            return acc
-          },
-          {} as Record<string, number>,
-        )
-
-        console.log("📊 PAGOS POR ESTADO:")
-        Object.entries(paymentsByStatus).forEach(([status, count]) => {
-          console.log(`- ${status}: ${count} pagos`)
-        })
-
-        // Verificar estructura de datos
-        console.log("🔍 ESTRUCTURA DEL PRIMER PAGO:")
-        console.log(paymentsData[0])
-
-        // Verificar si hay pagos sin hotel_name
-        const paymentsWithoutHotel = paymentsData.filter((p) => !p.hotel_name)
-        if (paymentsWithoutHotel.length > 0) {
-          console.warn("⚠️ PAGOS SIN HOTEL_NAME:", paymentsWithoutHotel.length)
-          console.log("Primeros 3:", paymentsWithoutHotel.slice(0, 3))
-        }
-      } else {
-        console.warn("⚠️ NO SE ENCONTRARON PAGOS")
-      }
-
-      // Actualizar pagos vencidos automáticamente
-      const { updatedPayments, hasUpdates } = await updateOverduePayments(paymentsData || [])
+      // Actualizar pagos vencidos automaticamente
+      const { updatedPayments } = await updateOverduePayments(paymentsData || [])
 
       setPayments(updatedPayments)
       setHotels(hotelsData || [])
-
-      if (hasUpdates) {
-        console.log("✅ Se actualizaron pagos vencidos automáticamente")
-      }
-
-      console.log("✅ CARGA COMPLETA FINALIZADA")
-      console.log("- Pagos en estado:", updatedPayments.length)
-      console.log("- Hoteles en estado:", hotelsData?.length || 0)
-
-      // Log de filtros por defecto aplicados
-      const currentMonth = currentDate.getMonth() + 1
-      const currentYear = currentDate.getFullYear()
-      const currentMonthPayments = updatedPayments.filter((p) => p.month === currentMonth && p.year === currentYear)
-      console.log(`🎯 FILTROS POR DEFECTO APLICADOS: ${MONTHS[currentMonth as keyof typeof MONTHS]} ${currentYear}`)
-      console.log(`📊 Pagos del mes actual: ${currentMonthPayments.length}`)
-    } catch (error) {
-      console.error("❌ ERROR AL CARGAR DATOS:", error)
+      setServices(servicesData || [])
+    } catch {
       setError("Error al cargar los datos. Por favor, intenta nuevamente.")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAddPayment = async () => {
+    if (!addFormData.serviceId || !addFormData.hotelId || !addFormData.amount || !addFormData.dueDate) {
+      alert("Por favor complete todos los campos requeridos")
+      return
+    }
+
+    try {
+      const selectedService = services.find(s => s.id === addFormData.serviceId)
+      await addServicePayment({
+        service_id: addFormData.serviceId,
+        service_name: selectedService?.name || "",
+        hotel_id: addFormData.hotelId,
+        month: addFormData.month,
+        year: addFormData.year,
+        amount: Number(addFormData.amount),
+        due_date: addFormData.dueDate,
+        status: "pendiente",
+      })
+      
+      setShowAddModal(false)
+      setAddFormData({
+        serviceId: "",
+        hotelId: "",
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear(),
+        amount: "",
+        dueDate: "",
+      })
+      await loadData()
+    } catch {
+      alert("Error al crear el pago. Intente nuevamente.")
     }
   }
 
@@ -308,8 +238,7 @@ export function PagosList() {
       try {
         await deleteServicePayment(id)
         await loadData()
-      } catch (error) {
-        console.error("Error al eliminar pago:", error)
+      } catch {
         alert("Error al eliminar el pago")
       }
     }
@@ -369,8 +298,7 @@ export function PagosList() {
       setShowEditModal(false)
       setEditingPayment(null)
       await loadData()
-    } catch (error) {
-      console.error("Error al actualizar pago:", error)
+    } catch {
       alert("Error al actualizar el pago. Intente nuevamente.")
     }
   }
@@ -409,8 +337,7 @@ export function PagosList() {
       setShowPaymentModal(false)
       setSelectedPayment(null)
       await loadData()
-    } catch (error) {
-      console.error("Error al marcar como pagado:", error)
+    } catch {
       alert("Error al marcar el pago como abonado")
     }
   }
@@ -473,18 +400,16 @@ export function PagosList() {
     return matchesSearch && matchesHotel && matchesStatus && matchesMonth && matchesYear
   })
 
-  // Debug de filtros
-  console.log("🔍 FILTROS APLICADOS:", {
-    searchTerm,
-    filterHotel,
-    filterStatus,
-    filterMonth: filterMonth ? `${MONTHS[Number(filterMonth) as keyof typeof MONTHS]} (${filterMonth})` : "Todos",
-    filterYear: filterYear || "Todos",
-    totalPayments: payments.length,
-    filteredPayments: filteredPayments.length,
-  })
+  // Calcular totales de los pagos filtrados
+  const totals = {
+    count: filteredPayments.length,
+    total: filteredPayments.reduce((sum, p) => sum + p.amount, 0),
+    pendiente: filteredPayments.filter(p => p.status === "pendiente").reduce((sum, p) => sum + p.amount, 0),
+    abonado: filteredPayments.filter(p => p.status === "abonado" || p.status === "paid").reduce((sum, p) => sum + p.amount, 0),
+    vencido: filteredPayments.filter(p => p.status === "vencido").reduce((sum, p) => sum + p.amount, 0),
+  }
 
-  // Ordenar los pagos según el campo y dirección seleccionados
+  // Ordenar los pagos segun el campo y direccion seleccionados
   const sortedPayments = [...filteredPayments].sort((a, b) => {
     if (!sortField) return 0
 
@@ -531,6 +456,18 @@ export function PagosList() {
     return 0
   })
 
+  // Calcular paginacion
+  const totalPages = Math.ceil(sortedPayments.length / ITEMS_PER_PAGE)
+  const paginatedPayments = sortedPayments.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  )
+
+  // Reset a pagina 1 cuando cambian los filtros
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, filterHotel, filterStatus, filterMonth, filterYear])
+
   // Renderizar indicador de ordenamiento
   const renderSortIndicator = (field: string) => {
     if (sortField !== field) return null
@@ -549,7 +486,6 @@ export function PagosList() {
     setFilterStatus("")
     setFilterMonth("")
     setFilterYear("")
-    console.log("🧹 Filtros limpiados - mostrando todos los pagos")
   }
 
   // Función para restablecer filtros por defecto (mes y año actual)
@@ -562,14 +498,10 @@ export function PagosList() {
     setFilterStatus("")
     setFilterMonth(currentMonth)
     setFilterYear(currentYear)
-    console.log(
-      `🎯 Filtros restablecidos al mes actual: ${MONTHS[Number(currentMonth) as keyof typeof MONTHS]} ${currentYear}`,
-    )
   }
 
   // Función para recargar datos
   const handleRefresh = () => {
-    console.log("🔄 Recargando datos manualmente...")
     loadData()
   }
 
@@ -638,48 +570,12 @@ export function PagosList() {
               Ver Todos
             </button>
             <button
-              onClick={() => (window.location.href = "/servicios?tab=agregar-pago")}
+              onClick={() => setShowAddModal(true)}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Agregar Pago
             </button>
-          </div>
-        </div>
-
-        {/* Información de debug */}
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="text-sm text-blue-800">
-            <strong>Debug Info:</strong>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-              <div>Pagos cargados: {payments.length}</div>
-              <div>Hoteles: {hotels.length}</div>
-              <div>
-                Filtros activos:{" "}
-                {[searchTerm, filterHotel, filterStatus, filterMonth, filterYear].filter((f) => f !== "").length}
-              </div>
-              <div>Mostrando: {filteredPayments.length}</div>
-            </div>
-            {/* Debug específico para Argentina */}
-            {(() => {
-              const argentinaPayments = payments.filter(
-                (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
-              )
-              const currentMonth = currentDate.getMonth() + 1
-              const currentYear = currentDate.getFullYear()
-              const argentinaCurrentMonth = argentinaPayments.filter(
-                (p) => p.month === currentMonth && p.year === currentYear,
-              )
-              return (
-                <div className="mt-2 pt-2 border-t border-blue-300">
-                  <div>Argentina total: {argentinaPayments.length} pagos</div>
-                  <div>
-                    Argentina {MONTHS[currentMonth as keyof typeof MONTHS]} {currentYear}:{" "}
-                    {argentinaCurrentMonth.length} pagos
-                  </div>
-                </div>
-              )
-            })()}
           </div>
         </div>
 
@@ -860,7 +756,7 @@ export function PagosList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {sortedPayments.map((payment) => (
+                {paginatedPayments.map((payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -946,10 +842,10 @@ export function PagosList() {
             </table>
           </div>
 
-          {/* Vista móvil - Tarjetas */}
+          {/* Vista movil - Tarjetas */}
           <div className="lg:hidden">
             <div className="space-y-4 p-4">
-              {sortedPayments.map((payment) => (
+              {paginatedPayments.map((payment) => (
                 <div key={payment.id} className="bg-white border rounded-lg shadow-sm p-4">
                   <div className="flex justify-between items-start mb-3">
                     <div>
@@ -1047,6 +943,72 @@ export function PagosList() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Footer con totales y paginacion */}
+          <div className="border-t border-gray-200 bg-gray-50 p-4">
+            {/* Totales */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-white rounded-lg p-3 border">
+                <p className="text-xs text-gray-500 uppercase">Total Filtrado</p>
+                <p className="text-lg font-bold text-gray-900">{formatCurrency(totals.total)}</p>
+                <p className="text-xs text-gray-500">{totals.count} pagos</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-yellow-200">
+                <p className="text-xs text-yellow-600 uppercase">Pendiente</p>
+                <p className="text-lg font-bold text-yellow-700">{formatCurrency(totals.pendiente)}</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-green-200">
+                <p className="text-xs text-green-600 uppercase">Abonado</p>
+                <p className="text-lg font-bold text-green-700">{formatCurrency(totals.abonado)}</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-red-200">
+                <p className="text-xs text-red-600 uppercase">Vencido</p>
+                <p className="text-lg font-bold text-red-700">{formatCurrency(totals.vencido)}</p>
+              </div>
+            </div>
+
+            {/* Paginacion */}
+            {totalPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-sm text-gray-600">
+                  Mostrando {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, sortedPayments.length)} de {sortedPayments.length} pagos
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                  >
+                    Primera
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                  >
+                    Anterior
+                  </button>
+                  <span className="px-3 py-1 text-sm font-medium">
+                    Pagina {currentPage} de {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                  >
+                    Siguiente
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 text-sm border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                  >
+                    Ultima
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -1311,6 +1273,115 @@ export function PagosList() {
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
               >
                 Actualizar Pago
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de agregar pago */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Agregar Nuevo Pago</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hotel *</label>
+                <select
+                  value={addFormData.hotelId}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, hotelId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccione un hotel</option>
+                  {hotels.map((hotel) => (
+                    <option key={hotel.id} value={hotel.id}>{hotel.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Servicio *</label>
+                <select
+                  value={addFormData.serviceId}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, serviceId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccione un servicio</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>{service.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mes *</label>
+                  <select
+                    value={addFormData.month}
+                    onChange={(e) => setAddFormData(prev => ({ ...prev, month: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Object.entries(MONTHS).map(([num, name]) => (
+                      <option key={num} value={num}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ano *</label>
+                  <select
+                    value={addFormData.year}
+                    onChange={(e) => setAddFormData(prev => ({ ...prev, year: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500">$</span>
+                  </div>
+                  <input
+                    type="number"
+                    value={addFormData.amount}
+                    onChange={(e) => setAddFormData(prev => ({ ...prev, amount: e.target.value }))}
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Vencimiento *</label>
+                <input
+                  type="date"
+                  value={addFormData.dueDate}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAddPayment}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+              >
+                Crear Pago
               </button>
             </div>
           </div>

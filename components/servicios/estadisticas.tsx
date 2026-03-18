@@ -21,7 +21,8 @@ import {
   Area,
   AreaChart,
 } from "recharts"
-import { Calendar, DollarSign, TrendingUp, Download, HotelIcon, Wrench } from "lucide-react"
+import { Calendar, DollarSign, TrendingUp, TrendingDown, Download, HotelIcon, Wrench, AlertTriangle, FileSpreadsheet } from "lucide-react"
+import * as XLSX from "xlsx"
 
 export function Estadisticas() {
   const formatCurrency = (amount: number) => {
@@ -184,30 +185,118 @@ export function Estadisticas() {
     }
   })
 
-  // Colores para gráficos
+  // Comparativa con ano anterior
+  const currentYear = new Date().getFullYear()
+  const lastYear = currentYear - 1
+  
+  const currentYearTotal = payments
+    .filter(p => p.year === currentYear)
+    .reduce((sum, p) => sum + p.amount, 0)
+  
+  const lastYearTotal = payments
+    .filter(p => p.year === lastYear)
+    .reduce((sum, p) => sum + p.amount, 0)
+  
+  const yearVariation = lastYearTotal > 0 
+    ? ((currentYearTotal - lastYearTotal) / lastYearTotal * 100)
+    : 0
+
+  // Comparativa mensual (mes actual vs mismo mes ano anterior)
+  const currentMonth = new Date().getMonth() + 1
+  const currentMonthTotal = payments
+    .filter(p => p.month === currentMonth && p.year === currentYear)
+    .reduce((sum, p) => sum + p.amount, 0)
+  
+  const lastYearSameMonthTotal = payments
+    .filter(p => p.month === currentMonth && p.year === lastYear)
+    .reduce((sum, p) => sum + p.amount, 0)
+
+  const monthVariation = lastYearSameMonthTotal > 0
+    ? ((currentMonthTotal - lastYearSameMonthTotal) / lastYearSameMonthTotal * 100)
+    : 0
+
+  // Alertas de gastos - servicios que aumentaron mas del 20%
+  const serviceAlerts = services
+    .map(service => {
+      const currentYearPayments = payments.filter(p => p.service_id === service.id && p.year === currentYear)
+      const lastYearPayments = payments.filter(p => p.service_id === service.id && p.year === lastYear)
+      
+      const currentTotal = currentYearPayments.reduce((sum, p) => sum + p.amount, 0)
+      const lastTotal = lastYearPayments.reduce((sum, p) => sum + p.amount, 0)
+      
+      const variation = lastTotal > 0 ? ((currentTotal - lastTotal) / lastTotal * 100) : 0
+      
+      return {
+        service,
+        currentTotal,
+        lastTotal,
+        variation,
+        hotelName: hotels.find(h => h.id === service.hotel_id)?.name || "N/A"
+      }
+    })
+    .filter(s => s.variation > 20 && s.lastTotal > 0)
+    .sort((a, b) => b.variation - a.variation)
+
+  // Colores para graficos
   const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#84CC16", "#F97316"]
 
-  const exportData = () => {
-    const dataToExport = {
-      resumen: {
-        totalAnual: filteredPayments.reduce((sum, p) => sum + p.amount, 0),
-        promedioMensual: filteredPayments.reduce((sum, p) => sum + p.amount, 0) / 12,
-        totalServicios: services.length,
-        totalHoteles: hotels.length,
-      },
-      porMes: monthlyExpenses,
-      porHotel: hotelStats,
-      porCategoria: categoryStats,
-      tendencias: trendData,
+  const exportToExcel = () => {
+    const wb = XLSX.utils.book_new()
+
+    // Hoja 1: Resumen
+    const resumenData = [
+      ["Estadisticas de Servicios", ""],
+      ["", ""],
+      ["Metrica", "Valor"],
+      ["Total Anual", filteredPayments.reduce((sum, p) => sum + p.amount, 0)],
+      ["Promedio Mensual", filteredPayments.reduce((sum, p) => sum + p.amount, 0) / 12],
+      ["Total Servicios", services.length],
+      ["Total Hoteles", hotels.length],
+      ["", ""],
+      ["Comparativa Anual", ""],
+      [`Total ${currentYear}`, currentYearTotal],
+      [`Total ${lastYear}`, lastYearTotal],
+      ["Variacion %", yearVariation.toFixed(2) + "%"],
+    ]
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumenData)
+    XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen")
+
+    // Hoja 2: Por Mes
+    const mesHeaders = ["Mes", "Total", "Abonado", "Pendiente", "Vencido", "Cantidad"]
+    const mesData = [mesHeaders, ...monthlyExpenses.map(m => [
+      m.name, m.total, m.abonado, m.pendiente, m.vencido, m.count
+    ])]
+    const wsMes = XLSX.utils.aoa_to_sheet(mesData)
+    XLSX.utils.book_append_sheet(wb, wsMes, "Por Mes")
+
+    // Hoja 3: Por Hotel
+    const hotelHeaders = ["Hotel", "Codigo", "Total", "Abonado", "Pendiente", "Vencido", "Servicios", "Pagos"]
+    const hotelData = [hotelHeaders, ...hotelStats.map(h => [
+      h.name, h.code, h.total, h.abonado, h.pendiente, h.vencido, h.servicesCount, h.paymentsCount
+    ])]
+    const wsHotel = XLSX.utils.aoa_to_sheet(hotelData)
+    XLSX.utils.book_append_sheet(wb, wsHotel, "Por Hotel")
+
+    // Hoja 4: Por Categoria
+    const catHeaders = ["Categoria", "Total", "Servicios", "Pagos", "Promedio por Pago"]
+    const catData = [catHeaders, ...categoryStats.map(c => [
+      c.name, c.total, c.servicesCount, c.paymentsCount, c.avgAmount
+    ])]
+    const wsCat = XLSX.utils.aoa_to_sheet(catData)
+    XLSX.utils.book_append_sheet(wb, wsCat, "Por Categoria")
+
+    // Hoja 5: Alertas
+    if (serviceAlerts.length > 0) {
+      const alertHeaders = ["Servicio", "Hotel", `Total ${currentYear}`, `Total ${lastYear}`, "Variacion %"]
+      const alertData = [alertHeaders, ...serviceAlerts.map(a => [
+        a.service.name, a.hotelName, a.currentTotal, a.lastTotal, a.variation.toFixed(2) + "%"
+      ])]
+      const wsAlerts = XLSX.utils.aoa_to_sheet(alertData)
+      XLSX.utils.book_append_sheet(wb, wsAlerts, "Alertas")
     }
 
-    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `estadisticas-servicios-${filters.year}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    // Descargar archivo
+    XLSX.writeFile(wb, `estadisticas-servicios-${filters.year || "todos"}.xlsx`)
   }
 
   if (loading) {
@@ -228,11 +317,11 @@ export function Estadisticas() {
             <p className="text-gray-600">Análisis detallado de gastos y servicios</p>
           </div>
           <button
-            onClick={exportData}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
-            <Download className="h-4 w-4" />
-            Exportar Datos
+            <FileSpreadsheet className="h-4 w-4" />
+            Exportar Excel
           </button>
         </div>
 
@@ -335,51 +424,93 @@ export function Estadisticas() {
       </div>
 
       {/* Resumen general */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Anual</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {formatCurrency(filteredPayments.reduce((sum, p) => sum + p.amount, 0))}
-              </p>
+              <p className="text-xs font-medium text-gray-500 uppercase">Total {currentYear}</p>
+              <p className="text-xl font-bold text-blue-600">{formatCurrency(currentYearTotal)}</p>
+              <div className="flex items-center mt-1">
+                {yearVariation >= 0 ? (
+                  <TrendingUp className="h-3 w-3 text-red-500 mr-1" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-green-500 mr-1" />
+                )}
+                <span className={`text-xs ${yearVariation >= 0 ? "text-red-500" : "text-green-500"}`}>
+                  {yearVariation >= 0 ? "+" : ""}{yearVariation.toFixed(1)}% vs {lastYear}
+                </span>
+              </div>
             </div>
-            <DollarSign className="h-8 w-8 text-blue-600" />
+            <DollarSign className="h-8 w-8 text-blue-500" />
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Promedio Mensual</p>
-              <p className="text-2xl font-bold text-green-600">
-                {formatCurrency(filteredPayments.reduce((sum, p) => sum + p.amount, 0) / 12)}
-              </p>
+              <p className="text-xs font-medium text-gray-500 uppercase">{getMonthName(currentMonth)} {currentYear}</p>
+              <p className="text-xl font-bold text-purple-600">{formatCurrency(currentMonthTotal)}</p>
+              <div className="flex items-center mt-1">
+                {monthVariation >= 0 ? (
+                  <TrendingUp className="h-3 w-3 text-red-500 mr-1" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-green-500 mr-1" />
+                )}
+                <span className={`text-xs ${monthVariation >= 0 ? "text-red-500" : "text-green-500"}`}>
+                  {monthVariation >= 0 ? "+" : ""}{monthVariation.toFixed(1)}% vs {lastYear}
+                </span>
+              </div>
             </div>
-            <Calendar className="h-8 w-8 text-green-600" />
+            <Calendar className="h-8 w-8 text-purple-500" />
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Servicios Activos</p>
-              <p className="text-2xl font-bold text-purple-600">{services.length}</p>
+              <p className="text-xs font-medium text-gray-500 uppercase">Servicios</p>
+              <p className="text-xl font-bold text-green-600">{services.length}</p>
+              <p className="text-xs text-gray-500 mt-1">activos</p>
             </div>
-            <Wrench className="h-8 w-8 text-purple-600" />
+            <Wrench className="h-8 w-8 text-green-500" />
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Hoteles</p>
-              <p className="text-2xl font-bold text-orange-600">{hotels.length}</p>
+              <p className="text-xs font-medium text-gray-500 uppercase">Hoteles</p>
+              <p className="text-xl font-bold text-orange-600">{hotels.length}</p>
+              <p className="text-xs text-gray-500 mt-1">registrados</p>
             </div>
-            <HotelIcon className="h-8 w-8 text-orange-600" />
+            <HotelIcon className="h-8 w-8 text-orange-500" />
           </div>
         </div>
       </div>
+
+      {/* Alertas de Gastos */}
+      {serviceAlerts.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <h3 className="font-semibold text-red-800">Alertas de Gastos</h3>
+            <span className="text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded-full">{serviceAlerts.length}</span>
+          </div>
+          <p className="text-sm text-red-700 mb-3">Servicios con aumento mayor al 20% vs ano anterior:</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {serviceAlerts.slice(0, 6).map((alert, idx) => (
+              <div key={idx} className="bg-white rounded p-3 border border-red-100">
+                <p className="font-medium text-gray-900 text-sm">{alert.service.name}</p>
+                <p className="text-xs text-gray-500">{alert.hotelName}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm text-gray-700">{formatCurrency(alert.currentTotal)}</span>
+                  <span className="text-xs font-bold text-red-600">+{alert.variation.toFixed(0)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Vista Resumen */}
       {activeView === "overview" && (

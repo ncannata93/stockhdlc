@@ -139,23 +139,16 @@ export async function deleteService(id: string): Promise<void> {
   }
 }
 
-// Función para obtener TODOS los pagos de servicios sin límite
+// Funcion para obtener TODOS los pagos de servicios con paginacion automatica
 export async function getServicePayments(hotelId?: string, filters?: any): Promise<ServicePayment[]> {
   try {
-    console.log("🔄 OBTENIENDO TODOS LOS PAGOS DE SERVICIOS SIN LÍMITE...")
-    console.log("- Parámetros:", { hotelId, filters })
-
-    // MÉTODO CORREGIDO: Obtener TODOS los pagos usando paginación si es necesario
+    // Obtener todos los pagos usando paginacion
     let allPayments: any[] = []
     let from = 0
-    const pageSize = 1000 // Tamaño de página
+    const pageSize = 1000
     let hasMore = true
 
-    console.log("📡 Iniciando carga paginada de pagos...")
-
     while (hasMore) {
-      console.log(`📄 Cargando página desde ${from} hasta ${from + pageSize - 1}`)
-
       const { data: pageData, error: pageError } = await supabase
         .from("service_payments")
         .select("*")
@@ -163,137 +156,66 @@ export async function getServicePayments(hotelId?: string, filters?: any): Promi
         .order("due_date", { ascending: false })
 
       if (pageError) {
-        console.error(`❌ Error al obtener página ${from}-${from + pageSize - 1}:`, pageError)
+        console.error("Error al obtener pagos:", pageError)
         break
       }
 
       if (!pageData || pageData.length === 0) {
-        console.log("📄 No hay más datos, finalizando paginación")
         hasMore = false
         break
       }
 
-      console.log(`📄 Página cargada: ${pageData.length} registros`)
       allPayments = [...allPayments, ...pageData]
 
-      // Si obtuvimos menos registros que el tamaño de página, no hay más datos
       if (pageData.length < pageSize) {
-        console.log("📄 Última página alcanzada")
         hasMore = false
       } else {
         from += pageSize
       }
     }
 
-    console.log("📊 TOTAL DE PAGOS CARGADOS:", allPayments.length)
-
     // Obtener hoteles
-    console.log("📡 Obteniendo hoteles...")
     const { data: hotelsData, error: hotelsError } = await supabase.from("hotels").select("*")
 
     if (hotelsError) {
-      console.error("❌ Error al obtener hoteles:", hotelsError)
+      console.error("Error al obtener hoteles:", hotelsError)
       return getServicePaymentsFromLocalStorage()
     }
 
-    console.log("📊 HOTELES OBTENIDOS:", hotelsData?.length || 0)
-
-    // Crear un mapa de hoteles para búsqueda rápida
+    // Crear mapa de hoteles para busqueda rapida
     const hotelsMap = new Map()
     hotelsData?.forEach((hotel) => {
       hotelsMap.set(hotel.id, hotel.name)
     })
 
-    // Combinar datos manualmente
+    // Combinar datos
     const transformedData = allPayments.map((payment) => ({
       ...payment,
       hotel_name: hotelsMap.get(payment.hotel_id) || "Hotel no encontrado",
     }))
 
-    console.log("✅ DATOS TRANSFORMADOS:", transformedData.length)
-
     // Aplicar filtros si se proporcionan
     let filteredData = transformedData
 
     if (hotelId) {
-      console.log("🏨 Aplicando filtro por hotel:", hotelId)
-      const beforeFilter = filteredData.length
       filteredData = filteredData.filter((p) => p.hotel_id === hotelId)
-      console.log(`🏨 Filtro hotel aplicado: ${beforeFilter} -> ${filteredData.length}`)
     }
 
     if (filters) {
-      console.log("🔍 Aplicando filtros adicionales:", filters)
       if (filters.month) {
-        const beforeFilter = filteredData.length
         filteredData = filteredData.filter((p) => p.month === filters.month)
-        console.log(`📅 Filtro mes aplicado: ${beforeFilter} -> ${filteredData.length}`)
       }
       if (filters.year) {
-        const beforeFilter = filteredData.length
         filteredData = filteredData.filter((p) => p.year === filters.year)
-        console.log(`📅 Filtro año aplicado: ${beforeFilter} -> ${filteredData.length}`)
       }
       if (filters.status) {
-        const beforeFilter = filteredData.length
         filteredData = filteredData.filter((p) => p.status === filters.status)
-        console.log(`📊 Filtro estado aplicado: ${beforeFilter} -> ${filteredData.length}`)
       }
     }
 
-    // Debug específico para Argentina
-    const argentinaPayments = filteredData.filter(
-      (p) => p.hotel_name && p.hotel_name.toLowerCase().includes("argentina"),
-    )
-    console.log("🇦🇷 Pagos de Argentina encontrados:", argentinaPayments.length)
-
-    if (argentinaPayments.length > 0) {
-      const enero2025 = argentinaPayments.filter((p) => p.month === 1 && p.year === 2025)
-      console.log("🗓️ Argentina Enero 2025:", enero2025.length)
-
-      if (enero2025.length > 0) {
-        console.log("📋 Detalles Argentina Enero 2025:")
-        enero2025.forEach((p, index) => {
-          if (index < 5) {
-            // Solo mostrar los primeros 5 para no saturar el log
-            console.log(`- ${p.service_name}: $${p.amount} (${p.status}) - ID: ${p.id}`)
-          }
-        })
-        if (enero2025.length > 5) {
-          console.log(`... y ${enero2025.length - 5} más`)
-        }
-      }
-    }
-
-    // Estadísticas finales
-    const stats = {
-      total: filteredData.length,
-      porHotel: filteredData.reduce(
-        (acc, p) => {
-          const hotel = p.hotel_name || "Sin hotel"
-          acc[hotel] = (acc[hotel] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      ),
-      porEstado: filteredData.reduce(
-        (acc, p) => {
-          acc[p.status] = (acc[p.status] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      ),
-    }
-
-    console.log("📊 ESTADÍSTICAS FINALES:")
-    console.log("- Total filtrado:", stats.total)
-    console.log("- Por hotel:", stats.porHotel)
-    console.log("- Por estado:", stats.porEstado)
-
-    console.log("✅ DATOS FINALES LISTOS PARA RETORNAR:", filteredData.length)
     return filteredData
   } catch (error) {
-    console.error("❌ Error crítico al obtener pagos:", error)
+    console.error("Error al obtener pagos:", error)
     return getServicePaymentsFromLocalStorage()
   }
 }
