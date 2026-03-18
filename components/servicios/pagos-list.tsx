@@ -10,7 +10,7 @@ import {
   markPaymentAsPaid,
   updateServicePayment,
   getServices,
-  createServicePayment,
+  addServicePayment,
 } from "@/lib/service-db"
 import type { Service } from "@/lib/service-types"
 import type { ServicePayment, Hotel } from "@/lib/service-types"
@@ -198,7 +198,7 @@ export function PagosList({ initialFilterStatus }: PagosListProps) {
 
     try {
       const selectedService = services.find(s => s.id === addFormData.serviceId)
-      await createServicePayment({
+      await addServicePayment({
         service_id: addFormData.serviceId,
         service_name: selectedService?.name || "",
         hotel_id: addFormData.hotelId,
