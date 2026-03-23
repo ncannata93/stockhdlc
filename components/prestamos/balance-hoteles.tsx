@@ -13,7 +13,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Scale, TrendingUp, TrendingDown, Eye, AlertCircle, Cloud, WifiOff, Database, RefreshCw } from "lucide-react"
+import { Scale, TrendingUp, TrendingDown, Eye, AlertCircle, Cloud, WifiOff, Database, RefreshCw, Download } from "lucide-react"
+import * as XLSX from "xlsx"
 import { useToast } from "@/hooks/use-toast"
 import {
   obtenerBalanceHoteles,
@@ -121,6 +122,105 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
     return "text-gray-600"
   }
 
+  const exportarExcel = () => {
+    if (balances.length === 0) {
+      toast({
+        title: "Sin datos",
+        description: "No hay datos para exportar",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Hoja 1: Resumen de Balance
+    const resumenData = balances.map((b) => ({
+      Hotel: b.hotel,
+      "Total Acreedor": b.acreedor,
+      "Total Deudor": b.deudor,
+      "Balance Neto": b.balance,
+      Estado: b.balance > 0 ? "A Favor" : b.balance < 0 ? "En Contra" : "Equilibrado",
+      Transacciones: b.transacciones,
+    }))
+
+    // Hoja 2: Detalle de Relaciones
+    const detalleData: Array<{
+      Hotel: string
+      Tipo: string
+      "Hotel Relacionado": string
+      Monto: number
+    }> = []
+
+    balances.forEach((b) => {
+      b.acreedorDe.forEach((rel) => {
+        detalleData.push({
+          Hotel: b.hotel,
+          Tipo: "Es Acreedor de",
+          "Hotel Relacionado": rel.hotel,
+          Monto: rel.monto,
+        })
+      })
+      b.deudorDe.forEach((rel) => {
+        detalleData.push({
+          Hotel: b.hotel,
+          Tipo: "Es Deudor de",
+          "Hotel Relacionado": rel.hotel,
+          Monto: rel.monto,
+        })
+      })
+    })
+
+    // Crear libro de Excel
+    const wb = XLSX.utils.book_new()
+
+    // Agregar hoja de resumen
+    const wsResumen = XLSX.utils.json_to_sheet(resumenData)
+    // Ajustar ancho de columnas
+    wsResumen["!cols"] = [
+      { wch: 20 }, // Hotel
+      { wch: 15 }, // Total Acreedor
+      { wch: 15 }, // Total Deudor
+      { wch: 15 }, // Balance Neto
+      { wch: 12 }, // Estado
+      { wch: 14 }, // Transacciones
+    ]
+    XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen Balance")
+
+    // Agregar hoja de detalle si hay datos
+    if (detalleData.length > 0) {
+      const wsDetalle = XLSX.utils.json_to_sheet(detalleData)
+      wsDetalle["!cols"] = [
+        { wch: 20 }, // Hotel
+        { wch: 15 }, // Tipo
+        { wch: 20 }, // Hotel Relacionado
+        { wch: 15 }, // Monto
+      ]
+      XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle Relaciones")
+    }
+
+    // Generar nombre de archivo con fecha
+    const fecha = new Date().toISOString().split("T")[0]
+    const nombreArchivo = `Balance_Hoteles_${fecha}.xlsx`
+
+    // Generar el archivo como array buffer y crear blob para descarga
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+    const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+    
+    // Crear link de descarga y ejecutar
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = nombreArchivo
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    toast({
+      title: "Archivo exportado",
+      description: `Se descargo ${nombreArchivo}`,
+    })
+  }
+
   const getBalanceIcon = (balance: number) => {
     if (balance > 0) return <TrendingUp className="h-4 w-4 text-green-600" />
     if (balance < 0) return <TrendingDown className="h-4 w-4 text-red-600" />
@@ -137,8 +237,18 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
             <Button
               variant="outline"
               size="sm"
+              onClick={exportarExcel}
+              disabled={isLoading || !conectado || !tablaExiste || balances.length === 0}
+              title="Descargar Excel"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={actualizarBalance}
               disabled={isLoading || !conectado || !tablaExiste}
+              title="Actualizar"
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
