@@ -31,7 +31,9 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Download,
 } from "lucide-react"
+import * as XLSX from "xlsx"
 import { EditarPrestamo } from "@/components/prestamos/editar-prestamo"
 import { useToast } from "@/hooks/use-toast"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -170,6 +172,139 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+    })
+  }
+
+  const exportarExcel = () => {
+    if (prestamos.length === 0) {
+      toast({
+        title: "Sin datos",
+        description: "No hay transacciones para exportar",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Hoja 1: Todas las transacciones
+    const transaccionesData = prestamos.map((p) => ({
+      Fecha: formatearFecha(p.fecha),
+      Responsable: p.responsable,
+      "Hotel Origen": p.hotel_origen,
+      "Hotel Destino": p.hotel_destino,
+      Producto: p.producto,
+      Cantidad: p.cantidad,
+      Valor: p.valor,
+      Estado: p.estado,
+      Notas: p.notas || "",
+    }))
+
+    // Hoja 2: Detalle por Hotel (qué debe cada hotel a quién)
+    const deudaPorHotel: Record<string, { acreedor: string; monto: number; transacciones: number }[]> = {}
+    
+    prestamos
+      .filter((p) => p.estado === "pendiente")
+      .forEach((p) => {
+        // El hotel_destino debe al hotel_origen
+        if (!deudaPorHotel[p.hotel_destino]) {
+          deudaPorHotel[p.hotel_destino] = []
+        }
+        
+        const existente = deudaPorHotel[p.hotel_destino].find((d) => d.acreedor === p.hotel_origen)
+        if (existente) {
+          existente.monto += p.valor
+          existente.transacciones += 1
+        } else {
+          deudaPorHotel[p.hotel_destino].push({
+            acreedor: p.hotel_origen,
+            monto: p.valor,
+            transacciones: 1,
+          })
+        }
+      })
+
+    const detalleDeudaData: Array<{
+      "Hotel Deudor": string
+      "Debe A": string
+      "Monto Total": number
+      "Cant. Transacciones": number
+    }> = []
+
+    Object.entries(deudaPorHotel).forEach(([hotelDeudor, deudas]) => {
+      deudas.forEach((deuda) => {
+        detalleDeudaData.push({
+          "Hotel Deudor": hotelDeudor,
+          "Debe A": deuda.acreedor,
+          "Monto Total": deuda.monto,
+          "Cant. Transacciones": deuda.transacciones,
+        })
+      })
+    })
+
+    // Hoja 3: Resumen por Hotel
+    const resumenPorHotel: Record<string, { prestado: number; recibido: number }> = {}
+    
+    prestamos.forEach((p) => {
+      if (!resumenPorHotel[p.hotel_origen]) {
+        resumenPorHotel[p.hotel_origen] = { prestado: 0, recibido: 0 }
+      }
+      if (!resumenPorHotel[p.hotel_destino]) {
+        resumenPorHotel[p.hotel_destino] = { prestado: 0, recibido: 0 }
+      }
+      
+      resumenPorHotel[p.hotel_origen].prestado += p.valor
+      resumenPorHotel[p.hotel_destino].recibido += p.valor
+    })
+
+    const resumenData = Object.entries(resumenPorHotel).map(([hotel, datos]) => ({
+      Hotel: hotel,
+      "Total Prestado": datos.prestado,
+      "Total Recibido": datos.recibido,
+      "Balance Neto": datos.prestado - datos.recibido,
+      Estado: datos.prestado - datos.recibido > 0 ? "A Favor" : datos.prestado - datos.recibido < 0 ? "En Contra" : "Equilibrado",
+    }))
+
+    // Crear libro de Excel
+    const wb = XLSX.utils.book_new()
+
+    // Agregar hoja de transacciones
+    const wsTransacciones = XLSX.utils.json_to_sheet(transaccionesData)
+    wsTransacciones["!cols"] = [
+      { wch: 12 }, { wch: 15 }, { wch: 18 }, { wch: 18 }, 
+      { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 30 },
+    ]
+    XLSX.utils.book_append_sheet(wb, wsTransacciones, "Transacciones")
+
+    // Agregar hoja de detalle de deudas
+    if (detalleDeudaData.length > 0) {
+      const wsDeudas = XLSX.utils.json_to_sheet(detalleDeudaData)
+      wsDeudas["!cols"] = [{ wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 18 }]
+      XLSX.utils.book_append_sheet(wb, wsDeudas, "Deudas por Hotel")
+    }
+
+    // Agregar hoja de resumen
+    const wsResumen = XLSX.utils.json_to_sheet(resumenData)
+    wsResumen["!cols"] = [{ wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }]
+    XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen por Hotel")
+
+    // Generar y descargar
+    const fecha = new Date().toISOString().split("T")[0]
+    const nombreArchivo = `Transacciones_Prestamos_${fecha}.xlsx`
+
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+    const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+    
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = nombreArchivo
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    toast({
+      title: "Archivo exportado",
+      description: `Se descargo ${nombreArchivo}`,
     })
   }
 
@@ -448,7 +583,16 @@ export function ListaTransacciones({ onActualizar }: ListaTransaccionesProps) {
           <Search className="h-5 w-5 text-blue-600" />
           Lista de Transacciones
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={cargarDatos} disabled={isLoading}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={exportarExcel} 
+              disabled={isLoading || prestamos.length === 0}
+              title="Descargar Excel"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={cargarDatos} disabled={isLoading} title="Actualizar">
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
             {isMobile && (
