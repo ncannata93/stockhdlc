@@ -201,8 +201,19 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
     const fecha = new Date().toISOString().split("T")[0]
     const nombreArchivo = `Balance_Hoteles_${fecha}.xlsx`
 
-    // Descargar archivo
-    XLSX.writeFile(wb, nombreArchivo)
+    // Generar el archivo como array buffer y crear blob para descarga
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+    const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+    
+    // Crear link de descarga y ejecutar
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = nombreArchivo
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
 
     toast({
       title: "Archivo exportado",
