@@ -658,7 +658,10 @@ export default function StockManagementArg() {
       if (record.hotelName) {
         const hotel = normalizeHotelName(record.hotelName)
         const productId = record.productId
-        const total = record.quantity * record.price
+        // Usar el precio actual del producto en lugar del precio histórico del registro
+        const currentProduct = products.find((p) => p.id === productId)
+        const currentPrice = currentProduct ? currentProduct.price : record.price
+        const total = record.quantity * currentPrice
 
         if (!summary[hotel][productId]) {
           summary[hotel][productId] = {
