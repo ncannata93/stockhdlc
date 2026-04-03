@@ -63,8 +63,11 @@ export type PaymentMethod =
   | "brubank"
   | "santander_visa"
   | "santander_amex"
+  | "amex_juan_pablo"
+  | "amex_claudia"
   | "transferencia"
   | "efectivo"
+  | "otro"
 
 export const SERVICE_CATEGORIES = {
   electricidad: "Electricidad",
@@ -87,14 +90,17 @@ export const PAYMENT_STATUS = {
   vencido: "Vencido",
 }
 
-export const PAYMENT_METHODS = {
+export const PAYMENT_METHODS: Record<string, string> = {
   bbva_visa: "VISA BBVA",
   bbva_master: "MASTER BBVA",
   santander_visa: "VISA SANTANDER",
   santander_amex: "AMEX SANTANDER",
+  amex_juan_pablo: "AMEX JUAN PABLO",
+  amex_claudia: "AMEX CLAUDIA",
   brubank: "BRUBANK",
   efectivo: "EFECTIVO",
   transferencia: "TRANSFERENCIA",
+  otro: "OTRO",
 }
 
 export const MONTHS = {
