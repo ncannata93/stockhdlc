@@ -23,6 +23,7 @@ export function AgregarPago() {
     status: "pendiente",
     invoiceNumber: "",
     paymentMethod: "",
+    customPaymentMethod: "",
     notes: "",
   })
 
@@ -87,6 +88,11 @@ export function AgregarPago() {
 
       const dueDate = formData.dueDate || generateDueDate(formData.month, formData.year)
 
+      // Determinar el metodo de pago final
+      const finalPaymentMethod = formData.paymentMethod === "otro" && formData.customPaymentMethod
+        ? formData.customPaymentMethod
+        : formData.paymentMethod
+
       await addServicePayment({
         service_id: formData.serviceId,
         service_name: selectedService.name,
@@ -99,7 +105,7 @@ export function AgregarPago() {
         payment_date: formData.paymentDate || undefined,
         status: formData.status as "pendiente" | "abonado" | "vencido",
         invoice_number: formData.invoiceNumber || undefined,
-        payment_method: formData.paymentMethod || undefined,
+        payment_method: finalPaymentMethod || undefined,
         notes: formData.notes,
       })
 
@@ -117,6 +123,7 @@ export function AgregarPago() {
         status: "pendiente",
         invoiceNumber: "",
         paymentMethod: "",
+        customPaymentMethod: "",
         notes: "",
       })
 
@@ -323,6 +330,25 @@ export function AgregarPago() {
                   ))}
                 </select>
               </div>
+
+              {/* Campo personalizado para "Otro" */}
+              {formData.paymentMethod === "otro" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <CreditCard className="h-4 w-4 inline mr-1" />
+                    Especificar forma de pago *
+                  </label>
+                  <input
+                    type="text"
+                    name="customPaymentMethod"
+                    value={formData.customPaymentMethod}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ej: Tarjeta Banco Nacion"
+                  />
+                </div>
+              )}
 
               {/* Número de Comprobante */}
               <div className="md:col-span-2">

@@ -30,6 +30,7 @@ export function EditarPago() {
     status: "pendiente",
     invoiceNumber: "",
     paymentMethod: "",
+    customPaymentMethod: "",
     notes: "",
   })
 
@@ -68,6 +69,8 @@ export function EditarPago() {
       const payment = paymentsData.find((p) => p.id === paymentId)
       if (payment) {
         setSelectedHotel(payment.hotel_id)
+        // Verificar si el metodo de pago es uno de los predefinidos o es personalizado
+        const isCustomMethod = payment.payment_method && !Object.keys(PAYMENT_METHODS).includes(payment.payment_method)
         setFormData({
           serviceId: payment.service_id,
           serviceName: payment.service_name,
@@ -79,7 +82,8 @@ export function EditarPago() {
           paymentDate: payment.payment_date || "",
           status: payment.status,
           invoiceNumber: payment.invoice_number || "",
-          paymentMethod: payment.payment_method || "",
+          paymentMethod: isCustomMethod ? "otro" : (payment.payment_method || ""),
+          customPaymentMethod: isCustomMethod ? payment.payment_method : "",
           notes: payment.notes || "",
         })
       }
@@ -129,6 +133,7 @@ export function EditarPago() {
         paymentDate: value === "abonado" ? prev.paymentDate : "",
         invoiceNumber: value === "abonado" ? prev.invoiceNumber : "",
         paymentMethod: value === "abonado" ? prev.paymentMethod : "",
+        customPaymentMethod: value === "abonado" ? prev.customPaymentMethod : "",
       }))
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }))
@@ -142,6 +147,11 @@ export function EditarPago() {
     setLoading(true)
 
     try {
+      // Determinar el metodo de pago final
+      const finalPaymentMethod = formData.paymentMethod === "otro" && formData.customPaymentMethod
+        ? formData.customPaymentMethod
+        : formData.paymentMethod
+
       await updateServicePayment(paymentId, {
         service_id: formData.serviceId,
         service_name: formData.serviceName,
@@ -153,7 +163,7 @@ export function EditarPago() {
         payment_date: formData.paymentDate || undefined,
         status: formData.status,
         invoice_number: formData.invoiceNumber || undefined,
-        payment_method: formData.paymentMethod || undefined,
+        payment_method: finalPaymentMethod || undefined,
         notes: formData.notes,
       })
 
@@ -427,6 +437,25 @@ export function EditarPago() {
                   ))}
                 </select>
               </div>
+
+              {/* Campo personalizado para "Otro" */}
+              {formData.paymentMethod === "otro" && (
+                <div>
+                  <label htmlFor="customPaymentMethod" className="block text-sm font-medium text-gray-700 mb-1">
+                    Especificar forma de pago *
+                  </label>
+                  <input
+                    type="text"
+                    id="customPaymentMethod"
+                    name="customPaymentMethod"
+                    value={formData.customPaymentMethod}
+                    onChange={handleChange}
+                    required
+                    className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ej: Tarjeta Banco Nacion"
+                  />
+                </div>
+              )}
             </>
           )}
 
