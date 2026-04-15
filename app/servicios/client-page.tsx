@@ -10,8 +10,9 @@ import { Estadisticas } from "@/components/servicios/estadisticas"
 import { ServicesList } from "@/components/servicios/servicios-list"
 import { Mantenimiento } from "@/components/servicios/mantenimiento"
 import { HotelesList } from "@/components/servicios/hoteles-list"
+import { AgregarServicio } from "@/components/servicios/agregar-servicio"
 
-type TabType = "inicio" | "pagos" | "servicios" | "hoteles" | "estadisticas" | "mantenimiento"
+type TabType = "inicio" | "pagos" | "servicios" | "hoteles" | "estadisticas" | "mantenimiento" | "agregar-servicio"
 
 interface TabConfig {
   id: TabType
@@ -33,8 +34,12 @@ export default function ServiceClientPage() {
   const filterStatus = searchParams.get("status")
   const [activeTab, setActiveTab] = useState<TabType>("inicio")
 
+  // Tabs ocultos que no aparecen en la navegacion pero son validos
+  const HIDDEN_TABS: TabType[] = ["agregar-servicio"]
+  const ALL_VALID_TABS = [...TABS.map(t => t.id), ...HIDDEN_TABS]
+
   useEffect(() => {
-    if (tabParam && TABS.some(t => t.id === tabParam)) {
+    if (tabParam && ALL_VALID_TABS.includes(tabParam as TabType)) {
       setActiveTab(tabParam as TabType)
     }
   }, [tabParam])
@@ -78,6 +83,7 @@ export default function ServiceClientPage() {
             {activeTab === "hoteles" && <HotelesList />}
             {activeTab === "estadisticas" && <Estadisticas />}
             {activeTab === "mantenimiento" && <Mantenimiento />}
+            {activeTab === "agregar-servicio" && <AgregarServicio />}
           </div>
         </div>
       </div>
