@@ -13,7 +13,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Scale, TrendingUp, TrendingDown, Eye, AlertCircle, Cloud, WifiOff, Database, RefreshCw, Download } from "lucide-react"
+import { Scale, TrendingUp, TrendingDown, Eye, AlertCircle, Cloud, WifiOff, Database, RefreshCw, Download, Clock, CheckCircle2 } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import * as XLSX from "xlsx"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -26,15 +27,18 @@ import {
 
 interface BalanceHotelesProps {
   onActualizar?: () => void
+  refreshTrigger?: number
 }
 
-export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
+export function BalanceHoteles({ onActualizar, refreshTrigger }: BalanceHotelesProps) {
   const { toast } = useToast()
-  const [balances, setBalances] = useState<BalanceHotel[]>([])
+  const [balancesPendientes, setBalancesPendientes] = useState<BalanceHotel[]>([])
+  const [balancesPagados, setBalancesPagados] = useState<BalanceHotel[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [conectado, setConectado] = useState(false)
   const [tablaExiste, setTablaExiste] = useState(false)
   const [hotelSeleccionado, setHotelSeleccionado] = useState<BalanceHotel | null>(null)
+  const [tabActivo, setTabActivo] = useState<"pendiente" | "pagado">("pendiente")
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -46,8 +50,12 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
 
         if (conexion.conectado && tabla.existe) {
           setIsLoading(true)
-          const balanceData = await obtenerBalanceHoteles()
-          setBalances(balanceData)
+          const [pendientes, pagados] = await Promise.all([
+            obtenerBalanceHoteles("pendiente"),
+            obtenerBalanceHoteles("pagado")
+          ])
+          setBalancesPendientes(pendientes)
+          setBalancesPagados(pagados)
         }
       } catch (error) {
         console.error("Error al cargar datos:", error)
@@ -63,17 +71,21 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
       }
     }
     cargarDatos()
-  }, [])
+  }, [refreshTrigger])
 
   const actualizarBalance = async () => {
     if (!conectado || !tablaExiste) return
 
     setIsLoading(true)
     try {
-      const balanceData = await obtenerBalanceHoteles()
-      setBalances(balanceData)
+      const [pendientes, pagados] = await Promise.all([
+        obtenerBalanceHoteles("pendiente"),
+        obtenerBalanceHoteles("pagado")
+      ])
+      setBalancesPendientes(pendientes)
+      setBalancesPagados(pagados)
       toast({
-        title: "✅ Balance actualizado",
+        title: "Balance actualizado",
         description: "El balance de hoteles ha sido actualizado",
       })
       onActualizar?.()
@@ -88,6 +100,9 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
       setIsLoading(false)
     }
   }
+  
+  // Obtener balances actuales segun el tab
+  const balances = tabActivo === "pendiente" ? balancesPendientes : balancesPagados
 
   const estadoConexion = () => {
     if (!conectado) {
@@ -256,7 +271,7 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
           </div>
         </CardTitle>
         <CardDescription>
-          Balance neto de préstamos entre hoteles ({balances.length} hoteles con transacciones)
+          Balance neto de prestamos entre hoteles
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -276,6 +291,44 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
             </AlertDescription>
           </Alert>
         )}
+
+        {/* Resumen rapido */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="h-4 w-4 text-orange-600" />
+              <span className="text-sm font-medium text-orange-800">Pendientes</span>
+            </div>
+            <p className="text-2xl font-bold text-orange-600">{balancesPendientes.length}</p>
+            <p className="text-xs text-orange-600">
+              {balancesPendientes.reduce((sum, b) => sum + Math.abs(b.balance), 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" })} en deudas activas
+            </p>
+          </div>
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <span className="text-sm font-medium text-green-800">Compensados</span>
+            </div>
+            <p className="text-2xl font-bold text-green-600">{balancesPagados.length}</p>
+            <p className="text-xs text-green-600">
+              {balancesPagados.reduce((sum, b) => sum + Math.abs(b.balance), 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" })} ya saldados
+            </p>
+          </div>
+        </div>
+
+        {/* Tabs para filtrar */}
+        <Tabs value={tabActivo} onValueChange={(v) => setTabActivo(v as "pendiente" | "pagado")} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="pendiente" className="data-[state=active]:bg-orange-100 data-[state=active]:text-orange-800">
+              <Clock className="h-4 w-4 mr-2" />
+              Pendientes ({balancesPendientes.length})
+            </TabsTrigger>
+            <TabsTrigger value="pagado" className="data-[state=active]:bg-green-100 data-[state=active]:text-green-800">
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Compensados ({balancesPagados.length})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         <div className="border rounded-lg">
           <Table>
@@ -303,7 +356,9 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                     {conectado && tablaExiste
-                      ? "No hay transacciones para mostrar balance"
+                      ? tabActivo === "pendiente" 
+                        ? "No hay deudas pendientes - todo esta compensado" 
+                        : "No hay transacciones compensadas aun"
                       : "No hay datos disponibles"}
                   </TableCell>
                 </TableRow>
@@ -417,9 +472,13 @@ export function BalanceHoteles({ onActualizar }: BalanceHotelesProps) {
           </Table>
         </div>
 
-        {conectado && tablaExiste && balances.length > 0 && (
+        {conectado && tablaExiste && (
           <div className="mt-4 text-sm text-gray-600">
-            <p className="text-center">Balance calculado con compensación automática entre hoteles</p>
+            <p className="text-center">
+              {tabActivo === "pendiente" 
+                ? "Mostrando deudas pendientes de compensar" 
+                : "Mostrando transacciones ya compensadas/pagadas"}
+            </p>
           </div>
         )}
       </CardContent>
