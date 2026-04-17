@@ -6,6 +6,7 @@ import { IngresoRapido } from "@/components/prestamos/ingreso-rapido"
 import { IngresoManual } from "@/components/prestamos/ingreso-manual"
 import { ListaTransacciones } from "@/components/prestamos/lista-transacciones"
 import { BalanceHoteles } from "@/components/prestamos/balance-hoteles"
+import { CompensarSaldos } from "@/components/prestamos/compensar-saldos"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Cloud, Info } from "lucide-react"
 
@@ -44,13 +45,13 @@ export default function PrestamosClientPage() {
 
       {/* Tabs optimizados para móvil */}
       <Tabs defaultValue="ingreso-rapido" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 h-auto p-1">
           <TabsTrigger
             value="ingreso-rapido"
             className="text-xs sm:text-sm px-2 py-2 sm:px-3 sm:py-2 data-[state=active]:bg-orange-100 data-[state=active]:text-orange-800"
           >
-            <span className="hidden sm:inline">Ingreso Rápido</span>
-            <span className="sm:hidden">Rápido</span>
+            <span className="hidden sm:inline">Ingreso Rapido</span>
+            <span className="sm:hidden">Rapido</span>
           </TabsTrigger>
           <TabsTrigger
             value="ingreso-manual"
@@ -65,6 +66,13 @@ export default function PrestamosClientPage() {
           >
             <span className="hidden sm:inline">Transacciones</span>
             <span className="sm:hidden">Lista</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="compensar"
+            className="text-xs sm:text-sm px-2 py-2 sm:px-3 sm:py-2 data-[state=active]:bg-indigo-100 data-[state=active]:text-indigo-800"
+          >
+            <span className="hidden sm:inline">Compensar</span>
+            <span className="sm:hidden">Comp.</span>
           </TabsTrigger>
           <TabsTrigger
             value="balance"
@@ -84,6 +92,10 @@ export default function PrestamosClientPage() {
 
         <TabsContent value="transacciones" className="mt-4">
           <ListaTransacciones refreshTrigger={refreshTrigger} onTransaccionActualizada={handlePrestamoGuardado} />
+        </TabsContent>
+
+        <TabsContent value="compensar" className="mt-4">
+          <CompensarSaldos refreshTrigger={refreshTrigger} onCompensacionRealizada={handlePrestamoGuardado} />
         </TabsContent>
 
         <TabsContent value="balance" className="mt-4">
