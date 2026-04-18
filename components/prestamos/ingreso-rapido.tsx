@@ -539,7 +539,7 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
                 </div>
                 <div className="mt-2 text-sky-600 space-y-0.5 border-t border-sky-200 pt-2">
                   <div>1. Responsable - 2. Origen - 3. Destino - 4. Producto - 5. Cantidad - 6. Valor</div>
-                  <div className="text-sky-400 mt-1">En modo lineas: Enter agrega linea, al completar 6 Enter envia. Ctrl+Enter envia en cualquier momento.</div>
+                  <div className="text-sky-400 mt-1">En modo lineas: Enter agrega linea, al completar los 6 campos Enter envia. Ctrl+Enter envia en cualquier momento.</div>
                 </div>
               </div>
             )}
@@ -622,8 +622,8 @@ Claudia, Claudia, Argentina, Brenda, 1, 200000`
                       // Comma format: Enter sends
                       e.preventDefault()
                       handleChatSend()
-                    } else if (!hasCommas && lines >= 5 && !e.shiftKey) {
-                      // Already have 5+ lines (just need value), next Enter sends
+                    } else if (!hasCommas && lines >= 6 && !e.shiftKey) {
+                      // Already have 6 lines (all fields), next Enter sends
                       e.preventDefault()
                       handleChatSend()
                     } else if ((e.ctrlKey || e.metaKey) && !hasCommas) {
