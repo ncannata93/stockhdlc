@@ -337,54 +337,19 @@ export const obtenerResponsables = async (): Promise<string[]> => {
 }
 
 // Calcular balance de hoteles
-export const obtenerBalanceHoteles = async (): Promise<BalanceHotel[]> => {
+export const obtenerBalanceHoteles = async (filtroEstado?: "pendiente" | "pagado" | "todos"): Promise<BalanceHotel[]> => {
   try {
     const prestamos = await obtenerPrestamos()
-    console.log("[v0] 📊 Total de préstamos obtenidos:", prestamos.length)
-
-    const prestamosActivos = prestamos.filter((p) => p.estado !== "cancelado")
-    console.log("[v0] ✅ Préstamos activos (no cancelados):", prestamosActivos.length)
-
-    const transaccionJuanManuel = prestamos.find(
-      (p) =>
-        p.responsable === "Juan Manuel" &&
-        p.hotel_origen === "Mallak" &&
-        p.hotel_destino === "Argentina" &&
-        p.producto === "Toallas",
-    )
-
-    if (transaccionJuanManuel) {
-      console.log("[v0] 🔍 Transacción de Juan Manuel encontrada:", {
-        id: transaccionJuanManuel.id,
-        fecha: transaccionJuanManuel.fecha,
-        responsable: transaccionJuanManuel.responsable,
-        origen: transaccionJuanManuel.hotel_origen,
-        destino: transaccionJuanManuel.hotel_destino,
-        producto: transaccionJuanManuel.producto,
-        cantidad: transaccionJuanManuel.cantidad,
-        valor: transaccionJuanManuel.valor,
-        estado: transaccionJuanManuel.estado,
-        created_at: transaccionJuanManuel.created_at,
-      })
-
-      const estaActiva = prestamosActivos.includes(transaccionJuanManuel)
-      console.log("[v0] ❓ ¿Está en préstamos activos?:", estaActiva)
-
-      if (!estaActiva) {
-        console.log("[v0] ⚠️ PROBLEMA: La transacción está CANCELADA, por eso no aparece en el balance")
-      }
+    
+    // Filtrar por estado segun el parametro
+    let prestamosActivos: typeof prestamos
+    if (filtroEstado === "pendiente") {
+      prestamosActivos = prestamos.filter((p) => p.estado === "pendiente")
+    } else if (filtroEstado === "pagado") {
+      prestamosActivos = prestamos.filter((p) => p.estado === "pagado")
     } else {
-      console.log("[v0] ❌ Transacción de Juan Manuel NO encontrada en la base de datos")
-      console.log(
-        "[v0] 📋 Todas las transacciones:",
-        prestamos.map((p) => ({
-          responsable: p.responsable,
-          origen: p.hotel_origen,
-          destino: p.hotel_destino,
-          producto: p.producto,
-          estado: p.estado,
-        })),
-      )
+      // Por defecto o "todos": excluir solo cancelados
+      prestamosActivos = prestamos.filter((p) => p.estado !== "cancelado")
     }
 
     // Crear mapa de balances por hotel
