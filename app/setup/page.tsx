@@ -3,11 +3,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 
 export default function SetupPage() {
-  const [secret, setSecret] = useState('')
   const [result, setResult] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isError, setIsError] = useState(false)
@@ -21,7 +18,7 @@ export default function SetupPage() {
       const response = await fetch('/api/setup-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secret })
+        body: JSON.stringify({})
       })
 
       const data = await response.json()
@@ -30,7 +27,7 @@ export default function SetupPage() {
         setIsError(true)
         setResult(data.error || 'Error desconocido')
       } else {
-        setResult(data.message + (data.email ? ` - Email: ${data.email}` : ''))
+        setResult(data.message)
       }
     } catch (error) {
       setIsError(true)
@@ -50,18 +47,13 @@ export default function SetupPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="secret">Clave de Seguridad (CRON_SECRET)</Label>
-            <Input
-              id="secret"
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="Ingresa la clave de seguridad"
-            />
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+            <p className="font-medium text-amber-800 mb-2">Se creará el siguiente usuario:</p>
+            <p className="text-amber-700"><strong>Usuario:</strong> mallak</p>
+            <p className="text-amber-700"><strong>Contraseña:</strong> colapinto</p>
           </div>
           
-          <Button onClick={handleSetup} disabled={isLoading || !secret} className="w-full">
+          <Button onClick={handleSetup} disabled={isLoading} className="w-full">
             {isLoading ? 'Procesando...' : 'Crear/Resetear Usuario'}
           </Button>
 
@@ -70,11 +62,6 @@ export default function SetupPage() {
               {result}
             </div>
           )}
-
-          <div className="text-xs text-muted-foreground space-y-1 border-t pt-4">
-            <p><strong>Usuario:</strong> mallak</p>
-            <p><strong>Contraseña:</strong> colapinto</p>
-          </div>
         </CardContent>
       </Card>
     </div>

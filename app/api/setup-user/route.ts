@@ -1,18 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Esta ruta solo debe ejecutarse una vez para crear el usuario inicial
-// Luego debe eliminarse o protegerse
+// Esta ruta crea el usuario inicial del sistema
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
-    const { secret } = await request.json()
-    
-    // Validar que se proporcione un secreto para evitar creación no autorizada
-    if (secret !== process.env.CRON_SECRET) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
-
     // Usar el service role key para crear usuarios
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,23 +17,19 @@ export async function POST(request: Request) {
       }
     )
 
-    // Primero, eliminar todas las sesiones existentes de todos los usuarios
-    // Esto se hace eliminando los refresh tokens
-    
     // Crear el usuario mallak@limpieza.local con la contraseña colapinto
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email: 'mallak@limpieza.local',
       password: 'colapinto',
-      email_confirm: true, // Confirmar email automáticamente
+      email_confirm: true,
       user_metadata: {
         username: 'mallak'
       }
     })
 
     if (error) {
-      // Si el usuario ya existe, intentar actualizar la contraseña
+      // Si el usuario ya existe, actualizar la contraseña y cerrar sesiones
       if (error.message.includes('already been registered')) {
-        // Obtener el usuario existente
         const { data: users } = await supabaseAdmin.auth.admin.listUsers()
         const existingUser = users.users.find(u => u.email === 'mallak@limpieza.local')
         
@@ -60,8 +48,7 @@ export async function POST(request: Request) {
           }
           
           return NextResponse.json({ 
-            message: 'Usuario actualizado y todas las sesiones cerradas',
-            email: 'mallak@limpieza.local'
+            message: 'Usuario reseteado exitosamente. Todas las sesiones fueron cerradas. Ya puedes iniciar sesión.'
           })
         }
       }
@@ -69,9 +56,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ 
-      message: 'Usuario creado exitosamente',
-      email: 'mallak@limpieza.local',
-      userId: data.user?.id
+      message: 'Usuario creado exitosamente. Ya puedes iniciar sesión.'
     })
   } catch (error) {
     console.error('Error:', error)
