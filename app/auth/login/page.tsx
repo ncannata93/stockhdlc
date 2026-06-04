@@ -15,7 +15,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -28,6 +28,8 @@ export default function LoginPage() {
     setError(null)
 
     try {
+      // Convertir username a email internamente
+      const email = `${username.toLowerCase()}@limpieza.local`
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -36,7 +38,7 @@ export default function LoginPage() {
       router.push('/limpieza')
       router.refresh()
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Usuario o contraseña incorrectos')
+      setError('Usuario o contraseña incorrectos')
     } finally {
       setIsLoading(false)
     }
@@ -57,14 +59,14 @@ export default function LoginPage() {
               <form onSubmit={handleLogin}>
                 <div className="flex flex-col gap-6">
                   <div className="grid gap-2">
-                    <Label htmlFor="email">Usuario (Email)</Label>
+                    <Label htmlFor="username">Usuario</Label>
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder="usuario@ejemplo.com"
+                      id="username"
+                      type="text"
+                      placeholder="usuario"
                       required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
                     />
                   </div>
                   <div className="grid gap-2">

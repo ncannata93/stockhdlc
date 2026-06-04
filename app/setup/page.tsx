@@ -72,7 +72,7 @@ export default function SetupPage() {
           )}
 
           <div className="text-xs text-muted-foreground space-y-1 border-t pt-4">
-            <p><strong>Usuario:</strong> mallak@limpieza.com</p>
+            <p><strong>Usuario:</strong> mallak</p>
             <p><strong>Contraseña:</strong> colapinto</p>
           </div>
         </CardContent>

@@ -28,9 +28,9 @@ export async function POST(request: Request) {
     // Primero, eliminar todas las sesiones existentes de todos los usuarios
     // Esto se hace eliminando los refresh tokens
     
-    // Crear el usuario mallak@limpieza.com con la contraseña colapinto
+    // Crear el usuario mallak@limpieza.local con la contraseña colapinto
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email: 'mallak@limpieza.com',
+      email: 'mallak@limpieza.local',
       password: 'colapinto',
       email_confirm: true, // Confirmar email automáticamente
       user_metadata: {
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       if (error.message.includes('already been registered')) {
         // Obtener el usuario existente
         const { data: users } = await supabaseAdmin.auth.admin.listUsers()
-        const existingUser = users.users.find(u => u.email === 'mallak@limpieza.com')
+        const existingUser = users.users.find(u => u.email === 'mallak@limpieza.local')
         
         if (existingUser) {
           // Cerrar todas las sesiones del usuario
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
           
           return NextResponse.json({ 
             message: 'Usuario actualizado y todas las sesiones cerradas',
-            email: 'mallak@limpieza.com'
+            email: 'mallak@limpieza.local'
           })
         }
       }
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ 
       message: 'Usuario creado exitosamente',
-      email: 'mallak@limpieza.com',
+      email: 'mallak@limpieza.local',
       userId: data.user?.id
     })
   } catch (error) {
